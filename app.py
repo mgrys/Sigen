@@ -21,9 +21,10 @@ import db
 import discover
 import forecast
 import prices
+import pstryk
 import registers
 
-__version__ = "1.3.0"
+__version__ = "1.5.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -32,6 +33,7 @@ PLANT_ID = registers.PLANT     # adres "plant" - dane calej instalacji
 INVERTER_ID = registers.INV    # adres falownika hybrydowego
 COUNTER_INTERVAL = 60    # s miedzy odczytami licznikow energii
 SETTINGS_INTERVAL = 300  # s miedzy odczytami ustawien (tylko odczyt)
+ALARM_INTERVAL = 30      # s miedzy odczytami alarmow falownika (tylko odczyt)
 INTERVAL = max(2, config.geti("falownik", "interval", 5))   # s miedzy odczytami mocy
 MAX_GAP = 60             # s - przerwy dluzsze nie sa liczone do energii
 
@@ -56,6 +58,7 @@ latest = {"ok": False, "error": "Uruchamianie..."}
 counters_state = {"values": {}, "unsupported": [], "ts": None}
 registers_state = {"values": {}, "ts": None}
 settings_state = {"values": {}, "ts": None, "known": None}
+alarm_state = {"values": {}, "ts": None, "known": None}
 lock = threading.Lock()
 
 
@@ -74,6 +77,36 @@ def read_holding(client, addr, count, unit=PLANT_ID):
         return client.read_holding_registers(addr, count=count, device_id=unit)
     except TypeError:
         return client.read_holding_registers(addr, count=count, slave=unit)
+
+
+def read_alarms(client, con):
+    """Odczyt alarmow (w tym AFCI); kazda zmiana stanu trafia do historii (settings_log)."""
+    vals = registers.read_alarms(client, read)
+    now = int(time.time())
+    with lock:
+        alarm_state.update(values=vals, ts=now)
+    try:
+        if alarm_state["known"] is None:
+            alarm_state["known"] = {k: v for k, v in db.last_settings(con).items() if k in registers.ALARM_NAMES}
+        known = alarm_state["known"]
+        changed, changes = {}, []
+        for k, v in vals.items():
+            if v is None:
+                continue
+            txt = registers.alarm_text(k, v)
+            if known.get(k) != txt:
+                changed[k] = txt
+                if k in known or v:          # pierwszy zapis "brak alarmow" bez powiadomienia
+                    changes.append((k, known.get(k), txt, v))
+        if changed:
+            db.log_settings(con, now, changed)
+            known.update(changed)
+    except Exception as e:  # noqa: BLE001
+        with lock:
+            latest["db_error"] = str(e)
+        return
+    if changes:
+        pass
 
 
 def read_settings(client, con):
@@ -143,6 +176,7 @@ def poll_loop():
     con = None
     last_counters = 0
     last_settings = 0
+    last_alarms = 0
     while True:
         t0 = time.time()
         try:
@@ -185,6 +219,9 @@ def poll_loop():
             if t0 - last_settings >= SETTINGS_INTERVAL:
                 last_settings = t0
                 read_settings(client, con)
+            if t0 - last_alarms >= ALARM_INTERVAL:
+                last_alarms = t0
+                read_alarms(client, con)
         except Exception as e:  # noqa: BLE001 - chcemy przezyc kazdy blad
             with lock:
                 latest["ok"] = False
@@ -767,6 +804,37 @@ def api_registers():
     return {"ts": ts, "groups": registers.grouped(vals)}
 
 
+MONTHS = ["styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec", "sierpień", "wrzesień",
+          "październik", "listopad", "grudzień"]
+
+
+@app.get("/api/pstryk")
+def api_pstryk(date: str | None = None):
+    """Licznik operatora z API Pstryka (dzien + miesiac) i porownanie z licznikami Sigena. Bez klucza: enabled=False."""
+    st = pstryk.status()
+    if not st["enabled"]:
+        return {"enabled": False}
+    d = dt.date.fromisoformat(date) if date else dt.date.today()
+    start, end = day_range(d)
+    m0 = d.replace(day=1)
+    m1 = (m0 + dt.timedelta(days=32)).replace(day=1)
+    ms, _x = day_range(m0)
+    me, _x = day_range(m1)
+    con = db_connect()
+    try:
+        hours = pstryk.load(con, start, end)
+        month = pstryk.load(con, ms, me)
+        e = merge_energy(energy(day_rows(con, start, end)), counter_energy(con, d.isoformat()))
+    finally:
+        con.close()
+    ds = pstryk.summary(hours)
+    # porownanie tylko dla godzin, ktore operator juz przekazal (dzis dane doplywaja z opoznieniem)
+    return {"enabled": True, "status": st, "date": d.isoformat(), "hours": hours, "day": ds,
+            "month": {**pstryk.summary(month), "label": f"{MONTHS[d.month - 1]} {d.year}",
+                      "days": len({r["day"] for r in month if r.get("imp") is not None})},
+            "sigen": {"imp": e.get("imp"), "exp": e.get("exp")}}
+
+
 @app.get("/api/prices")
 def api_prices():
     """Ceny zakupu/sprzedazy na dzis i jutro (co 15 min) + najtansze godziny."""
@@ -781,9 +849,12 @@ def api_prices():
                            "cheapest": prices.cheapest_hours(pts),
                            "avg_buy": round(sum(p["buy"] for p in pts) / len(pts), 4) if pts else None,
                            "avg_sell": round(sum(p["sell"] for p in pts) / len(pts), 4) if pts else None}
+            if pstryk.enabled():
+                ps, pe = day_range(d)
+                days[label]["pstryk"] = pstryk.prices(pstryk.load(con, ps, pe))
     finally:
         con.close()
-    return {"status": prices.status(), "formula": prices.formula_desc(),
+    return {"status": prices.status(), "formula": prices.formula_desc(), "pstryk": pstryk.enabled(),
             "tariff": {"source": tariff["source"], "dist": tariff["dist"], "system": tariff["system"]},
             **days}
 
@@ -799,9 +870,14 @@ def api_settings():
     finally:
         con.close()
     names = {r[0]: r[1] for r in registers.SETTINGS}
+    names.update(registers.ALARM_NAMES)
     for h in hist:
         h["name"] = names.get(h["key"], h["key"])
-    return {"ts": ts, "groups": registers.grouped_settings(vals), "history": hist}
+        h["alarm"] = h["key"] in registers.ALARM_NAMES
+    with lock:
+        avals, ats = dict(alarm_state["values"]), alarm_state["ts"]
+    return {"ts": ts, "groups": registers.grouped_settings(vals), "history": hist,
+            "alarms": registers.grouped_alarms(avals), "alarms_ts": ats}
 
 
 @app.get("/api/counters")
@@ -814,6 +890,8 @@ def start_background():
     threading.Thread(target=poll_loop, daemon=True, name="modbus").start()
     threading.Thread(target=forecast.loop, args=(db_connect,), daemon=True, name="forecast").start()
     threading.Thread(target=prices.loop, args=(db_connect,), daemon=True, name="prices").start()
+    threading.Thread(target=pstryk.loop, args=(lambda: config.get("pstryk", "api_key", ""), db_connect),
+                     daemon=True, name="pstryk").start()
     threading.Thread(target=efficiency_loop, daemon=True, name="efficiency").start()
 
 

@@ -74,6 +74,9 @@ DEFAULTS = {
         "forecast_solar": "tak",         # forecast.solar (limit 12 zapytan/h)
         "korekta": "",                   # np. open_meteo=1.05, om_ecmwf=0.97
     },
+    "pstryk": {
+        "api_key": "",                   # klucz API Pstryka (aplikacja Pstryk -> Integracje); puste = bez Pstryka
+    },
     "ceny": {
         "operator": "tauron",            # operator dystrybucyjny (taryfy z davo22/polish-electricity-tariffs)
         "taryfa": "G11",
@@ -182,8 +185,14 @@ def corrections():
     return out
 
 
+SECRET = "********"     # tak strona widzi zapisany klucz API (prawdziwy klucz nie wychodzi z aplikacji)
+
+
 def as_dict():
-    return {s: dict(CFG.items(s)) for s in CFG.sections()}
+    d = {s: dict(CFG.items(s)) for s in CFG.sections()}
+    if d.get("pstryk", {}).get("api_key"):
+        d["pstryk"]["api_key"] = SECRET
+    return d
 
 
 def update(data):
@@ -197,6 +206,8 @@ def update(data):
             cp.add_section(sec)
         for k, v in vals.items():
             k = str(k).strip()
+            if sec == "pstryk" and k == "api_key" and str(v).strip() == SECRET:
+                continue        # bez zmiany zapisanego klucza
             if not k or any(c in k for c in "[]=;#\n\r"):
                 continue
             cp.set(sec, k, str(v).replace("\n", " ").strip())

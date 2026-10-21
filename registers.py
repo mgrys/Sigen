@@ -209,6 +209,67 @@ SETTINGS_GROUPS = [
 SETTINGS = [r for _, regs in SETTINGS_GROUPS for r in regs]
 
 
+# --- alarmy (input registers, funkcja 0x04) - TYLKO ODCZYT ---------------
+# Wg Sigenergy Modbus Protocol, dodatek 2 (Alarm1) i 3 (Alarm2); te same bity dla falownika i calej instalacji.
+ALARM1_BITS = {
+    0: "niezgodność wersji oprogramowania", 1: "niska rezystancja izolacji", 2: "przegrzanie",
+    3: "usterka urządzenia", 4: "błąd uziemienia systemu", 5: "przepięcie na stringu PV",
+    6: "string PV podłączony odwrotnie", 7: "prąd wsteczny stringu PV", 8: "AFCI – wykryty łuk elektryczny",
+    9: "zanik sieci", 10: "przepięcie sieci", 11: "za niskie napięcie sieci", 12: "za wysoka częstotliwość sieci",
+    13: "za niska częstotliwość sieci", 14: "asymetria napięć sieci", 15: "za duża składowa DC prądu wyjściowego",
+}
+ALARM2_BITS = {
+    0: "prąd upływu poza limitem", 1: "błąd komunikacji", 2: "zabezpieczenie wewnętrzne",
+    3: "AFCI – usterka układu samotestu", 4: "zabezpieczenie pracy bez sieci", 5: "zabezpieczenie ręczne",
+    7: "zła kolejność faz", 8: "zwarcie do PE", 9: "nieudany miękki start",
+}
+# (klucz, opis, slave, rejestr, bity, bit AFCI)
+ALARMS = [
+    ("alarm_inv1", "Falownik – DC / sieć", INV, 30605, ALARM1_BITS, 8),
+    ("alarm_inv2", "Falownik – upływ / AFCI", INV, 30606, ALARM2_BITS, 3),
+    ("alarm_plant1", "Instalacja – DC / sieć", PLANT, 30027, ALARM1_BITS, 8),
+    ("alarm_plant2", "Instalacja – upływ / AFCI", PLANT, 30028, ALARM2_BITS, 3),
+]
+ALARM_NAMES = {a[0]: a[1] for a in ALARMS}
+NO_ALARM = "brak alarmów"
+
+
+def read_alarms(client, read_input):
+    """{klucz: wartosc U16 | None}. read_input(client, addr, count, unit) - funkcja 0x04."""
+    out = {}
+    for key, _n, unit, addr, _bits, _afci in ALARMS:
+        try:
+            rr = read_input(client, addr, 1, unit)
+            out[key] = None if rr.isError() else rr.registers[0]
+        except Exception:  # noqa: BLE001
+            out[key] = None
+    return out
+
+
+def alarm_active(key, value):
+    """Lista aktywnych alarmow [(bit, opis, afci)]."""
+    spec = next(a for a in ALARMS if a[0] == key)
+    if not value:
+        return []
+    return [(b, spec[4].get(b, f"nieznany alarm (bit {b})"), b == spec[5]) for b in range(16) if value >> b & 1]
+
+
+def alarm_text(key, value):
+    act = alarm_active(key, value)
+    return "; ".join(f"bit {b}: {t}" for b, t, _ in act) if act else NO_ALARM
+
+
+def grouped_alarms(values):
+    items = []
+    for key, name, _u, addr, _bits, afci in ALARMS:
+        v = values.get(key)
+        act = alarm_active(key, v) if v is not None else []
+        items.append({"key": key, "name": name, "addr": addr, "value": v,
+                      "active": [{"bit": b, "text": t, "afci": a} for b, t, a in act],
+                      "afci_bit": afci})
+    return items
+
+
 def read_settings(client, read_holding):
     """Odczyt ustawien. read_holding(client, addr, count, unit). Zwraca {klucz: wartosc|None|'brak limitu'}."""
     out = {}

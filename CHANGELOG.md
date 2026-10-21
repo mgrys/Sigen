@@ -2,6 +2,32 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.5.0] - 2026-10-21
+
+### Dodano
+- **Pstryk (opcjonalnie):** integracja z oficjalnym API Pstryka (tylko odczyt), włączana kluczem API
+  w zakładce Ustawienia (pole maskowane, klucz zostaje w `config.ini`). Bez klucza dashboard działa jak dotąd.
+  - Karta **Licznik operatora – Pstryk** (pokazywana tylko z kluczem), dla wybranego dnia:
+    - pobór i oddanie z licznika operatora, z porównaniem do liczników Sigena,
+    - koszt, sprzedaż i bilans dnia,
+    - podsumowanie miesiąca, rozbicie kosztów (energia, dystrybucja, opłaty stałe, akcyza, VAT) i tabela godzinowa.
+  - Ceny energii: linia **Pstryk (brutto)** na wykresie, kafel z bieżącą ceną Pstryka; najtańsze godziny według cen Pstryka.
+  - Historia godzinowa w tabeli `pstryk_hour` : synchronizacja co 15 min,
+    przy pierwszym uruchomieniu uzupełniane jest 35 dni wstecz.
+
+## [1.4.0] - 2026-10-21
+
+### Dodano
+- Ustawienia falownika: duży kafel **Alarmy instalacji i falownika** (tylko odczyt, co 30 s).
+  - Na zielono „Brak alarmów”, a przy alarmie jego nazwa na czerwono, z oznaczeniem źródła (falownik / instalacja).
+  - Czytane rejestry: 30605/30606 (falownik) i 30027/30028 (instalacja).
+  - **AFCI** – wykrycie łuku elektrycznego po stronie DC (Alarm1 bit 8) i usterka układu samotestu AFCI
+    (Alarm2 bit 3) są wyróżnione.
+  - Każda zmiana stanu alarmów trafia do historii („Historia zmian ustawień i alarmów”).
+
+### Zmieniono
+- W tabelach ustawień i odczytów falownika nie są już pokazywane numery rejestrów.
+
 ## [1.3.0] - 2026-10-21
 
 ### Zmieniono

@@ -87,9 +87,18 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .regs td { border-bottom: 1px solid var(--grid); }
 .regs tr:last-child td { border-bottom: 0; }
 .regs td:nth-child(2) { text-align: left; }
-.regs td.a { color: var(--muted); font-size: 11px; width: 44px; }
 .regs td.v { font-weight: 600; overflow-wrap: break-word; }
 .regs td.na { color: var(--muted); font-weight: 400; }
+.alarmtile { border: 2px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; }
+.alarmtile.good { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.alarmtile.bad { border-color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+.alarmtile .al-t { font-size: 14px; font-weight: 650; color: var(--text-2); margin-bottom: 4px; }
+.alarmtile .al-v { font-size: 26px; font-weight: 700; }
+.alarmtile.good .al-v { color: var(--ok); }
+.alarmtile .al-item { font-size: 20px; font-weight: 650; color: var(--err); margin: 2px 0; }
+.alarmtile .al-item.afci { font-size: 24px; font-weight: 800; }
+.alarmtile .al-n { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.pssub { font-size: 13px; font-weight: 650; color: var(--text-2); margin: 4px 0 8px; }
 .risk { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .risk.bezpieczne { color: var(--ok); border-color: var(--ok); }
 .risk.ostroznie { color: var(--s-grid); border-color: var(--s-grid); }
@@ -250,6 +259,28 @@ th:first-child, td:first-child { text-align: left; }
     </details>
   </section>
 
+  <section class="card" id="pscard" hidden>
+    <div class="daynav">
+      <h2 id="pstitle">Licznik operatora – Pstryk</h2>
+      <span class="status" id="psstatus"></span>
+    </div>
+    <div class="tiles" id="pstiles"></div>
+    <h3 class="pssub" id="psmtitle"></h3>
+    <div class="tiles" id="psmonth"></div>
+    <details>
+      <summary>Rozbicie kosztów (dzień i miesiąc)</summary>
+      <table><thead><tr><th>Składnik</th><th>Dzień</th><th>Miesiąc</th></tr></thead><tbody id="pscost"></tbody></table>
+    </details>
+    <details>
+      <summary>Tabela godzinowa z licznika operatora</summary>
+      <table><thead><tr><th>Godz.</th><th>Pobór kWh</th><th>Oddanie kWh</th><th>Koszt zł</th><th>Sprzedaż zł</th><th>Cena zł/kWh</th></tr></thead>
+      <tbody id="pshours"></tbody></table>
+    </details>
+    <p class="status" style="margin-top:10px">Dane z licznika zdalnego odczytu operatora przez API Pstryka – to te wartości trafiają na rachunek.
+      Synchronizacja co 15 min; operator przekazuje odczyty z opóźnieniem, więc ostatnie godziny mogą się jeszcze uzupełnić.
+      Koszt godzinowy zawiera opłaty stałe (dystrybucja stała, opłata handlowa, mocowa), naliczane także przy zerowym poborze.</p>
+  </section>
+
   <section class="card">
     <div class="daynav">
       <h2>Sprawność falownika wg mocy przetwarzanej</h2>
@@ -275,9 +306,10 @@ th:first-child, td:first-child { text-align: left; }
       <h2>Ustawienia falownika <span style="font-weight:400">(tylko odczyt)</span></h2>
       <span class="status" id="setstatus"></span>
     </div>
+    <div id="alarms"></div>
     <div class="regs" id="settings"></div>
     <details>
-      <summary>Historia zmian ustawień</summary>
+      <summary>Historia zmian ustawień i alarmów</summary>
       <table><thead><tr><th>Czas</th><th>Ustawienie</th><th>Wartość</th></tr></thead>
       <tbody id="sethist"></tbody></table>
     </details>
@@ -342,6 +374,12 @@ th:first-child, td:first-child { text-align: left; }
           <option value="forecast_solar">forecast.solar</option></select></label>
         <label>forecast.solar<select data-k="prognoza.forecast_solar"><option value="tak">włączone</option><option value="nie">wyłączone</option></select></label>
         <label>Korekta (np. open_meteo=1.05)<input data-k="prognoza.korekta"></label>
+      </fieldset>
+      <fieldset><legend>Pstryk (opcjonalnie)</legend>
+        <label>Klucz API Pstryka<input data-k="pstryk.api_key" type="password" autocomplete="off" placeholder="puste = bez Pstryka"></label>
+        <p class="status" style="margin-top:6px">Tylko dla klientów Pstryka: aplikacja Pstryk → Integracje → wygeneruj klucz.
+          Dodaje dane z licznika operatora, rzeczywiste koszty i ceny godzinowe Pstryka. Bez klucza dashboard działa jak dotąd.
+          Klucz zostaje w pliku config.ini na tym komputerze.</p>
       </fieldset>
       <fieldset><legend>Strona</legend>
         <label>Port strony<input data-k="serwer.port" type="number"></label>
@@ -447,6 +485,7 @@ async function loadDay(date) {
     : new Date(date + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
   const d = await (await fetch('/api/day?date=' + date)).json();
   loadEff();
+  loadPstryk(date);
   const e = d.energy;
   $('tiles').innerHTML =
     tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
@@ -658,6 +697,43 @@ async function loadPvStrings() {
   }
 }
 
+
+// ---- Pstryk (opcjonalnie - tylko z kluczem API) ----
+const zl2 = v => v == null ? null : v.toFixed(2);
+async function loadPstryk(date) {
+  let d;
+  try { d = await (await fetch('/api/pstryk?date=' + date)).json(); } catch (e) { return; }
+  $('pscard').hidden = !d.enabled;
+  if (!d.enabled) return;
+  const st = d.status, D = d.day, M = d.month, S = d.sigen || {};
+  $('psstatus').textContent = st.error ? 'błąd: ' + st.error
+    : (st.last ? 'synchronizacja ' + new Date(st.last * 1000).toLocaleTimeString('pl-PL') : 'pierwsza synchronizacja…') +
+      (st.backfill && !st.last ? ' · ' + st.backfill : '');
+  const sigenOk = S.imp != null && (S.imp > 0 || S.exp > 0);
+  const diff = (a, b) => a == null || b == null || !sigenOk ? '' : `Sigen: ${b.toFixed(2)} kWh (różnica ${(a - b >= 0 ? '+' : '') + (a - b).toFixed(2)})`;
+  const lastH = D.last_ts ? new Date(D.last_ts * 1000).getHours() + 1 : null;
+  const upto = D.hours && D.hours < 24 && lastH ? ` · dane do ${String(lastH).padStart(2, '0')}:00` : '';
+  $('pstiles').innerHTML = !D.hours ? '<div class="empty">Brak danych licznika dla tego dnia.</div>' :
+    tile('Pobór (licznik)', D.imp.toFixed(3), 'kWh', diff(D.imp, S.imp)) +
+    tile('Oddanie (licznik)', D.exp.toFixed(3), 'kWh', diff(D.exp, S.exp)) +
+    tile('Koszt dnia', zl2(D.cost), 'zł', `w tym stałe ok. ${zl2(D.fixed_gross)} zł${upto}`) +
+    tile('Sprzedaż energii', zl2(D.sold), 'zł') +
+    tile('Bilans dnia', zl2(D.balance), 'zł', 'koszt − sprzedaż');
+  $('psmtitle').textContent = `Miesiąc: ${M.label}` + (M.days ? ` (${M.days} dni z danymi)` : '');
+  $('psmonth').innerHTML = !M.hours ? '<div class="empty">Brak danych w tym miesiącu.</div>' :
+    tile('Koszt miesiąca', zl2(M.cost), 'zł', `w tym stałe ok. ${zl2(M.fixed_gross)} zł`) +
+    tile('Pobór', M.imp.toFixed(2), 'kWh') + tile('Oddanie', M.exp.toFixed(2), 'kWh') +
+    tile('Sprzedaż', zl2(M.sold), 'zł') + tile('Bilans', zl2(M.balance), 'zł', 'koszt − sprzedaż');
+  const rows = [['Energia (netto)', 'energy_net'], ['Dystrybucja zmienna (netto)', 'dist_var'], ['Dystrybucja stała (netto)', 'dist_fix'],
+    ['Opłata handlowa (netto)', 'service'], ['Opłata mocowa (netto)', 'power_fee'], ['Akcyza', 'excise'], ['VAT', 'vat']];
+  $('pscost').innerHTML = rows.map(([n, k]) => `<tr><td>${n}</td><td>${zl2(D[k]) ?? '–'}</td><td>${zl2(M[k]) ?? '–'}</td></tr>`).join('') +
+    `<tr><td><b>Razem brutto</b></td><td><b>${zl2(D.cost)}</b></td><td><b>${zl2(M.cost)}</b></td></tr>` +
+    `<tr><td>Sprzedaż energii</td><td>${zl2(D.sold)}</td><td>${zl2(M.sold)}</td></tr>`;
+  const f = (v, n) => v == null ? '–' : v.toFixed(n);
+  $('pshours').innerHTML = d.hours.map(h => `<tr><td>${new Date(h.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td>` +
+    `<td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td></tr>`).join('');
+}
+
 // ---- ceny energii ----
 let cPrice;
 const zl = v => v == null ? null : v.toFixed(3);
@@ -665,20 +741,27 @@ async function loadPrices() {
   let d;
   try { d = await (await fetch('/api/prices')).json(); } catch (e) { return; }
   const st = d.status;
-  $('prstatus').textContent = st.error ? 'błąd: ' + st.error : 'PSE · ' + (d.tariff?.source || '');
+  $('prstatus').textContent = (st.error ? 'błąd: ' + st.error : 'PSE · ' + (d.tariff?.source || '')) + (d.pstryk ? ' · ceny Pstryka' : '');
   const T = d.today, J = d.tomorrow;
   const pts = [...T.points.map(p => ({ ...p, day: 'dziś' })), ...J.points.map(p => ({ ...p, day: 'jutro' }))];
   $('prempty').hidden = pts.length > 0;
   const nowTs = Date.now() / 1000;
   const nowIdx = pts.findIndex(p => p.ts <= nowTs && nowTs < p.ts + 900);
   const now = nowIdx >= 0 ? pts[nowIdx] : null;
-  const ch = J.cheapest.length ? J.cheapest : T.cheapest;
+  const PS = d.pstryk && T.pstryk;   // ceny Pstryka (tylko z kluczem API)
+  const psMap = {};
+  if (PS) [...T.pstryk.points, ...(J.pstryk?.points || [])].forEach(p => psMap[p.ts] = p);
+  const psAt = p => psMap[Math.floor(p.ts / 3600) * 3600];
+  const psNow = now ? psAt(now) : null;
+  const jc = PS && J.pstryk?.cheapest.length ? J.pstryk.cheapest : J.cheapest;
+  const ch = jc.length ? jc : PS ? T.pstryk.cheapest : T.cheapest;
   $('prtiles').innerHTML =
     tile('Teraz – zakup', zl(now?.buy), 'zł/kWh', now ? now.zone : '') +
     tile('Teraz – sprzedaż', zl(now?.sell), 'zł/kWh') +
     tile('Śr. zakup dziś', zl(T.avg_buy), 'zł/kWh') +
     tile('Śr. zakup jutro', zl(J.avg_buy), 'zł/kWh', J.points.length ? '' : 'jeszcze brak cen') +
-    tile(J.cheapest.length ? 'Najtańsze godziny jutro' : 'Najtańsze godziny dziś',
+    (PS ? tile('Teraz – Pstryk (brutto)', zl(psNow?.price), 'zł/kWh', psNow?.pros != null ? `prosument ${psNow.pros.toFixed(3)} zł` : '') : '') +
+    tile((jc.length ? 'Najtańsze godziny jutro' : 'Najtańsze godziny dziś') + (PS ? ' (Pstryk)' : ''),
       ch.length ? ch.map(c => c.hour.slice(0, 2)).join(', ') : null, '',
       ch.length ? ch.map(c => `${c.hour} ${c.buy.toFixed(3)} zł`).join(' · ') : '');
   $('prformula').textContent = `Zakup = ${d.formula.zakup}. Sprzedaż = ${d.formula.sprzedaz}.`;
@@ -688,6 +771,7 @@ async function loadPrices() {
     ds('Zakup', pts.map(p => p.buy), css('--s-buy')),
     ds('Sprzedaż', pts.map(p => p.sell), css('--s-sell')),
   ];
+  if (PS) sets.push(ds('Pstryk (brutto)', pts.map(p => psAt(p)?.price ?? null), css('--s-fc2')));
   if (!cPrice) {
     const o = baseOpts('zł');
     o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(3)} zł/kWh`;
@@ -734,7 +818,7 @@ async function loadRegs() {
       const na = it.value == null;
       const v = na ? 'brak' : esc(it.text ?? (typeof it.value === 'number' ? it.value.toLocaleString('pl-PL') : it.value)) +
         (it.unit && !it.text ? ' ' + esc(it.unit) : '');
-      return `<tr><td class="a">${it.addr}</td><td>${esc(it.name)}</td><td class="v${na ? ' na' : ''}">${v}</td></tr>`;
+      return `<tr><td>${esc(it.name)}</td><td class="v${na ? ' na' : ''}">${v}</td></tr>`;
     }).join('') + '</tbody></table></div>').join('');
 }
 
@@ -747,12 +831,30 @@ async function loadSettings() {
   try { d = await (await fetch('/api/settings')).json(); } catch (e) { return; }
   $('setstatus').textContent = d.ts ? 'odczyt ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') + ' · co 5 min'
     : 'czekam na pierwszy odczyt…';
+  if (d.alarms) {
+    const act = [];   // to samo zdarzenie z falownika i instalacji pokazujemy raz
+    d.alarms.forEach(a => a.active.forEach(x => {
+      const src = a.name.split(' – ')[0], o = act.find(y => y.text === x.text);
+      if (o) { if (!o.srcs.includes(src)) o.srcs.push(src); } else act.push({ ...x, srcs: [src] });
+    }));
+    act.forEach(x => x.src = x.srcs.join(' i ').replace('Falownik i Instalacja', 'Falownik i instalacja'));
+    const unread = d.alarms.every(a => a.value == null);
+    const cls = !d.alarms_ts || unread ? '' : act.length ? ' bad' : ' good';
+    const body = !d.alarms_ts ? '<div class="al-v">czekam na odczyt…</div>'
+      : unread ? '<div class="al-v">brak odczytu</div>'
+      : !act.length ? '<div class="al-v">✓ Brak alarmów</div>'
+      : act.map(x => `<div class="al-item${x.afci ? ' afci' : ''}">⚠ ${esc(x.src)}: ${esc(x.text)}</div>`).join('');
+    $('alarms').innerHTML = `<div class="alarmtile${cls}"><div class="al-t">Alarmy instalacji i falownika</div>${body}` +
+      `<div class="al-n">${d.alarms_ts ? 'odczyt ' + new Date(d.alarms_ts * 1000).toLocaleTimeString('pl-PL') + ' · co 30 s · ' : ''}` +
+      `sprawdzane: DC i sieć, upływ, izolacja, AFCI (wykrywanie łuku elektrycznego)</div></div>`;
+  }
   if (d.ts) $('settings').innerHTML = d.groups.map(g => `<div class="grp"><h3>${esc(g.group)}</h3><table><tbody>` +
-    g.items.map(it => `<tr><td class="a">${it.addr}</td><td>${esc(it.name)}<br><span class="w">działa: ${esc(it.when)}</span></td>` +
+    g.items.map(it => `<tr><td>${esc(it.name)}<br><span class="w">działa: ${esc(it.when)}</span></td>` +
       `<td class="v${it.value == null ? ' na' : ''}">${fmtVal(it)}<br><span class="risk ${it.risk}">${RISK[it.risk]}</span></td></tr>`
     ).join('') + '</tbody></table></div>').join('');
   $('sethist').innerHTML = d.history.length ? d.history.map(h =>
-    `<tr><td>${new Date(h.ts * 1000).toLocaleString('pl-PL')}</td><td>${esc(h.name)}</td><td>${esc(h.value)}</td></tr>`).join('')
+    `<tr><td>${new Date(h.ts * 1000).toLocaleString('pl-PL')}</td><td>${esc(h.name)}</td>` +
+    `<td${h.alarm && h.value !== 'brak alarmów' ? ' style="color:var(--err)"' : ''}>${esc(h.value)}</td></tr>`).join('')
     : '<tr><td colspan="3" class="empty">Brak zapisów.</td></tr>';
 }
 
@@ -863,7 +965,7 @@ if (location.hash === '#ustawienia') showTab('set');
 setInterval(loadPvStrings, 60000);
 setInterval(loadPrices, 300000);
 setInterval(loadRegs, 60000);
-setInterval(loadSettings, 300000);
+setInterval(loadSettings, 60000);
 setInterval(loadForecast, 300000);
 setInterval(refreshLive, 5000);
 setInterval(() => { if (current === todayStr()) loadDay(current); }, 60000);

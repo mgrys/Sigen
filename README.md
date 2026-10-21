@@ -21,6 +21,11 @@ i pełna lista odczytów – w przeglądarce, na komputerze i telefonie w sieci 
 - **Realna produkcja każdego stringu PV** (napięcie × prąd).
 - **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G13… operatorów Tauron, PGE,
   Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
+- **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.
+- **Opcjonalnie dla klientów [Pstryka](https://pstryk.pl/):** po wpisaniu klucza API (aplikacja Pstryk → Integracje)
+  w zakładce Ustawienia pojawia się licznik operatora (pobór i oddanie, porównanie z licznikami Sigena),
+  rzeczywiste koszty dnia i miesiąca z rozbiciem oraz ceny godzinowe Pstryka na wykresie cen.
+  Bez klucza dashboard działa jak dotąd.
 - **Sprawność falownika** w przedziałach mocy (dzień, 7/30 dni, cała historia).
 - **Wszystkie odczyty falownika** (59 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
@@ -127,6 +132,7 @@ Wszystkie endpointy zwracają JSON, np. do własnych integracji:
 - `/api/forecast`
 - `/api/pv_strings`
 - `/api/prices`
+- `/api/pstryk?date=RRRR-MM-DD` (tylko z kluczem API Pstryka)
 - `/api/efficiency?days=30`
 - `/api/registers`
 - `/api/settings`
@@ -138,6 +144,7 @@ Wszystkie endpointy zwracają JSON, np. do własnych integracji:
 
 - [Sigenergy Modbus Protocol](https://www.sigenergy.com/) V2.7: mapa rejestrów.
 - [PSE – API raportów](https://api.raporty.pse.pl/): ceny RCE i SDAC.
+- [Pstryk – API dla klientów](https://api.pstryk.pl/integrations/swagger/): licznik operatora, koszty i ceny (opcjonalnie).
 - [Open-Meteo](https://open-meteo.com/) (CC BY 4.0) i [forecast.solar](https://forecast.solar/): prognozy.
 - [polish-electricity-tariffs](https://github.com/davo22/polish-electricity-tariffs): taryfy dystrybucyjne.
 - [Chart.js](https://www.chartjs.org/) (MIT), [FastAPI](https://fastapi.tiangolo.com/), [pymodbus](https://github.com/pymodbus-dev/pymodbus).

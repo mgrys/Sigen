@@ -24,6 +24,9 @@ def describe():
 
 
 SCHEMA = [
+    'CREATE TABLE IF NOT EXISTS pstryk_hour (ts INTEGER PRIMARY KEY, "day" TEXT, "imp" REAL, "exp" REAL, '
+    'cost REAL, sold REAL, energy_net REAL, dist_var REAL, dist_fix REAL, service REAL, excise REAL, vat REAL, '
+    'power_fee REAL, price_gross REAL, price_pros REAL, updated INTEGER)',
     'CREATE TABLE IF NOT EXISTS samples (ts INTEGER PRIMARY KEY, soc REAL, pv REAL, '
     'bat REAL, grid REAL, plant REAL, "load" REAL)',
     'CREATE TABLE IF NOT EXISTS counters ("day" TEXT, "key" TEXT, "first" REAL, "last" REAL, '
