@@ -2,6 +2,15 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.1.0] - 2026-10-21
+
+### Dodano
+- Ustawienia: przycisk „Znajdź falownik” obok pola adresu IP.
+  - Skanuje sieć domową, czyli podsieci /24 komputera, w poszukiwaniu otwartego portu Modbus TCP (502).
+  - Dla każdego trafienia odczytuje model falownika i SOC magazynu (tylko odczyt).
+  - Przycisk „Użyj” wpisuje znaleziony adres; urządzenia, które nie są falownikiem Sigenergy, są oznaczone.
+- API: `POST /api/discover` (`{"port": 502, "network": "192.168.0"}`, oba pola opcjonalne; tylko sieci prywatne).
+
 ## [1.0.0] - 2026-10-21
 
 Pierwsze publiczne wydanie.

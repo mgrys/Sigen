@@ -110,6 +110,8 @@ th:first-child, td:first-child { text-align: left; }
 .cfg-grid legend { font-weight: 650; padding: 0 6px; }
 .cfg-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--text-2); margin: 6px 0; }
 .cfg-grid input, .cfg-grid select { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.cfg-row { display: flex; gap: 6px; } .cfg-row input { flex: 1; min-width: 0; }
+.cfg-hit { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
 .cfg-planes { width: 100%; } .cfg-planes input { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 </style>
 </head>
@@ -291,7 +293,9 @@ th:first-child, td:first-child { text-align: left; }
       Aplikacja tylko odczytuje dane z falownika – niczego w nim nie zmienia.</p>
     <div class="cfg-grid">
       <fieldset><legend>Falownik (Modbus TCP)</legend>
-        <label>Adres IP falownika<input data-k="falownik.host" placeholder="192.168.1.100"></label>
+        <label>Adres IP falownika<span class="cfg-row"><input data-k="falownik.host" id="cfg-host" placeholder="192.168.1.100">
+          <button class="fs-btn" id="cfg-find" type="button">Znajdź falownik</button></span></label>
+        <div id="cfg-found" style="font-size:13px"></div>
         <label>Port<input data-k="falownik.port" type="number"></label>
         <label>Adres „plant” (zwykle 247)<input data-k="falownik.plant_id" type="number"></label>
         <label>Adres falownika (zwykle 1)<input data-k="falownik.inverter_id" type="number"></label>
@@ -794,6 +798,31 @@ async function saveConfig(restart) {
   const port = (collectConfig().serwer || {}).port || location.port;
   setTimeout(() => { location.href = `${location.protocol}//${location.hostname}:${port}/`; }, 4000);
 }
+$('cfg-find').onclick = async () => {
+  const box = $('cfg-found'), btn = $('cfg-find');
+  btn.disabled = true; box.style.color = 'var(--text-2)';
+  box.textContent = 'Szukam falownika w sieci domowej (port Modbus 502)… to potrwa kilka–kilkanaście sekund.';
+  let r;
+  try {
+    r = await (await fetch('/api/discover', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port: +document.querySelector('[data-k="falownik.port"]').value || 502 }) })).json();
+  } catch (e) { r = { ok: false, error: 'brak połączenia z aplikacją' }; }
+  btn.disabled = false;
+  if (!r.ok) { box.style.color = 'var(--eff-bad)'; box.textContent = '✗ ' + r.error; return; }
+  const nets = (r.networks || []).join(', ') || 'brak';
+  if (!r.found.length) {
+    box.innerHTML = `Nie znaleziono urządzeń z otwartym portem ${r.port} w sieci ${nets}. ` +
+      'Sprawdź, czy Modbus TCP jest włączony w falowniku (mySigen / instalator) i czy komputer jest w tej samej sieci.';
+    return;
+  }
+  box.innerHTML = `Sieć ${nets}:` + r.found.map(x => `<div class="cfg-hit"><span><b>${x.ip}</b>` +
+    (x.sigen ? ` · ${x.model || 'Sigenergy'}${x.soc != null ? ' · SOC ' + x.soc + ' %' : ''}` : ` · <span style="color:var(--muted)">${x.error || 'nieznane urządzenie'}</span>`) +
+    `</span><button class="fs-btn${x.sigen ? ' primary' : ''}" type="button" data-ip="${x.ip}">Użyj</button></div>`).join('');
+  box.querySelectorAll('button').forEach(b => b.onclick = () => {
+    $('cfg-host').value = b.dataset.ip;
+    box.innerHTML = `✓ Wpisano ${b.dataset.ip} – kliknij „Zapisz i uruchom ponownie”.`; box.style.color = 'var(--eff-good)';
+  });
+};
 $('cfg-addplane').onclick = () => planeRow('');
 $('cfg-save').onclick = () => saveConfig(false);
 $('cfg-restart').onclick = () => saveConfig(true);

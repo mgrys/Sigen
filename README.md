@@ -26,6 +26,15 @@ i pełna lista odczytów – w przeglądarce, na komputerze i telefonie w sieci 
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
 - Wszystkie ustawienia na stronie, w zakładce **Ustawienia**.
 
+## Jak znaleźć adres IP falownika
+
+- przycisk **Znajdź falownik** w zakładce Ustawienia,
+- lista urządzeń w panelu routera (DHCP) – nazwa zwykle zaczyna się od „Sigen”,
+- informacje o sieci urządzenia w aplikacji mySigen,
+- ręcznie: `Test-NetConnection <IP> -Port 502` w PowerShell (`TcpTestSucceeded : True` = Modbus TCP działa).
+
+Warto przypisać falownikowi stały adres w routerze (rezerwacja DHCP).
+
 ## Wymagania
 
 - Falownik Sigenergy z włączonym **Modbus TCP** (port 502) w tej samej sieci co komputer. Modbus TCP włącza się
@@ -45,7 +54,8 @@ Pobierz najnowsze wydanie z [Releases](https://github.com/mgrys/Sigen/releases/l
 Po uruchomieniu otworzy się przeglądarka z adresem `http://localhost:8000`.
 
 1. Przejdź do zakładki **Ustawienia**.
-2. Wpisz adres IP falownika, współrzędne instalacji, połacie dachu i swoją taryfę.
+2. Wpisz adres IP falownika albo kliknij **Znajdź falownik**: program przeszuka sieć domową i sam podpowie adres.
+   Potem uzupełnij współrzędne instalacji, połacie dachu i swoją taryfę.
 3. Kliknij **Zapisz i uruchom ponownie**.
 
 Przy pierwszym uruchomieniu Windows zapyta o dostęp przez zaporę. Zezwól na sieć prywatną, jeśli chcesz
@@ -122,6 +132,7 @@ Wszystkie endpointy zwracają JSON, np. do własnych integracji:
 - `/api/settings`
 - `/api/counters`
 - `/api/config`
+- `POST /api/discover`
 
 ## Źródła danych i podziękowania
 

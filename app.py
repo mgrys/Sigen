@@ -18,11 +18,12 @@ from pymodbus.client import ModbusTcpClient
 
 import config
 import db
+import discover
 import forecast
 import prices
 import registers
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -342,6 +343,30 @@ def api_config_save(payload: dict = Body(...)):
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return {"ok": True}
+
+
+@app.post("/api/discover")
+def api_discover(payload: dict = Body(default={})):
+    """Szukanie falownika w sieci domowej: {"port": 502, "network": "192.168.0"} (oba opcjonalne)."""
+    import ipaddress
+    port = payload.get("port") or 502
+    try:
+        port = int(port)
+        assert 1 <= port <= 65535
+    except (TypeError, ValueError, AssertionError):
+        return JSONResponse({"ok": False, "error": "zły numer portu"}, status_code=400)
+    nets = None
+    net = str(payload.get("network") or "").strip().rstrip(".")
+    if net:
+        try:
+            if net.count(".") != 2 or not ipaddress.ip_address(net + ".1").is_private:
+                raise ValueError
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "podaj prywatną sieć w formacie 192.168.0"}, status_code=400)
+        nets = [net]
+    r = discover.scan(port, nets)
+    r["ok"] = True
+    return r
 
 
 @app.post("/api/shutdown")
