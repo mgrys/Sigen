@@ -39,7 +39,10 @@ SCHEMA = [
     'CREATE TABLE IF NOT EXISTS forecast_src ("source" TEXT, "day" TEXT, "minute" REAL, watts REAL, '
     'PRIMARY KEY ("source", "day", "minute"))',
     'CREATE TABLE IF NOT EXISTS forecast_src_day ("source" TEXT, "day" TEXT, total_wh REAL, planes TEXT, '
-    'fetched INTEGER, day_ahead_wh REAL, day_ahead_fetched INTEGER, PRIMARY KEY ("source", "day"))',
+    'fetched INTEGER, day_ahead_wh REAL, day_ahead_fetched INTEGER, day_ahead_planes TEXT, PRIMARY KEY ("source", "day"))',
+    # przebieg prognozy "z dnia poprzedniego" (ostatnia pobrana przed polnoca) - zamrozony po polnocy
+    'CREATE TABLE IF NOT EXISTS forecast_src_da ("source" TEXT, "day" TEXT, "minute" REAL, watts REAL, '
+    'PRIMARY KEY ("source", "day", "minute"))',
     'CREATE TABLE IF NOT EXISTS forecast_accuracy ("day" TEXT, "source" TEXT, day_ahead_kwh REAL, '
     'latest_kwh REAL, actual_kwh REAL, updated INTEGER, PRIMARY KEY ("day", "source"))',
     'CREATE TABLE IF NOT EXISTS pv_strings (ts INTEGER PRIMARY KEY, u1 REAL, i1 REAL, u2 REAL, i2 REAL, '
@@ -50,10 +53,11 @@ SCHEMA = [
 def init_schema(con):
     for sql in SCHEMA:
         con.execute(sql)
-    cols = [r[1] for r in con.execute("PRAGMA table_info(pv_strings)").fetchall()]
-    for c in ("u4", "i4"):
-        if c not in cols:
-            con.execute(f"ALTER TABLE pv_strings ADD COLUMN {c} REAL")
+    for table, col, typ in (("pv_strings", "u4", "REAL"), ("pv_strings", "i4", "REAL"),
+                            ("forecast_src_day", "day_ahead_planes", "TEXT")):
+        cols = [r[1] for r in con.execute(f"PRAGMA table_info({table})").fetchall()]
+        if col not in cols:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
     con.commit()
 
 

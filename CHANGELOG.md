@@ -2,6 +2,31 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.3.0] - 2026-10-21
+
+### Zmieniono
+- Prognoza na dziś to teraz **prognoza z dnia poprzedniego**, czyli ostatnia pobrana przed północą.
+  Wykres, „Prognoza do teraz” i „Realizacja prognozy” porównują produkcję właśnie z nią.
+  - Przebieg prognozy jest zamrażany o północy (tabela `forecast_src_da`).
+  - Bieżąca, aktualizowana w ciągu dnia wartość jest widoczna tylko pomocniczo („aktualna X kWh”).
+  - Prognoza na jutro jest aktualizowana do północy.
+  - Bez prognozy z dnia poprzedniego (np. pierwszy dzień działania) pokazywana jest bieżąca, z ostrzeżeniem.
+
+## [1.2.0] - 2026-10-21
+
+### Dodano
+- Straty falownika podzielone wg metodyki HTW Berlin (Energy Storage Inspection) na trzy kafelki dnia,
+  z rozwijanym opisem metody:
+  - straty konwersji,
+  - zużycie własne w czuwaniu (średnia moc i czas),
+  - odchyłki regulacji: pobór z sieci mimo rozładowującego się magazynu i oddanie do sieci mimo ładowania.
+- Na żywo: oznaczenie „(czuwanie)” przy stratach, gdy falownik nic nie przetwarza.
+- Prognoza: przy aktualizacji i w kafelkach widać dzień i godzinę pobrania prognozy, a także wartość prognozy
+  z poprzedniego dnia, jeśli jest.
+
+### Poprawiono
+- Oś Y wykresów pokazuje zaokrąglone wartości zamiast np. 0.6000000000000001 kW.
+
 ## [1.1.0] - 2026-10-21
 
 ### Dodano

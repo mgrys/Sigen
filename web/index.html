@@ -235,6 +235,12 @@ th:first-child, td:first-child { text-align: left; }
       <button id="today">Dziś</button>
     </div>
     <div class="tiles" id="tiles"></div>
+    <details style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
+      <p class="status" style="display:block;margin:6px 0 0">Podział jak w <a href="https://solar.htw-berlin.de/publikationen/energy-storage-inspection-2026/" target="_blank" rel="noopener">Energy Storage Inspection (HTW Berlin)</a>:
+      <b>straty konwersji</b> – przy przetwarzaniu energii PV, magazynu i AC (wejście PV = moc DC stringów);
+      <b>zużycie własne (czuwanie)</b> – pobór falownika i magazynu, gdy nic nie przetwarzają (PV i magazyn &lt; 30 W);
+      <b>odchyłki regulacji</b> – energia pobrana z sieci, choć magazyn rozładowywał się i miał zapas, oraz oddana do sieci, choć magazyn się ładował i miał miejsce
+      (to nie strata w falowniku, tylko niedokładność sterowania). Minuty z rozjechanymi odczytami są pomijane, więc sumy są przybliżone.</p></details>
     <div class="chart"><canvas id="cPower"></canvas></div>
     <div class="empty" id="empty" hidden>Brak danych dla tego dnia.</div>
     <details>
@@ -396,7 +402,7 @@ async function refreshLive() {
     $('k-bat').textContent = (d.bat > 0 ? '+' : '') + kw(d.bat);
     $('k-grid').textContent = (d.grid > 0 ? 'pobór ' : 'oddawanie ') + kw(Math.abs(d.grid));
     $('k-plant').textContent = kw(d.plant);
-    $('k-loss').textContent = d.loss == null ? '–' : kw(d.loss);
+    $('k-loss').textContent = d.loss == null ? '–' : kw(d.loss) + (d.loss_mode === 'czuwanie' ? ' (czuwanie)' : '');
     setLine('l-pv', d.pv, true);
     setLine('l-load', d.load, false);  // sciezka dom->falownik, wiec rev = do domu
     setLine('l-bat', d.bat, d.bat < 0);
@@ -420,7 +426,7 @@ function baseOpts(unit) {
     },
     scales: {
       x: { ticks: { color: css('--muted'), maxTicksLimit: innerWidth < 600 ? 6 : 12, autoSkip: true, maxRotation: 0 }, grid: { display: false } },
-      y: { ticks: { color: css('--muted'), callback: v => v + ' ' + unit }, grid: { color: css('--grid') },
+      y: { ticks: { color: css('--muted'), callback: v => +v.toFixed(2) + ' ' + unit }, grid: { color: css('--grid') },
            border: { display: false } }
     },
     elements: { point: { radius: 0, hoverRadius: 4 }, line: { borderWidth: 2, tension: 0.2 } }
@@ -447,8 +453,7 @@ async function loadDay(date) {
     tile('Pobór z sieci', e.imp, 'kWh', srcNote(e, 'imp')) + tile('Oddane do sieci', e.exp, 'kWh', srcNote(e, 'exp')) +
     tile('Ładowanie mag.', e.chg, 'kWh', srcNote(e, 'chg')) + tile('Rozładowanie mag.', e.dis, 'kWh', srcNote(e, 'dis')) +
     tile('Autokonsumpcja', e.autokonsumpcja, '%') + tile('Samowystarczalność', e.samowystarczalnosc, '%') +
-    tile('Straty falownika', e.loss, 'kWh', 'obliczone z mocy') + tile('Sprawność falownika', e.sprawnosc, '%') +
-    tile('Średnia strata', e.strata_sr_w, 'W');
+    lossTiles(e);
 
   const s = d.series;
   $('empty').hidden = s.length > 0;
@@ -478,6 +483,16 @@ async function loadDay(date) {
       `<td>${avg(a, 'bat').toFixed(2)}</td><td>${avg(a, 'grid').toFixed(2)}</td><td>${avg(a, 'loss').toFixed(3)}</td><td>${avg(a, 'soc').toFixed(0)}</td></tr>`;
   }).join('');
 }
+function lossTiles(e) {
+  const st = e.straty || {};
+  const reg = st.regulacja_pobor != null ? st.regulacja_pobor + st.regulacja_oddanie : null;
+  const f = v => v == null ? null : v.toFixed(2);
+  return tile('Straty konwersji', f(st.konwersja), 'kWh', 'przetwarzanie PV, magazynu i AC') +
+    tile('Zużycie własne (czuwanie)', f(st.czuwanie), 'kWh',
+      st.czuwanie_sr_w != null ? `śr. ${st.czuwanie_sr_w} W przez ${st.h_czuwanie.toFixed(1)} h bez przetwarzania` : 'gdy falownik nic nie przetwarza') +
+    tile('Odchyłki regulacji', f(reg), 'kWh', reg != null ? `pobór z sieci ${f(st.regulacja_pobor)} · oddanie ${f(st.regulacja_oddanie)} kWh` : '') +
+    tile('Sprawność falownika', e.sprawnosc, '%', 'konwersja + czuwanie');
+}
 // ---- prognoza ----
 let cFc;
 const hm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
@@ -500,13 +515,23 @@ const nowLine = {
     c.fillStyle = css('--text-2'); c.font = '11px system-ui'; c.fillText('teraz', x + 4, top + 10); c.restore();
   }
 };
+const fmtDT = ts => new Date(ts * 1000).toLocaleString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+// ktora prognoza: dzis = z dnia poprzedniego (ostatnia przed polnoca), jutro = aktualizowana do polnocy
+const fcWhen = f => {
+  if (!f) return '';
+  const at = f.fetched ? fmtDT(f.fetched) : '–';
+  if (f.kind === 'dzien_wczesniej')
+    return `<br>prognoza z dnia poprzedniego (${at})` + (f.latest_kwh != null && f.latest_kwh !== f.total_kwh ? ` · aktualna ${f.latest_kwh} kWh` : '');
+  if (f.kind === 'do_polnocy') return `<br>aktualizowana do północy · ostatnio ${at}`;
+  return `<br><span style="color:var(--eff-mid)">brak prognozy z dnia poprzedniego – bieżąca (${at})</span>`;
+};
 async function loadForecast() {
   let d;
   try { d = await (await fetch('/api/forecast')).json(); } catch (e) { return; }
   const N = d.names, S = d.sources, T = d.today, J = d.tomorrow;
   const FS = S.forecast_solar || {}, EC = S.om_ecmwf || {};
   const fmtSt = k => { const s = d.status[k] || {}; return d.groups[k] + (s.error ? ' – błąd: ' + s.error
-    : s.updated ? ' ' + new Date(s.updated * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : ''); };
+    : s.updated ? ' ' + fmtDT(s.updated) : ''); };
   $('fcstatus').textContent = 'aktualizacja: ' + Object.keys(d.groups).map(fmtSt).join(' · ');
   // rozrzut modeli
   const range = when => {
@@ -518,11 +543,11 @@ async function loadForecast() {
     r ? `modele ${r[0].toFixed(1)}–${r[1].toFixed(1)}` : ''].filter(Boolean).join(' · ');
   const pct = T && d.forecast_until_now_kwh > 0.05 ? Math.round(100 * d.actual_kwh / d.forecast_until_now_kwh) : null;
   $('fctiles').innerHTML =
-    tile('Prognoza na dziś', T?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rT, FS.today, EC.today)) +
+    tile('Prognoza na dziś', T?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rT, FS.today, EC.today) + fcWhen(T)) +
     tile('Wyprodukowano dziś', d.actual_kwh, 'kWh', d.actual_src === 'falownik' ? 'licznik falownika' : 'obliczone z mocy') +
     tile('Prognoza do teraz', d.forecast_until_now_kwh, 'kWh') +
-    tile('Realizacja prognozy', pct, '%') +
-    tile('Prognoza na jutro', J?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rJ, FS.tomorrow, EC.tomorrow)) +
+    tile('Realizacja prognozy', pct, '%', T ? (T.kind === 'dzien_wczesniej' ? 'względem prognozy z dnia poprzedniego' : 'względem prognozy bieżącej') : '') +
+    tile('Prognoza na jutro', J?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rJ, FS.tomorrow, EC.tomorrow) + fcWhen(J)) +
     tile('Szczyt jutro', J ? J.peak_kw : null, J ? 'kW o ' + hm(J.peak_min) : '');
   $('fcempty').hidden = !!(T || J);
 

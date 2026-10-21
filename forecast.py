@@ -170,15 +170,19 @@ def save(con, source, moc, per_plane):
         cur.execute('DELETE FROM forecast_src WHERE "source" = ? AND "day" = ?', (source, d))
         cur.executemany('INSERT INTO forecast_src ("source", "day", "minute", watts) VALUES (?, ?, ?, ?)',
                         [(source, d, float(m), float(w * k)) for m, w in sorted(pts.items())])
-        old = cur.execute('SELECT day_ahead_wh, day_ahead_fetched FROM forecast_src_day '
+        old = cur.execute('SELECT day_ahead_wh, day_ahead_fetched, day_ahead_planes FROM forecast_src_day '
                           'WHERE "source" = ? AND "day" = ?', (source, d)).fetchone()
         da_wh, da_ts = (old[0], old[1]) if old else (None, None)
-        if d > today:                       # prognoza z wyprzedzeniem - nadpisujemy do polnocy
-            da_wh, da_ts = total, now
+        da_planes = old[2] if old else None
+        if d > today:                       # prognoza z wyprzedzeniem - nadpisujemy do polnocy, potem zamrozona
+            da_wh, da_ts, da_planes = total, now, json.dumps(planes, ensure_ascii=False)
+            cur.execute('DELETE FROM forecast_src_da WHERE "source" = ? AND "day" = ?', (source, d))
+            cur.executemany('INSERT INTO forecast_src_da ("source", "day", "minute", watts) VALUES (?, ?, ?, ?)',
+                            [(source, d, float(m), float(w * k)) for m, w in sorted(pts.items())])
         cur.execute('DELETE FROM forecast_src_day WHERE "source" = ? AND "day" = ?', (source, d))
         cur.execute('INSERT INTO forecast_src_day ("source", "day", total_wh, planes, fetched, '
-                    'day_ahead_wh, day_ahead_fetched) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    (source, d, float(total), json.dumps(planes, ensure_ascii=False), now, da_wh, da_ts))
+                    'day_ahead_wh, day_ahead_fetched, day_ahead_planes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (source, d, float(total), json.dumps(planes, ensure_ascii=False), now, da_wh, da_ts, da_planes))
     con.commit()
 
 
@@ -201,24 +205,43 @@ def last_fetch_group(con, grp):
     return None if any(t is None for t in ts) else min(ts)
 
 
-def load_day(con, day, source=None):
-    """Prognoza dnia z bazy albo None."""
+def load_day(con, day, source=None, latest=False):
+    """Prognoza dnia z bazy albo None.
+
+    Dla dzisiaj i dni minionych zwracana jest prognoza "z dnia poprzedniego" (ostatnia pobrana przed polnoca),
+    bo z nia porownujemy rzeczywista produkcje; biezaca (aktualizowana w ciagu dnia) jest w polach latest_*.
+    Brak prognozy z dnia poprzedniego (np. aplikacja dzialala dopiero od rana) - zwracana biezaca (kind="biezaca").
+    Dla jutra i dalej - prognoza aktualizowana do polnocy (kind="do_polnocy"). latest=True wymusza biezaca.
+    """
     source = source or GLOWNE_ZRODLO
-    meta = con.execute('SELECT total_wh, planes, fetched, day_ahead_wh FROM forecast_src_day '
-                       'WHERE "source" = ? AND "day" = ?', (source, day)).fetchone()
+    meta = con.execute('SELECT total_wh, planes, fetched, day_ahead_wh, day_ahead_fetched, day_ahead_planes '
+                       'FROM forecast_src_day WHERE "source" = ? AND "day" = ?', (source, day)).fetchone()
     if not meta:
         return None
-    pts = con.execute('SELECT "minute", watts FROM forecast_src WHERE "source" = ? AND "day" = ? '
-                      'ORDER BY "minute"', (source, day)).fetchall()
+    total_wh, planes_js, fetched, da_wh, da_ts, da_planes = meta
+    today = dt.date.today().isoformat()
+    use_da = not latest and day <= today and da_wh is not None
+    pts = []
+    if use_da:
+        pts = con.execute('SELECT "minute", watts FROM forecast_src_da WHERE "source" = ? AND "day" = ? '
+                          'ORDER BY "minute"', (source, day)).fetchall()
+        if not pts:                          # starsze dane bez zapisanego przebiegu z dnia poprzedniego
+            use_da = False
+    if not use_da:
+        pts = con.execute('SELECT "minute", watts FROM forecast_src WHERE "source" = ? AND "day" = ? '
+                          'ORDER BY "minute"', (source, day)).fetchall()
     nz = [p for p in pts if p[1] > 1]
     peak = max(pts, key=lambda x: x[1]) if pts else (None, 0)
-    planes = json.loads(meta[1]) if meta[1] else {}
+    planes = json.loads((da_planes if use_da else planes_js) or "{}")
     return {
         "source": source, "source_name": SOURCES.get(source, source),
         "date": day,
-        "fetched": meta[2],
-        "total_kwh": round((meta[0] or 0) / 1000, 2),
-        "day_ahead_kwh": round(meta[3] / 1000, 2) if meta[3] is not None else None,
+        "kind": "dzien_wczesniej" if use_da else ("do_polnocy" if day > today else "biezaca"),
+        "fetched": da_ts if use_da else fetched,
+        "total_kwh": round(((da_wh if use_da else total_wh) or 0) / 1000, 2),
+        "day_ahead_kwh": round(da_wh / 1000, 2) if da_wh is not None else None,
+        "latest_kwh": round((total_wh or 0) / 1000, 2),
+        "latest_fetched": fetched,
         "planes_kwh": {k: round(v / 1000, 2) for k, v in planes.items()},
         "sunrise": (nz[0][0] - 15) if nz else None,
         "sunset": (nz[-1][0] + 15) if nz else None,

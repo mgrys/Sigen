@@ -23,7 +23,7 @@ import forecast
 import prices
 import registers
 
-__version__ = "1.1.0"
+__version__ = "1.3.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -160,6 +160,7 @@ def poll_loop():
             vals["load"] = round(max(vals["plant"] + vals["grid"], 0), 3)
             # straty falownika = DC wejscie - DC wyjscie - AC wyjscie
             vals["loss"] = live_loss_kw(vals)
+            vals["loss_mode"] = "czuwanie" if vals["pv"] < STANDBY_KW and abs(vals["bat"]) < STANDBY_KW else "konwersja"
             ts = int(t0)
             with lock:
                 latest.clear()
@@ -532,11 +533,13 @@ def day(date: str | None = None):
         "FROM samples WHERE ts >= ? AND ts < ? GROUP BY (ts/60)*60 ORDER BY m", (start, end)
     ).fetchall()
     ce = counter_energy(con, d.isoformat())
-    con_eff = eff_compute_day(con, d)[0]
+    con_eff, _n, split = eff_compute_day(con, d, split=True)
     con.close()
+    e = eff_into_energy(merge_energy(energy(rows), ce), con_eff)
+    e["straty"] = split
     return {
         "date": d.isoformat(),
-        "energy": eff_into_energy(merge_energy(energy(rows), ce), con_eff),
+        "energy": e,
         "series": [
             {"t": m, "soc": round(s, 1), "pv": round(p, 3), "bat": round(b, 3),
              "grid": round(g, 3), "load": round(l, 3), "loss": round(x, 3), "pin": round(i, 3)}
@@ -556,6 +559,10 @@ EFF_MIN_SAMPLES = 6       # min. probek 5 s w minucie (30 s danych)
 EFF_MAX_SWING = 0.20      # minuta odrzucana, gdy moc wejsciowa zmienia sie w niej o > 20 %
 
 
+STANDBY_KW = 0.03          # ponizej tej mocy PV i magazynu falownik nie przetwarza energii (tryb czuwania)
+CTRL_MIN_KW = 0.03        # odchylka regulacji liczona powyzej tej mocy z/do sieci
+
+
 def eff_minutes(rows, dc_by_min):
     """Minutowe srednie do liczenia sprawnosci: [(godzin, p_in, p_out)].
 
@@ -564,8 +571,13 @@ def eff_minutes(rows, dc_by_min):
     - minuty bez PV (np. noc, tylko magazyn) liczone z rejestrow mocy,
     - minuty z gwaltowna zmiana mocy (rozjazd odczytow) odrzucane.
     """
+    return [(h, i, o) for h, i, o, _m in eff_minutes_ex(rows, dc_by_min)]
+
+
+def eff_minutes_ex(rows, dc_by_min):
+    """Jak eff_minutes, ale z trybem minuty: 'konwersja' albo 'czuwanie' (brak przetwarzania PV/magazynu)."""
     buckets = {}
-    for ts, pv, bat, pl in rows:
+    for ts, pv, bat, pl, *_ in rows:
         buckets.setdefault(ts // 60, []).append((pv, bat, pl))
     out = []
     for m, smp in buckets.items():
@@ -590,8 +602,43 @@ def eff_minutes(rows, dc_by_min):
         p_out = max(bat, 0) + max(pl, 0)
         if p_out > p_in:                 # ujemna strata - rozjazd odczytow, minuta odrzucana
             continue
-        out.append((1 / 60, p_in, p_out))
+        mode = "czuwanie" if pv_in < STANDBY_KW and abs(bat) < STANDBY_KW else "konwersja"
+        out.append((1 / 60, p_in, p_out, mode))
     return out
+
+
+def loss_split(rows, dc_by_min, soc_min=None, soc_max=None):
+    """Podzial strat dnia wg metodyki HTW Berlin (Energy Storage Inspection), w kWh:
+
+    - konwersja: straty przetwarzania energii (PV->AC, PV->magazyn, magazyn->AC, siec->magazyn),
+    - czuwanie: zuzycie wlasne falownika i magazynu, gdy nic nie przetwarza (np. noc przy pustym magazynie),
+    - regulacja: pobor z sieci, gdy magazyn mogl pokryc zuzycie, i oddawanie do sieci, gdy mogl sie ladowac
+      (powolna reakcja sterowania); to energia "przepuszczona" przez siec, nie strata w falowniku.
+    rows: (ts, pv, bat, plant, grid, soc)
+    """
+    out = {"konwersja": 0.0, "czuwanie": 0.0, "h_czuwanie": 0.0, "regulacja_pobor": 0.0, "regulacja_oddanie": 0.0}
+    for h, p_in, p_out, mode in eff_minutes_ex(rows, dc_by_min):
+        out[mode] += (p_in - p_out) * h
+        if mode == "czuwanie":
+            out["h_czuwanie"] += h
+    lo = (soc_min if soc_min is not None else 10) + 2
+    hi = (soc_max if soc_max is not None else 100) - 2
+    buckets = {}
+    for ts, _pv, bat, _pl, grid, soc in rows:
+        buckets.setdefault(ts // 60, []).append((bat, grid, soc))
+    for smp in buckets.values():
+        n = len(smp)
+        bat = sum(x[0] for x in smp) / n
+        grid = sum(x[1] for x in smp) / n
+        soc = sum(x[2] for x in smp) / n
+        h = 1 / 60
+        if grid > CTRL_MIN_KW and bat < -CTRL_MIN_KW and soc > lo:      # rozladowanie nie nadaza za zuzyciem
+            out["regulacja_pobor"] += grid * h
+        elif grid < -CTRL_MIN_KW and bat > CTRL_MIN_KW and soc < hi:    # ladowanie nie nadaza za nadwyzka PV
+            out["regulacja_oddanie"] += -grid * h
+    res = {k: round(v, 3) for k, v in out.items()}
+    res["czuwanie_sr_w"] = round(1000 * out["czuwanie"] / out["h_czuwanie"]) if out["h_czuwanie"] > 0.25 else None
+    return res
 
 
 def eff_bins_from_rows(rows, dc_by_min=None):
@@ -606,15 +653,19 @@ def eff_bins_from_rows(rows, dc_by_min=None):
     return acc
 
 
-def eff_compute_day(con, day):
+def eff_compute_day(con, day, split=False):
     start, end = day_range(day)
-    rows = con.execute("SELECT ts, pv, bat, plant FROM samples WHERE ts >= ? AND ts < ? ORDER BY ts",
+    rows = con.execute("SELECT ts, pv, bat, plant, grid, soc FROM samples WHERE ts >= ? AND ts < ? ORDER BY ts",
                        (start, end)).fetchall()
     dc = {}
     used = [k for _n, k in config.strings()]
     for ts, ui in db.load_pv_strings(con, start, end):
         if all(ui[k - 1][0] is not None and ui[k - 1][1] is not None for k in used):
             dc[ts // 60] = sum(max(ui[k - 1][0] * ui[k - 1][1], 0) / 1000 for k in used)
+    if split:
+        with lock:
+            sv = dict(settings_state["values"])
+        return eff_bins_from_rows(rows, dc), len(rows), loss_split(rows, dc, sv.get("soc_discharge_cut"), sv.get("soc_charge_cut"))
     return eff_bins_from_rows(rows, dc), len(rows)
 
 
