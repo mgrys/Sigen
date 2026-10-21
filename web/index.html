@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sigen PV Monitor</title>
+<link rel="icon" href="/static/favicon.png">
+<script src="/static/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2; --surface: #fcfcfb; --border: #e3e2de;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984; --grid: #ecebe7;
+  --s-load: #2a78d6; --s-pv: #eb6834; --s-bat: #1baf7a; --s-grid: #eda100; --s-loss: #e87ba4; --s-fc: #2a78d6; --s-fc2: #6250d6; --s-pin: #008300; --s-buy: #e34948; --s-sell: #008300; --s-ecmwf: #008300; --s-south: #eb6834; --s-east: #eda100; --s-west: #6250d6; --eff-good: #008300; --eff-mid: #e07b00; --eff-bad: #e34948;
+  --ok: #1baf7a; --err: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface: #1a1a19; --border: #2c2c2a;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c86; --grid: #262624;
+    --s-load: #3987e5; --s-pv: #d95926; --s-bat: #199e70; --s-grid: #c98500; --s-loss: #d55181; --s-fc: #3987e5; --s-fc2: #9085e9; --s-pin: #2f9e2f; --s-buy: #e66767; --s-sell: #2f9e2f; --s-ecmwf: #2f9e2f; --s-south: #d95926; --s-east: #c98500; --s-west: #9085e9; --eff-good: #2f9e2f; --eff-mid: #e08a1e; --eff-bad: #e66767;
+    --ok: #199e70; --err: #e66767;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; flex: 1; }
+.tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.tabs button { font: inherit; font-size: 17px; font-weight: 600; background: none; border: 0; border-bottom: 3px solid transparent;
+  color: var(--text-2); padding: 6px 12px; cursor: pointer; border-radius: 0; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--s-fc); }
+.tabs button:hover { color: var(--text); }
+h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-2); font-weight: 600; }
+.status { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.dot.ok { background: var(--ok); } .dot.err { background: var(--err); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.live { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 760px) { .live { grid-template-columns: 1fr; } }
+svg.flow { width: 100%; height: auto; display: block; }
+.node circle { fill: var(--surface); stroke-width: 2.5; }
+.icon { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.icon-bg { fill: var(--surface); }
+.node .icon-bg { stroke-width: 2; }
+.flow .lbl { fill: var(--text-2); font-size: 12px; text-anchor: middle; }
+.flow .val { fill: var(--text); font-size: 15px; font-weight: 600; text-anchor: middle; }
+.flow .sub { fill: var(--muted); font-size: 11px; text-anchor: middle; }
+.line { fill: none; stroke-width: 3; stroke-linecap: round; opacity: .25; }
+.line.on { opacity: 1; stroke-dasharray: 6 8; animation: flow 1s linear infinite; }
+.line.on.rev { animation-direction: reverse; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+@media (prefers-reduced-motion: reduce) { .line.on { animation: none; } }
+.fs-act { display: flex; gap: 8px; margin-top: 4px; }
+.fs-act[hidden] { display: none; }
+.fs-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.fs-btn.primary { background: var(--s-fc); border-color: var(--s-fc); color: #fff; }
+.fs-btn:disabled { opacity: .5; cursor: default; }
+.fs-auto { font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.fs-auto input { width: 18px; height: 18px; }
+.soc-big { font-size: 44px; font-weight: 700; line-height: 1; }
+.bar { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; margin: 10px 0 16px; }
+.bar > div { height: 100%; background: var(--s-bat); border-radius: 5px; transition: width .5s; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 14px; }
+.kv span:nth-child(odd) { color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+.kv span:nth-child(even) { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.daynav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.daynav h2 { margin: 0; flex: 1; }
+button, input[type=date] { font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.tile .t { font-size: 12px; color: var(--text-2); }
+.tile .v { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.tile .n { font-size: 11px; color: var(--muted); }
+select { font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.regs .grp { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.regs h3 { font-size: 13px; margin: 0 0 6px; color: var(--text-2); font-weight: 600; }
+.regs table { margin: 0; }
+.regs td { border-bottom: 1px solid var(--grid); }
+.regs tr:last-child td { border-bottom: 0; }
+.regs td:nth-child(2) { text-align: left; }
+.regs td.a { color: var(--muted); font-size: 11px; width: 44px; }
+.regs td.v { font-weight: 600; overflow-wrap: break-word; }
+.regs td.na { color: var(--muted); font-weight: 400; }
+.risk { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
+.risk.bezpieczne { color: var(--ok); border-color: var(--ok); }
+.risk.ostroznie { color: var(--s-grid); border-color: var(--s-grid); }
+.risk.nie_ruszac { color: var(--err); border-color: var(--err); }
+.regs .w { color: var(--muted); font-size: 11px; }
+.effbar { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.chart { position: relative; height: 300px; }
+.chart.small { height: 160px; }
+.chart.big { height: 460px; }
+details { margin-top: 12px; font-size: 13px; }
+summary { cursor: pointer; color: var(--text-2); }
+table { border-collapse: collapse; width: 100%; margin-top: 8px; font-variant-numeric: tabular-nums; }
+th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--border); }
+th:first-child, td:first-child { text-align: left; }
+.empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
+.cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.cfg-grid fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px 12px; margin: 0; }
+.cfg-grid legend { font-weight: 650; padding: 0 6px; }
+.cfg-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--text-2); margin: 6px 0; }
+.cfg-grid input, .cfg-grid select { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.cfg-planes { width: 100%; } .cfg-planes input { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tabbtn-pv" aria-selected="true" data-tab="pv">Instalacja PV</button>
+      <button role="tab" id="tabbtn-set" aria-selected="false" data-tab="set">Ustawienia</button>
+    </nav>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">łączenie…</span></div>
+  </header>
+
+  <div id="tab-pv" role="tabpanel">
+  <section class="card live">
+    <svg class="flow" viewBox="0 0 400 312" role="img" aria-label="Przepływ energii">
+      <path id="l-pv"   class="line" d="M200 64 L200 116"  stroke="var(--s-pv)"/>
+      <path id="l-grid" class="line" d="M60 150 L172 150"  stroke="var(--s-grid)"/>
+      <path id="l-load" class="line" d="M334 150 L228 150" stroke="var(--s-load)"/>
+      <path id="l-bat"  class="line" d="M200 230 L200 186" stroke="var(--s-bat)"/>
+      <!-- falownik -->
+      <image href="/static/inverter.svg" x="171" y="117" width="58" height="68" preserveAspectRatio="xMidYMid meet">
+        <title>Falownik</title></image>
+      <!-- PV: panel fotowoltaiczny -->
+      <g class="icon" transform="translate(200 36)" stroke="var(--s-pv)">
+        <polygon points="-28,12 28,12 19,-14 -19,-14" class="icon-bg"/>
+        <line x1="-9.5" y1="-14" x2="-14" y2="12"/><line x1="0" y1="-14" x2="0" y2="12"/>
+        <line x1="9.5" y1="-14" x2="14" y2="12"/><line x1="-23.5" y1="-1" x2="23.5" y2="-1"/>
+        <line x1="-16" y1="12" x2="-16" y2="24"/><line x1="16" y1="12" x2="16" y2="24"/>
+      </g>
+      <text class="lbl" x="268" y="32">PV</text><text class="val" x="268" y="50" id="v-pv">–</text>
+      <!-- Siec: slup energetyczny -->
+      <g class="icon" transform="translate(38 150)" stroke="var(--s-grid)">
+        <line x1="-13" y1="26" x2="-3" y2="-26"/><line x1="13" y1="26" x2="3" y2="-26"/>
+        <line x1="-3" y1="-26" x2="3" y2="-26"/>
+        <line x1="-20" y1="-15" x2="20" y2="-15"/><line x1="-15" y1="-3" x2="15" y2="-3"/>
+        <line x1="-20" y1="-15" x2="-20" y2="-10"/><line x1="20" y1="-15" x2="20" y2="-10"/>
+        <line x1="-15" y1="-3" x2="-15" y2="2"/><line x1="15" y1="-3" x2="15" y2="2"/>
+        <line x1="-11" y1="16" x2="9" y2="5"/><line x1="11" y1="16" x2="-9" y2="5"/>
+        <line x1="-8.5" y1="3" x2="6" y2="-9"/><line x1="8.5" y1="3" x2="-6" y2="-9"/>
+      </g>
+      <text class="lbl" x="38" y="196">Sieć</text><text class="val" x="38" y="214" id="v-grid">–</text>
+      <text class="sub" x="38" y="230" id="s-grid"></text>
+      <!-- Dom -->
+      <g class="icon" transform="translate(362 150)" stroke="var(--s-load)">
+        <path d="M-27,-2 L0,-25 L27,-2" /><path d="M-20,-7 V24 H20 V-7" class="icon-bg"/>
+        <rect x="-5" y="9" width="10" height="15"/><rect x="8" y="1" width="7" height="7"/>
+        <line x1="13" y1="-14" x2="13" y2="-22"/><line x1="13" y1="-22" x2="18" y2="-22"/><line x1="18" y1="-22" x2="18" y2="-10"/>
+      </g>
+      <text class="lbl" x="362" y="196">Dom</text><text class="val" x="362" y="214" id="v-load">–</text>
+      <!-- Magazyn energii -->
+      <g class="icon" transform="translate(200 260)" stroke="var(--s-bat)">
+        <rect x="-6" y="-30" width="12" height="4" rx="1"/>
+        <rect x="-17" y="-26" width="34" height="52" rx="5" class="icon-bg"/>
+        <rect id="bat-fill" x="-12" y="21" width="24" height="0" rx="2" fill="var(--s-bat)" stroke="none" opacity=".75"/>
+        <path d="M2,-16 L-5,-1 H1 L-3,12 L6,-4 H0 Z" stroke-width="1.5" fill="var(--surface)"/>
+      </g>
+      <text class="sub" x="200" y="302" id="v-soc-c">–</text>
+      <text class="lbl" x="268" y="254">Magazyn</text><text class="val" x="268" y="272" id="v-bat">–</text>
+      <text class="sub" x="268" y="288" id="s-bat"></text>
+    </svg>
+    <div>
+      <h2>Magazyn energii</h2>
+      <div class="soc-big" id="soc">–</div>
+      <div class="bar"><div id="socbar" style="width:0"></div></div>
+      <div class="kv">
+        <span><i class="sw" style="background:var(--s-pv)"></i>Produkcja PV</span><span id="k-pv">–</span>
+        <span><i class="sw" style="background:var(--s-load)"></i>Zużycie domu</span><span id="k-load">–</span>
+        <span><i class="sw" style="background:var(--s-bat)"></i>Magazyn</span><span id="k-bat">–</span>
+        <span><i class="sw" style="background:var(--s-grid)"></i>Sieć</span><span id="k-grid">–</span>
+        <span>Moc AC falownika</span><span id="k-plant">–</span>
+        <span><i class="sw" style="background:var(--s-loss)"></i>Straty falownika</span><span id="k-loss">–</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Prognoza produkcji PV</h2>
+      <span class="status" id="fcstatus"></span>
+    </div>
+    <div class="tiles" id="fctiles"></div>
+    <div class="chart"><canvas id="cFc"></canvas></div>
+    <div class="empty" id="fcempty" hidden>Brak prognozy – aplikacja pobierze ją z Open-Meteo i forecast.solar, gdy będzie dostęp do internetu.</div>
+    <details>
+      <summary>Trafność prognoz (prognoza z dnia poprzedniego vs rzeczywista produkcja)</summary>
+      <div style="overflow-x:auto"><table><thead id="acchead"></thead><tbody id="accbody"></tbody></table></div>
+      <p class="status" id="accsugg" style="margin-top:8px"></p>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Realna produkcja PV – połacie</h2>
+      <span class="status" id="pvsstatus"></span>
+    </div>
+    <div class="tiles" id="pvstiles"></div>
+    <div class="chart"><canvas id="cPvs"></canvas></div>
+    <div class="empty" id="pvsempty" hidden>Brak danych ze stringów na dziś – zapis co 60 s od uruchomienia wersji 1.11.</div>
+    <p class="status" style="margin-top:10px">Moc połaci = napięcie × prąd stringu (po stronie DC, przed falownikiem).
+      Wschód i Zachód pracują na wspólnym MPPT – mają to samo napięcie, różnią się prądem.</p>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Ceny energii – dziś i jutro</h2>
+      <span class="status" id="prstatus"></span>
+    </div>
+    <div class="tiles" id="prtiles"></div>
+    <div class="chart"><canvas id="cPrice"></canvas></div>
+    <div class="empty" id="prempty" hidden>Brak cen – pobieram z PSE (ceny na jutro po ok. 13:40).</div>
+    <p class="status" style="margin-top:10px" id="prformula"></p>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2 id="daytitle">Dzisiaj</h2>
+      <button id="prev" aria-label="Poprzedni dzień">‹</button>
+      <input type="date" id="date">
+      <button id="next" aria-label="Następny dzień">›</button>
+      <button id="today">Dziś</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="chart"><canvas id="cPower"></canvas></div>
+    <div class="empty" id="empty" hidden>Brak danych dla tego dnia.</div>
+    <details>
+      <summary>Tabela godzinowa (średnie kW)</summary>
+      <table><thead><tr><th>Godz.</th><th>PV</th><th>Dom</th><th>Magazyn</th><th>Sieć</th><th>Straty</th><th>SOC %</th></tr></thead>
+      <tbody id="tbody"></tbody></table>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Sprawność falownika wg mocy przetwarzanej</h2>
+      <select id="effdays" aria-label="Okres">
+        <option value="1">Wybrany dzień</option>
+        <option value="y">Wczoraj</option>
+        <option value="7">7 dni</option>
+        <option value="30">30 dni</option>
+        <option value="0">Cała historia</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto">
+    <table><thead><tr><th>Moc przetwarzana</th><th>Czas [h]</th><th>Śr. moc [kW]</th><th>Energia wej. [kWh]</th>
+      <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
+      <tbody id="effbody"></tbody></table>
+    </div>
+    <p class="status" style="margin-top:10px">Moc przetwarzana = PV + rozładowanie magazynu + pobór AC z sieci przez falownik.
+      Sprawność = energia wyjściowa (ładowanie + AC) ÷ energia wejściowa. Wejście PV = moc DC stringów (napięcie × prąd),
+      liczone z minutowych średnich; minuty z gwałtowną zmianą mocy są odrzucane. * = mniej niż 15 min danych (wynik orientacyjny).<br><span id="effinfo"></span></p>
+  </section>
+  <section class="card">
+    <div class="daynav">
+      <h2>Ustawienia falownika <span style="font-weight:400">(tylko odczyt)</span></h2>
+      <span class="status" id="setstatus"></span>
+    </div>
+    <div class="regs" id="settings"></div>
+    <details>
+      <summary>Historia zmian ustawień</summary>
+      <table><thead><tr><th>Czas</th><th>Ustawienie</th><th>Wartość</th></tr></thead>
+      <tbody id="sethist"></tbody></table>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Odczyty falownika</h2>
+      <span class="status" id="regstatus"></span>
+    </div>
+    <div class="regs" id="regs"></div>
+  </section>
+  </div>
+
+  <div id="tab-set" role="tabpanel" hidden>
+  <section class="card">
+    <div class="daynav"><h2>Ustawienia</h2><span class="status" id="cfgfile"></span></div>
+    <p class="status" style="margin-bottom:12px">Zmiany zaczynają działać po ponownym uruchomieniu aplikacji (przycisk na dole).
+      Aplikacja tylko odczytuje dane z falownika – niczego w nim nie zmienia.</p>
+    <div class="cfg-grid">
+      <fieldset><legend>Falownik (Modbus TCP)</legend>
+        <label>Adres IP falownika<input data-k="falownik.host" placeholder="192.168.1.100"></label>
+        <label>Port<input data-k="falownik.port" type="number"></label>
+        <label>Adres „plant” (zwykle 247)<input data-k="falownik.plant_id" type="number"></label>
+        <label>Adres falownika (zwykle 1)<input data-k="falownik.inverter_id" type="number"></label>
+        <label>Odczyt co [s]<input data-k="falownik.interval" type="number" min="2"></label>
+      </fieldset>
+      <fieldset><legend>Instalacja</legend>
+        <label>Szerokość geograficzna<input data-k="instalacja.lat" placeholder="52.23"></label>
+        <label>Długość geograficzna<input data-k="instalacja.lon" placeholder="21.01"></label>
+        <label>Moc falownika [kW]<input data-k="instalacja.moc_falownika_kw"></label>
+        <label>Współczynnik wydajności PR (prognoza)<input data-k="instalacja.pr"></label>
+        <label>Strefa czasowa<input data-k="instalacja.strefa_czasowa"></label>
+      </fieldset>
+      <fieldset><legend>Stringi PV (nazwy na wykresie; puste = nieużywany)</legend>
+        <label>PV1<input data-k="stringi.pv1"></label><label>PV2<input data-k="stringi.pv2"></label>
+        <label>PV3<input data-k="stringi.pv3"></label><label>PV4<input data-k="stringi.pv4"></label>
+      </fieldset>
+      <fieldset><legend>Ceny energii</legend>
+        <label>Operator dystrybucyjny<select data-k="ceny.operator">
+          <option value="tauron">Tauron</option><option value="pge">PGE</option><option value="enea">Enea</option>
+          <option value="energa">Energa</option><option value="stoen">Stoen</option></select></label>
+        <label>Taryfa<select data-k="ceny.taryfa"><option>G11</option><option>G12</option><option>G12w</option>
+          <option>G12as</option><option>G13</option><option>G13s</option></select></label>
+        <label>Marża sprzedawcy netto [zł/kWh]<input data-k="ceny.marza_zl_kwh"></label>
+        <label>Akcyza [zł/kWh]<input data-k="ceny.akcyza_zl_kwh"></label>
+        <label>VAT<input data-k="ceny.vat"></label>
+        <label>Podstawa ceny zakupu<select data-k="ceny.zakup_baza"><option value="rce">RCE</option><option value="csdac">SDAC</option></select></label>
+      </fieldset>
+      <fieldset style="grid-column:1/-1"><legend>Połacie dachu (prognoza produkcji)</legend>
+        <table class="cfg-planes"><thead><tr><th>Nazwa</th><th>Moc [kWp]</th><th>Azymut [°]</th><th>Nachylenie [°]</th><th></th></tr></thead>
+          <tbody id="cfg-planes"></tbody></table>
+        <button class="fs-btn" id="cfg-addplane" type="button">+ dodaj połać</button>
+        <p class="status" style="margin-top:6px">Azymut: 0 = południe, −90 = wschód, 90 = zachód, ±180 = północ.</p>
+      </fieldset>
+      <fieldset><legend>Prognoza</legend>
+        <label>Główne źródło<select data-k="prognoza.glowne_zrodlo">
+          <option value="open_meteo">Open-Meteo</option><option value="om_srednia">Średnia modeli</option>
+          <option value="om_ecmwf">ECMWF</option><option value="om_icon_eu">ICON-EU</option>
+          <option value="forecast_solar">forecast.solar</option></select></label>
+        <label>forecast.solar<select data-k="prognoza.forecast_solar"><option value="tak">włączone</option><option value="nie">wyłączone</option></select></label>
+        <label>Korekta (np. open_meteo=1.05)<input data-k="prognoza.korekta"></label>
+      </fieldset>
+      <fieldset><legend>Strona</legend>
+        <label>Port strony<input data-k="serwer.port" type="number"></label>
+        <label>Dostęp<select data-k="serwer.host"><option value="0.0.0.0">cała sieć domowa (telefon)</option>
+          <option value="127.0.0.1">tylko ten komputer</option></select></label>
+        <label>Otwórz przeglądarkę przy starcie<select data-k="serwer.otworz_przegladarke"><option value="tak">tak</option><option value="nie">nie</option></select></label>
+      </fieldset>
+    </div>
+    <div class="fs-act" style="margin-top:14px">
+      <button class="fs-btn primary" id="cfg-save">Zapisz</button>
+      <button class="fs-btn" id="cfg-restart">Zapisz i uruchom ponownie</button>
+      <button class="fs-btn" id="cfg-stop" style="margin-left:auto">Zamknij aplikację</button>
+    </div>
+    <div id="cfg-msg" style="font-size:13px;margin-top:8px"></div>
+    <p class="status" style="margin-top:10px" id="cfg-info"></p>
+  </section>
+  </div>
+
+
+  <footer style="text-align:center;color:var(--muted);font-size:12px;padding:8px 0 16px">Sigen PV Monitor <span id="ver"></span>
+    · nieoficjalny projekt, niezwiązany z Sigenergy</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const kw = v => (Math.abs(v) < 1 ? (v * 1000).toFixed(0) + ' W' : v.toFixed(2) + ' kW');
+const todayStr = () => new Date().toLocaleDateString('sv-SE');
+let current = todayStr();
+
+// ---- live ----
+function setLine(id, value, inward) {
+  const el = $(id), on = Math.abs(value) >= 0.01;
+  el.classList.toggle('on', on);
+  el.classList.toggle('rev', on && !inward);
+}
+async function refreshLive() {
+  try {
+    const d = await (await fetch('/api/live')).json();
+    $('dot').className = 'dot ' + (d.ok ? 'ok' : 'err');
+    $('status').textContent = d.ok
+      ? 'na żywo · ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL')
+      : 'błąd: ' + d.error + (/polaczenia|connect/i.test(d.error || '') ? ' – sprawdź adres IP falownika w zakładce Ustawienia' : '');
+    if (d.pv === undefined) return;
+    $('v-pv').textContent = kw(d.pv);
+    $('v-load').textContent = kw(d.load);
+    $('v-grid').textContent = kw(Math.abs(d.grid));
+    $('s-grid').textContent = d.grid > 0.01 ? 'pobór' : d.grid < -0.01 ? 'oddawanie' : '';
+    $('v-bat').textContent = kw(Math.abs(d.bat));
+    $('s-bat').textContent = d.bat > 0.01 ? 'ładowanie' : d.bat < -0.01 ? 'rozładowanie' : 'bezczynny';
+    $('v-soc-c').textContent = d.soc.toFixed(0) + '%';
+    const fh = Math.max(0, Math.min(100, d.soc)) / 100 * 42;
+    $('bat-fill').setAttribute('height', fh.toFixed(1)); $('bat-fill').setAttribute('y', (21 - fh).toFixed(1));
+    $('soc').textContent = d.soc.toFixed(1) + ' %';
+    $('socbar').style.width = Math.min(100, d.soc) + '%';
+    $('k-pv').textContent = kw(d.pv);
+    $('k-load').textContent = kw(d.load);
+    $('k-bat').textContent = (d.bat > 0 ? '+' : '') + kw(d.bat);
+    $('k-grid').textContent = (d.grid > 0 ? 'pobór ' : 'oddawanie ') + kw(Math.abs(d.grid));
+    $('k-plant').textContent = kw(d.plant);
+    $('k-loss').textContent = d.loss == null ? '–' : kw(d.loss);
+    setLine('l-pv', d.pv, true);
+    setLine('l-load', d.load, false);  // sciezka dom->falownik, wiec rev = do domu
+    setLine('l-bat', d.bat, d.bat < 0);
+    setLine('l-grid', d.grid, d.grid > 0);
+  } catch (e) {
+    $('dot').className = 'dot err';
+    $('status').textContent = 'brak połączenia z aplikacją';
+  }
+}
+
+// ---- dzień ----
+let cPower;
+function baseOpts(unit) {
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'top', align: 'start',
+        labels: { color: css('--text-2'), boxWidth: 10, boxHeight: 10, useBorderRadius: true, borderRadius: 3 } },
+      tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(unit === '%' ? 1 : 2)} ${unit}` } }
+    },
+    scales: {
+      x: { ticks: { color: css('--muted'), maxTicksLimit: innerWidth < 600 ? 6 : 12, autoSkip: true, maxRotation: 0 }, grid: { display: false } },
+      y: { ticks: { color: css('--muted'), callback: v => v + ' ' + unit }, grid: { color: css('--grid') },
+           border: { display: false } }
+    },
+    elements: { point: { radius: 0, hoverRadius: 4 }, line: { borderWidth: 2, tension: 0.2 } }
+  };
+}
+function ds(label, data, color) {
+  return { label, data, borderColor: color, backgroundColor: color, fill: false };
+}
+function tile(t, v, unit, note) {
+  return `<div class="tile"><div class="t">${t}</div><div class="v">${v ?? '–'} <small>${v == null ? '' : unit}</small></div>` +
+    (note ? `<div class="n">${note}</div>` : '') + '</div>';
+}
+const srcNote = (e, k) => e.src && e.src[k] === 'falownik' ? 'licznik falownika' : 'obliczone z mocy';
+async function loadDay(date) {
+  current = date;
+  $('date').value = date;
+  $('daytitle').textContent = date === todayStr() ? 'Dzisiaj'
+    : new Date(date + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const d = await (await fetch('/api/day?date=' + date)).json();
+  loadEff();
+  const e = d.energy;
+  $('tiles').innerHTML =
+    tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
+    tile('Pobór z sieci', e.imp, 'kWh', srcNote(e, 'imp')) + tile('Oddane do sieci', e.exp, 'kWh', srcNote(e, 'exp')) +
+    tile('Ładowanie mag.', e.chg, 'kWh', srcNote(e, 'chg')) + tile('Rozładowanie mag.', e.dis, 'kWh', srcNote(e, 'dis')) +
+    tile('Autokonsumpcja', e.autokonsumpcja, '%') + tile('Samowystarczalność', e.samowystarczalnosc, '%') +
+    tile('Straty falownika', e.loss, 'kWh', 'obliczone z mocy') + tile('Sprawność falownika', e.sprawnosc, '%') +
+    tile('Średnia strata', e.strata_sr_w, 'W');
+
+  const s = d.series;
+  $('empty').hidden = s.length > 0;
+  const labels = s.map(p => new Date(p.t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }));
+  const power = [
+    ds('Dom', s.map(p => p.load), css('--s-load')),
+    ds('PV', s.map(p => p.pv), css('--s-pv')),
+    ds('Magazyn (+ład.)', s.map(p => p.bat), css('--s-bat')),
+    ds('Sieć (+pobór)', s.map(p => p.grid), css('--s-grid')),
+  ];
+  if (!cPower) {
+    cPower = new Chart($('cPower'), { type: 'line', data: { labels, datasets: power }, options: baseOpts('kW') });
+  } else {
+    cPower.data = { labels, datasets: power }; cPower.update();
+  }
+
+  // tabela godzinowa
+  const hours = {};
+  s.forEach(p => {
+    const h = new Date(p.t * 1000).getHours();
+    (hours[h] ??= []).push(p);
+  });
+  const avg = (a, k) => (a.reduce((x, p) => x + p[k], 0) / a.length);
+  $('tbody').innerHTML = Object.keys(hours).map(h => {
+    const a = hours[h];
+    return `<tr><td>${String(h).padStart(2, '0')}:00</td><td>${avg(a, 'pv').toFixed(2)}</td><td>${avg(a, 'load').toFixed(2)}</td>` +
+      `<td>${avg(a, 'bat').toFixed(2)}</td><td>${avg(a, 'grid').toFixed(2)}</td><td>${avg(a, 'loss').toFixed(3)}</td><td>${avg(a, 'soc').toFixed(0)}</td></tr>`;
+  }).join('');
+}
+// ---- prognoza ----
+let cFc;
+const hm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
+function interp(pts, m) {
+  if (!pts || !pts.length || m < pts[0][0] || m > pts[pts.length - 1][0]) return 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [m1, p1] = pts[i - 1], [m2, p2] = pts[i];
+    if (m <= m2) return m2 === m1 ? p2 : p1 + (p2 - p1) * (m - m1) / (m2 - m1);
+  }
+  return 0;
+}
+const nowLine = {
+  id: 'nowLine',
+  afterDatasetsDraw(chart) {
+    const i = chart.$nowIdx;
+    if (i == null || i < 0) return;
+    const x = chart.scales.x.getPixelForValue(i), { top, bottom } = chart.chartArea, c = chart.ctx;
+    c.save(); c.strokeStyle = css('--muted'); c.setLineDash([3, 3]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+    c.fillStyle = css('--text-2'); c.font = '11px system-ui'; c.fillText('teraz', x + 4, top + 10); c.restore();
+  }
+};
+async function loadForecast() {
+  let d;
+  try { d = await (await fetch('/api/forecast')).json(); } catch (e) { return; }
+  const N = d.names, S = d.sources, T = d.today, J = d.tomorrow;
+  const FS = S.forecast_solar || {}, EC = S.om_ecmwf || {};
+  const fmtSt = k => { const s = d.status[k] || {}; return d.groups[k] + (s.error ? ' – błąd: ' + s.error
+    : s.updated ? ' ' + new Date(s.updated * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : ''); };
+  $('fcstatus').textContent = 'aktualizacja: ' + Object.keys(d.groups).map(fmtSt).join(' · ');
+  // rozrzut modeli
+  const range = when => {
+    const v = d.models.map(m => S[m]?.[when]?.total_kwh).filter(x => x != null);
+    return v.length ? [Math.min(...v), Math.max(...v)] : null;
+  };
+  const rT = range('today'), rJ = range('tomorrow');
+  const note = (r, fs, ec) => [ec ? `ECMWF ${ec.total_kwh}` : '', fs ? `forecast.solar ${fs.total_kwh}` : '',
+    r ? `modele ${r[0].toFixed(1)}–${r[1].toFixed(1)}` : ''].filter(Boolean).join(' · ');
+  const pct = T && d.forecast_until_now_kwh > 0.05 ? Math.round(100 * d.actual_kwh / d.forecast_until_now_kwh) : null;
+  $('fctiles').innerHTML =
+    tile('Prognoza na dziś', T?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rT, FS.today, EC.today)) +
+    tile('Wyprodukowano dziś', d.actual_kwh, 'kWh', d.actual_src === 'falownik' ? 'licznik falownika' : 'obliczone z mocy') +
+    tile('Prognoza do teraz', d.forecast_until_now_kwh, 'kWh') +
+    tile('Realizacja prognozy', pct, '%') +
+    tile('Prognoza na jutro', J?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rJ, FS.tomorrow, EC.tomorrow)) +
+    tile('Szczyt jutro', J ? J.peak_kw : null, J ? 'kW o ' + hm(J.peak_min) : '');
+  $('fcempty').hidden = !!(T || J);
+
+  // tabela trafnosci: kolumny dla zrodel, ktore maja dane
+  const acc = d.accuracy || { days: [], suggest: {} };
+  const cols = Object.keys(N).filter(k => acc.days.some(r => r[k]));
+  $('acchead').innerHTML = '<tr><th>Dzień</th><th>Rzeczywista</th>' + cols.map(k => `<th>${N[k]}</th>`).join('') + '</tr>';
+  const cell = (r, k) => {
+    const v = r[k]?.day_ahead;
+    if (v == null) return '<td>–</td>';
+    const dv = v > 0.05 ? Math.round(100 * (r.actual_kwh - v) / v) : null;
+    return `<td>${v}${dv != null ? ` <span style="color:var(--muted);font-size:11px">(${dv > 0 ? '+' : ''}${dv} %)</span>` : ''}</td>`;
+  };
+  $('accbody').innerHTML = acc.days.length ? acc.days.map(r =>
+    `<tr><td>${r.day}</td><td>${r.actual_kwh}</td>${cols.map(k => cell(r, k)).join('')}</tr>`).join('')
+    : `<tr><td colspan="${2 + cols.length}" class="empty">Pierwsze wyniki po pierwszym pełnym dniu z prognozą z dnia poprzedniego.</td></tr>`;
+  const sg = Object.entries(acc.suggest).sort((a, b) => a[1].blad_sr_proc - b[1].blad_sr_proc);
+  $('accsugg').textContent = sg.length ? 'Ranking (średni błąd): ' + sg.map(([k, v]) =>
+    `${N[k]} ${v.blad_sr_proc} % (korekta ${v.korekta})`).join(' · ') + ` – z ${sg[0][1].days} dni; KOREKTA ustawiasz w forecast.py` : '';
+
+  const all = [T, J, FS.today, EC.today].filter(x => x && x.sunrise != null);
+  if (!all.length) return;
+  // skala: wschod slonca + margines .. zachod - margines (dzis)
+  const [sr, ss] = d.sun?.today || [null, null];
+  const from = sr != null ? Math.floor((sr + d.margin_min) / 10) * 10 : Math.floor(Math.min(...all.map(x => x.sunrise)) / 10) * 10;
+  const to = ss != null ? Math.ceil((ss - d.margin_min) / 10) * 10 : Math.ceil(Math.max(...all.map(x => x.sunset)) / 10) * 10;
+  const grid = []; for (let m = from; m <= to; m += 10) grid.push(m);
+  const act = new Map(d.actual.map(([m, v]) => [m, v]));
+  const line = x => grid.map(m => x ? +interp(x.points, m).toFixed(3) : null);
+  const band = when => {
+    const ls = d.models.map(m => S[m]?.[when]).filter(Boolean).map(line);
+    if (!ls.length) return [null, null];
+    return [grid.map((_, i) => Math.min(...ls.map(l => l[i]))), grid.map((_, i) => Math.max(...ls.map(l => l[i])))];
+  };
+  const [tMin, tMax] = band('today'), [jMin, jMax] = band('tomorrow');
+  const bandSet = (label, data, color, fill) => ({ label, data, borderColor: color + '55', backgroundColor: color + '26',
+    pointRadius: 0, borderWidth: 0, fill, tension: 0.2, pointStyle: 'rect' });
+  const L = { pointStyle: 'line' };
+  const sets = [
+    { ...ds('Produkcja dziś', grid.map(m => m <= d.now_min ? (act.get(m) ?? null) : null), css('--s-pv')), ...L },
+    { ...ds(`${N[d.main]} dziś`, line(T), css('--s-fc')), borderDash: [6, 4], ...L },
+    { ...ds('forecast.solar dziś', line(FS.today), css('--muted')), borderDash: [3, 3], borderWidth: 1.5, ...L },
+    { ...ds('ECMWF dziś', line(EC.today), css('--s-ecmwf')), borderDash: [8, 3], ...L },
+    { ...ds(`${N[d.main]} jutro`, line(J), css('--s-fc2')), borderDash: [2, 3], ...L },
+    { ...ds('ECMWF jutro', line(EC.tomorrow), css('--s-ecmwf')), borderDash: [2, 3], borderWidth: 1.5, ...L },
+    bandSet('_tmin', tMin, css('--s-fc'), false), bandSet('Rozrzut modeli dziś', tMax, css('--s-fc'), '-1'),
+    bandSet('_jmin', jMin, css('--s-fc2'), false), bandSet('Rozrzut modeli jutro', jMax, css('--s-fc2'), '-1'),
+  ];
+  const labels = grid.map(hm);
+  const nowIdx = d.now_min >= from && d.now_min <= to ? (d.now_min - from) / 10 : null;
+  const ref = T || J || FS.today;
+  if (!cFc) {
+    const o = baseOpts('kW'); o.scales.y.min = 0;
+    Object.assign(o.plugins.legend.labels, { usePointStyle: true, boxWidth: 24,
+      filter: (it, data) => !it.text.startsWith('_') &&
+        (data.datasets[it.datasetIndex].data || []).some(v => v != null && v > 0) });
+    o.plugins.tooltip.filter = it => !it.dataset.label.startsWith('_') && it.parsed.y != null;
+    o.plugins.tooltip.callbacks.label = c => {
+      const i = c.dataIndex, l = c.dataset.label;
+      if (l.startsWith('Rozrzut')) { const b = cFc.$bands || {}; const mn = (l.endsWith('dziś') ? b.tMin : b.jMin)?.[i];
+        return ` ${l}: ${mn?.toFixed(2)}–${c.parsed.y.toFixed(2)} kW`; }
+      return ` ${l}: ${c.parsed.y.toFixed(2)} kW`;
+    };
+    o.plugins.title = { display: true, text: '', align: 'start', color: css('--muted'),
+      font: { size: 12, weight: 'normal' }, padding: { bottom: 4 } };
+    cFc = new Chart($('cFc'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [nowLine] });
+  } else {
+    cFc.data = { labels, datasets: sets };
+  }
+  cFc.options.plugins.title.text = sr != null
+    ? `Wschód ${hm(sr)} · zachód ${hm(ss)} · wykres od ${hm(from)} do ${hm(to)}`
+    : `Wschód ~${hm(ref.sunrise + 15)} · zachód ~${hm(ref.sunset - 15)}`;
+  cFc.$bands = { tMin, jMin };
+  cFc.$nowIdx = nowIdx; cFc.update();
+}
+
+// ---- realna produkcja polaci ----
+let cPvs;
+async function loadPvStrings() {
+  let d;
+  try { d = await (await fetch('/api/pv_strings')).json(); } catch (e) { return; }
+  const col = { 'Południe': css('--s-south'), 'Wschód': css('--s-east'), 'Zachód': css('--s-west') };
+  const [sr, ss] = d.sun || [null, null];
+  const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+  const pts = sr == null ? d.points
+    : d.points.filter(p => toMin(p.t) >= sr + d.margin_min && toMin(p.t) <= ss - d.margin_min);
+  $('pvsempty').hidden = pts.length > 0;
+  const last = pts[pts.length - 1];
+  $('pvsstatus').textContent = (sr != null ? `wykres ${hm(sr + d.margin_min)}–${hm(ss - d.margin_min)} · ` : '')
+    + (last ? 'ostatni odczyt ' + last.t + ' · co 60 s' : '');
+  $('pvstiles').innerHTML = d.names.map(n => tile('PV ' + n + ' dziś', d.kwh[n], 'kWh',
+    (d.share[n] != null ? d.share[n] + ' % produkcji' : '') + (last ? ` · teraz ${kw(last[n])}` : ''))).join('');
+  if (!pts.length) return;
+  // os czasu dynamiczna: od pierwszego do ostatniego odczytu (w granicach wschod+30 .. zachod-30)
+  const byMin = new Map(pts.map(p => [toMin(p.t), p]));
+  const a = Math.max(sr != null ? Math.ceil(sr + d.margin_min) : 0, toMin(pts[0].t));
+  const b = Math.min(ss != null ? Math.floor(ss - d.margin_min) : 1439, toMin(last.t));
+  const mins = []; for (let m = a; m <= b; m++) mins.push(m);
+  const labels = mins.map(hm);
+  const sets = d.names.map(n => ({ ...ds('PV ' + n, mins.map(m => byMin.get(m)?.[n] ?? null), col[n]),
+    pointStyle: 'line', spanGaps: 3 }));
+  if (!cPvs) {
+    const o = baseOpts('kW'); o.scales.y.min = 0;
+    Object.assign(o.plugins.legend.labels, { usePointStyle: true, boxWidth: 24 });
+    cPvs = new Chart($('cPvs'), { type: 'line', data: { labels, datasets: sets }, options: o });
+  } else {
+    cPvs.data = { labels, datasets: sets }; cPvs.update();
+  }
+}
+
+// ---- ceny energii ----
+let cPrice;
+const zl = v => v == null ? null : v.toFixed(3);
+async function loadPrices() {
+  let d;
+  try { d = await (await fetch('/api/prices')).json(); } catch (e) { return; }
+  const st = d.status;
+  $('prstatus').textContent = st.error ? 'błąd: ' + st.error : 'PSE · ' + (d.tariff?.source || '');
+  const T = d.today, J = d.tomorrow;
+  const pts = [...T.points.map(p => ({ ...p, day: 'dziś' })), ...J.points.map(p => ({ ...p, day: 'jutro' }))];
+  $('prempty').hidden = pts.length > 0;
+  const nowTs = Date.now() / 1000;
+  const nowIdx = pts.findIndex(p => p.ts <= nowTs && nowTs < p.ts + 900);
+  const now = nowIdx >= 0 ? pts[nowIdx] : null;
+  const ch = J.cheapest.length ? J.cheapest : T.cheapest;
+  $('prtiles').innerHTML =
+    tile('Teraz – zakup', zl(now?.buy), 'zł/kWh', now ? now.zone : '') +
+    tile('Teraz – sprzedaż', zl(now?.sell), 'zł/kWh') +
+    tile('Śr. zakup dziś', zl(T.avg_buy), 'zł/kWh') +
+    tile('Śr. zakup jutro', zl(J.avg_buy), 'zł/kWh', J.points.length ? '' : 'jeszcze brak cen') +
+    tile(J.cheapest.length ? 'Najtańsze godziny jutro' : 'Najtańsze godziny dziś',
+      ch.length ? ch.map(c => c.hour.slice(0, 2)).join(', ') : null, '',
+      ch.length ? ch.map(c => `${c.hour} ${c.buy.toFixed(3)} zł`).join(' · ') : '');
+  $('prformula').textContent = `Zakup = ${d.formula.zakup}. Sprzedaż = ${d.formula.sprzedaz}.`;
+  if (!pts.length) return;
+  const labels = pts.map(p => `${p.day} ${p.t}`);
+  const sets = [
+    ds('Zakup', pts.map(p => p.buy), css('--s-buy')),
+    ds('Sprzedaż', pts.map(p => p.sell), css('--s-sell')),
+  ];
+  if (!cPrice) {
+    const o = baseOpts('zł');
+    o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(3)} zł/kWh`;
+    o.plugins.tooltip.callbacks.afterBody = items => {
+      const p = pts[items[0].dataIndex];
+      return p ? [`strefa: ${p.zone}`, `prąd z obsługą ${p.obsluga.toFixed(2)} + dystrybucja ${p.dist.toFixed(2)} + podatki ${p.podatki.toFixed(2)}`] : [];
+    };
+    o.scales.y.ticks.callback = v => v.toFixed(2) + ' zł';
+    cPrice = new Chart($('cPrice'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [nowLine] });
+  } else {
+    cPrice.data = { labels, datasets: sets };
+  }
+  cPrice.$nowIdx = nowIdx >= 0 ? nowIdx : null; cPrice.update();
+}
+
+// ---- sprawnosc wg mocy ----
+async function loadEff() {
+  const sel = $('effdays').value;
+  let date = current, days = sel;
+  if (sel === 'y') { const y = new Date(); y.setDate(y.getDate() - 1); date = y.toLocaleDateString('sv-SE'); days = 1; }
+  const d = await (await fetch(`/api/efficiency?date=${date}&days=${days}`)).json();
+  $('effinfo').textContent = `Dni z danymi w zestawieniu: ${d.n_days}. Dane dzienne zapisywane w bazie (tabela efficiency_daily), dzisiejszy dzień liczony na bieżąco.`;
+  const range = b => b.do == null ? `≥ ${b.od} kW` : `${b.od}–${b.do} kW`;
+  $('effbody').innerHTML = d.bins.length ? d.bins.map(b =>
+    `<tr${b.mala_probka ? ' style="color:var(--muted)" title="mniej niż 15 min danych – wynik orientacyjny"' : ''}><td>${range(b)}${b.mala_probka ? ' *' : ''}</td><td>${b.godzin.toFixed(2)}</td><td>${b.moc_sr_kw.toFixed(2)}</td><td>${b.e_in.toFixed(2)}</td>` +
+    `<td>${b.straty_kwh.toFixed(3)}</td><td>${b.strata_sr_w}</td>` +
+    `<td>${b.sprawnosc == null ? '–' : (() => { const c = b.sprawnosc >= 90 ? '--eff-good' : b.sprawnosc >= 70 ? '--eff-mid' : '--eff-bad';
+      return `<span class="effbar" style="width:${Math.max(4, Math.min(90, (b.sprawnosc - 50) * 1.8))}px;background:var(${c})"></span>` +
+        `<span style="color:var(${c});font-weight:600">${b.sprawnosc.toFixed(1)} %</span>`; })()}</td></tr>`
+  ).join('') : '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
+}
+$('effdays').onchange = loadEff;
+
+// ---- odczyty falownika ----
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function loadRegs() {
+  let d;
+  try { d = await (await fetch('/api/registers')).json(); } catch (e) { return; }
+  $('regstatus').textContent = d.ts ? 'odczyt ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') + ' · co 60 s'
+    : 'czekam na pierwszy odczyt…';
+  if (!d.ts) return;
+  $('regs').innerHTML = d.groups.map(g => `<div class="grp"><h3>${esc(g.group)}</h3><table><tbody>` +
+    g.items.map(it => {
+      const na = it.value == null;
+      const v = na ? 'brak' : esc(it.text ?? (typeof it.value === 'number' ? it.value.toLocaleString('pl-PL') : it.value)) +
+        (it.unit && !it.text ? ' ' + esc(it.unit) : '');
+      return `<tr><td class="a">${it.addr}</td><td>${esc(it.name)}</td><td class="v${na ? ' na' : ''}">${v}</td></tr>`;
+    }).join('') + '</tbody></table></div>').join('');
+}
+
+// ---- ustawienia (tylko odczyt) ----
+const RISK = { bezpieczne: 'bezpieczne', ostroznie: 'ostrożnie', nie_ruszac: 'nie ruszać' };
+const fmtVal = it => it.value == null ? 'brak' : esc(it.text ?? (typeof it.value === 'number'
+  ? it.value.toLocaleString('pl-PL') : it.value)) + (it.unit && !it.text ? ' ' + esc(it.unit) : '');
+async function loadSettings() {
+  let d;
+  try { d = await (await fetch('/api/settings')).json(); } catch (e) { return; }
+  $('setstatus').textContent = d.ts ? 'odczyt ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') + ' · co 5 min'
+    : 'czekam na pierwszy odczyt…';
+  if (d.ts) $('settings').innerHTML = d.groups.map(g => `<div class="grp"><h3>${esc(g.group)}</h3><table><tbody>` +
+    g.items.map(it => `<tr><td class="a">${it.addr}</td><td>${esc(it.name)}<br><span class="w">działa: ${esc(it.when)}</span></td>` +
+      `<td class="v${it.value == null ? ' na' : ''}">${fmtVal(it)}<br><span class="risk ${it.risk}">${RISK[it.risk]}</span></td></tr>`
+    ).join('') + '</tbody></table></div>').join('');
+  $('sethist').innerHTML = d.history.length ? d.history.map(h =>
+    `<tr><td>${new Date(h.ts * 1000).toLocaleString('pl-PL')}</td><td>${esc(h.name)}</td><td>${esc(h.value)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="empty">Brak zapisów.</td></tr>';
+}
+
+// ---- zakladki ----
+const charts = () => [cPower, cFc, cPrice, cPvs].filter(Boolean);
+function showTab(name) {
+  ['pv', 'set'].forEach(t => {
+    $('tab-' + t).hidden = t !== name;
+    $('tabbtn-' + t).setAttribute('aria-selected', String(t === name));
+  });
+  try { history.replaceState(null, '', name === 'pv' ? location.pathname : '#ustawienia'); } catch (e) {}
+  if (name === 'set') loadConfig();
+  setTimeout(() => charts().forEach(c => c.resize()), 0);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// ---- ustawienia aplikacji (config.ini) ----
+let cfgData = null;
+function planeRow(v) {
+  const [n = '', kwp = '', az = '0', tilt = '30'] = (v || '').split('|').map(x => x.trim());
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><input value="${n}" placeholder="np. Południe"></td><td><input value="${kwp}" placeholder="5.0"></td>` +
+    `<td><input value="${az}"></td><td><input value="${tilt}"></td><td><button class="fs-btn" type="button">usuń</button></td>`;
+  tr.querySelector('button').onclick = () => tr.remove();
+  $('cfg-planes').appendChild(tr);
+}
+async function loadConfig() {
+  let r;
+  try { r = await (await fetch('/api/config')).json(); } catch (e) { return; }
+  cfgData = r.config;
+  $('cfgfile').textContent = r.file;
+  document.querySelectorAll('#tab-set [data-k]').forEach(el => {
+    const [s, k] = el.dataset.k.split('.');
+    const v = (cfgData[s] || {})[k] ?? '';
+    if (el.tagName === 'SELECT' && v && ![...el.options].some(o => o.value === v)) el.add(new Option(v, v));
+    el.value = v;
+  });
+  $('cfg-planes').innerHTML = '';
+  Object.values(cfgData.polacie || {}).forEach(planeRow);
+  try {
+    const v = await (await fetch('/api/version')).json();
+    $('cfg-info').textContent = `Wersja ${v.version} · folder danych: ${v.data_dir} · ${v.db}`;
+  } catch (e) {}
+}
+function collectConfig() {
+  const out = {};
+  document.querySelectorAll('#tab-set [data-k]').forEach(el => {
+    const [s, k] = el.dataset.k.split('.');
+    (out[s] ??= {})[k] = el.value.trim();
+  });
+  out.polacie = {};
+  [...$('cfg-planes').rows].forEach((tr, i) => {
+    const f = [...tr.querySelectorAll('input')].map(x => x.value.trim().replace(',', '.'));
+    if (f[0] && f[1]) out.polacie['polac' + (i + 1)] = f.join(' | ');
+  });
+  return out;
+}
+async function saveConfig(restart) {
+  const msg = $('cfg-msg');
+  let r;
+  try { r = await (await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: collectConfig() }) })).json(); }
+  catch (e) { r = { ok: false, error: 'brak połączenia z aplikacją' }; }
+  msg.style.color = r.ok ? 'var(--eff-good)' : 'var(--eff-bad)';
+  if (!r.ok) { msg.textContent = '✗ ' + r.error; return; }
+  if (!restart) { msg.textContent = '✓ Zapisano – zmiany zadziałają po ponownym uruchomieniu.'; return; }
+  msg.textContent = 'Zapisano, uruchamianie ponownie…';
+  await fetch('/api/restart', { method: 'POST' }).catch(() => {});
+  const port = (collectConfig().serwer || {}).port || location.port;
+  setTimeout(() => { location.href = `${location.protocol}//${location.hostname}:${port}/`; }, 4000);
+}
+$('cfg-addplane').onclick = () => planeRow('');
+$('cfg-save').onclick = () => saveConfig(false);
+$('cfg-restart').onclick = () => saveConfig(true);
+$('cfg-stop').onclick = async () => {
+  if (!confirm('Zamknąć aplikację? Odczyty przestaną być zapisywane do czasu ponownego uruchomienia.')) return;
+  await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+  $('cfg-msg').style.color = 'var(--text-2)'; $('cfg-msg').textContent = 'Aplikacja została zamknięta.';
+};
+
+fetch('/api/version').then(r => r.json()).then(v => $('ver').textContent = 'v' + v.version).catch(() => {});
+refreshLive(); loadDay(current); loadForecast(); loadRegs(); loadSettings(); loadPrices(); loadPvStrings();
+if (location.hash === '#ustawienia') showTab('set');
+setInterval(loadPvStrings, 60000);
+setInterval(loadPrices, 300000);
+setInterval(loadRegs, 60000);
+setInterval(loadSettings, 300000);
+setInterval(loadForecast, 300000);
+setInterval(refreshLive, 5000);
+setInterval(() => { if (current === todayStr()) loadDay(current); }, 60000);
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.db
+*.db-shm
+*.db-wal
+*.log
+config.ini
+tariff_cache_*.json
+portable.txt

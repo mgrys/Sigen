@@ -1,0 +1,240 @@
+"""
+Pelna lista odczytow Sigenergy (59 rejestrow), pogrupowana.
+Wg Sigenergy Modbus Protocol V2.7. Uzywane przez app.py i tools/sigen_scan.py.
+"""
+import config
+
+PLANT = config.geti("falownik", "plant_id", 247)
+INV = config.geti("falownik", "inverter_id", 1)
+_SNAMES = {n: name for name, n in config.strings()}
+
+
+def _pv(n):
+    return f"PV{n} {_SNAMES[n]}" if n in _SNAMES and _SNAMES[n] != f"PV{n}" else f"PV{n}" + ("" if n in _SNAMES else " (nieużywany)")
+
+
+STAN_PRACY = {0: "standby", 1: "praca", 2: "awaria", 3: "wyłączony"}
+TRYB_EMS = {0: "maks. autokonsumpcja", 1: "Sigen AI", 2: "TOU (taryfa)", 7: "zdalne EMS"}
+TRYB_SIECI = {0: "praca z siecią", 1: "off-grid (auto)", 2: "off-grid (ręcznie)"}
+
+# (klucz, opis, slave, rejestr, liczba rej., typ, dzielnik, jednostka[, slownik])
+# typ: u = bez znaku, s = ze znakiem, str = tekst ASCII
+GROUPS = [
+    ("Moce na bieżąco", [
+        ("grid",        "Moc z licznika sieci (+pobór)", PLANT, 30005, 2, "s", 1000, "kW"),
+        ("grid_a",      "Sieć faza L1",                  PLANT, 30052, 2, "s", 1000, "kW"),
+        ("grid_b",      "Sieć faza L2",                  PLANT, 30054, 2, "s", 1000, "kW"),
+        ("grid_c",      "Sieć faza L3",                  PLANT, 30056, 2, "s", 1000, "kW"),
+        ("plant",       "Moc czynna instalacji",         PLANT, 30031, 2, "s", 1000, "kW"),
+        ("plant_q",     "Moc bierna instalacji",         PLANT, 30033, 2, "s", 1000, "kvar"),
+        ("pv",          "Moc PV",                        PLANT, 30035, 2, "s", 1000, "kW"),
+        ("bat",         "Moc magazynu (+ładowanie)",     PLANT, 30037, 2, "s", 1000, "kW"),
+    ]),
+    ("Magazyn", [
+        ("soc",         "SOC",                           PLANT, 30014, 1, "u", 10, "%"),
+        ("soh_ess",     "SOH magazynu (instalacja)",     PLANT, 30087, 1, "u", 10, "%"),
+        ("soh_bat",     "SOH baterii (falownik)",        INV,   30602, 1, "u", 10, "%"),
+        ("cap_ess",     "Pojemność znamionowa ESS",      PLANT, 30083, 2, "u", 100, "kWh"),
+        ("cap_bat",     "Pojemność baterii",             INV,   30548, 2, "u", 100, "kWh"),
+        ("soc_max",     "Limit ładowania SOC",           PLANT, 30085, 1, "u", 10, "%"),
+        ("soc_min",     "Limit rozładowania SOC",        PLANT, 30086, 1, "u", 10, "%"),
+        ("avail_chg",   "Dostępna energia do ładowania", PLANT, 30064, 2, "u", 100, "kWh"),
+        ("avail_dis",   "Dostępna energia do rozładowania", PLANT, 30066, 2, "u", 100, "kWh"),
+        ("cell_temp",   "Śr. temperatura ogniw",         INV,   30603, 1, "s", 10, "°C"),
+        ("cell_v",      "Śr. napięcie ogniwa",           INV,   30604, 1, "u", 1000, "V"),
+    ]),
+    ("Liczniki dzienne", [
+        ("load_day",    "Zużycie domu dziś",             PLANT, 30092, 2, "u", 100, "kWh"),
+        ("pv_day",      "Produkcja PV dziś",             INV,   31509, 2, "u", 100, "kWh"),
+        ("imp_day",     "Falownik: energia AC pobrana dziś", INV, 30560, 2, "u", 100, "kWh"),
+        ("exp_day",     "Falownik: energia AC oddana dziś", INV,  30554, 2, "u", 100, "kWh"),
+        ("chg_day",     "Ładowanie magazynu dziś",       INV,   30566, 2, "u", 100, "kWh"),
+        ("dis_day",     "Rozładowanie magazynu dziś",    INV,   30572, 2, "u", 100, "kWh"),
+    ]),
+    ("Liczniki narastające", [
+        ("pv_total",    "Produkcja PV (instalacja)",     PLANT, 30088, 4, "u", 100, "kWh"),
+        ("pv_total_inv", "Produkcja PV (falownik)",      INV,   31511, 2, "u", 100, "kWh"),
+        ("load_total",  "Zużycie domu",                  PLANT, 30094, 4, "u", 100, "kWh"),
+        ("chg_total",   "Ładowanie magazynu",            PLANT, 30200, 4, "u", 100, "kWh"),
+        ("dis_total",   "Rozładowanie magazynu",         PLANT, 30204, 4, "u", 100, "kWh"),
+        ("imp_total",   "Pobór z sieci",                 PLANT, 30216, 4, "u", 100, "kWh"),
+        ("exp_total",   "Oddane do sieci",               PLANT, 30220, 4, "u", 100, "kWh"),
+    ]),
+    ("Falownik", [
+        ("model",       "Model",                         INV,   30500, 15, "str", 1, ""),
+        ("serial",      "Numer seryjny",                 INV,   30515, 10, "str", 1, ""),
+        ("firmware",    "Firmware",                      INV,   30525, 15, "str", 1, ""),
+        ("rated_p",     "Moc znamionowa",                INV,   30540, 2, "u", 1000, "kW"),
+        ("pcs_temp",    "Temperatura falownika (PCS)",   INV,   31003, 1, "s", 10, "°C"),
+    ]),
+    ("Strona sieci", [
+        ("freq",        "Częstotliwość",                 INV,   31002, 1, "u", 100, "Hz"),
+        ("u_a",         "Napięcie L1",                   INV,   31011, 2, "u", 100, "V"),
+        ("u_b",         "Napięcie L2",                   INV,   31013, 2, "u", 100, "V"),
+        ("u_c",         "Napięcie L3",                   INV,   31015, 2, "u", 100, "V"),
+        ("i_a",         "Prąd L1",                       INV,   31017, 2, "s", 100, "A"),
+        ("i_b",         "Prąd L2",                       INV,   31019, 2, "s", 100, "A"),
+        ("i_c",         "Prąd L3",                       INV,   31021, 2, "s", 100, "A"),
+        ("pf",          "Współczynnik mocy",             INV,   31023, 1, "u", 1000, ""),
+    ]),
+    ("Strona PV", [
+        ("mppt",        "Liczba MPPT",                   INV,   31026, 1, "u", 1, ""),
+        ("pv1_u",       _pv(1) + " – napięcie", INV,   31027, 1, "s", 10, "V"),
+        ("pv1_i",       _pv(1) + " – prąd",     INV,   31028, 1, "s", 100, "A"),
+        ("pv2_u",       _pv(2) + " – napięcie", INV,   31029, 1, "s", 10, "V"),
+        ("pv2_i",       _pv(2) + " – prąd",     INV,   31030, 1, "s", 100, "A"),
+        ("pv3_u",       _pv(3) + " – napięcie", INV,   31031, 1, "s", 10, "V"),
+        ("pv3_i",       _pv(3) + " – prąd",     INV,   31032, 1, "s", 100, "A"),
+        ("pv4_u",       _pv(4) + " – napięcie", INV,   31033, 1, "s", 10, "V"),
+        ("pv4_i",       _pv(4) + " – prąd",     INV,   31034, 1, "s", 100, "A"),
+        ("riso",        "Rezystancja izolacji",          INV,   31037, 1, "u", 1000, "MΩ"),
+    ]),
+    ("Diagnostyka", [
+        ("ems_mode",    "Tryb pracy EMS",                PLANT, 30003, 1, "u", 1, "", TRYB_EMS),
+        ("plant_state", "Stan pracy instalacji",         PLANT, 30051, 1, "u", 1, "", STAN_PRACY),
+        ("grid_mode",   "Praca z siecią",                PLANT, 30009, 1, "u", 1, "", TRYB_SIECI),
+        ("inv_state",   "Stan pracy falownika",          INV,   30578, 1, "u", 1, "", STAN_PRACY),
+    ]),
+]
+
+ALL = [r for _, regs in GROUPS for r in regs]
+
+
+def decode(regs, typ, div):
+    """Big-endian, starsze slowo pierwsze."""
+    if typ == "str":
+        b = b"".join(r.to_bytes(2, "big") for r in regs)
+        return b.split(b"\0")[0].decode("ascii", "replace").strip()
+    v = 0
+    for r in regs:
+        v = (v << 16) | r
+    bits = 16 * len(regs)
+    if typ == "s" and v >= 1 << (bits - 1):
+        v -= 1 << bits
+    return round(v / div, 3) if div != 1 else v
+
+
+def read_all(client, read):
+    """Czyta wszystkie rejestry. read(client, addr, count, unit) -> odpowiedz pymodbus.
+
+    Zwraca {klucz: wartosc}; rejestr niedostepny -> None.
+    """
+    out = {}
+    for key, _name, unit, addr, count, typ, div, *_ in ALL:
+        rr = read(client, addr, count, unit)
+        out[key] = None if rr.isError() else decode(rr.registers, typ, div)
+    return out
+
+
+# Polacie PV: (nazwa, klucz napiecia, klucz pradu) - moc liczona jako U x I
+STRINGS = [(name, f"pv{n}_u", f"pv{n}_i") for name, n in config.strings()]
+
+
+def string_powers(values):
+    """{nazwa polaci: moc kW} z napiec i pradow stringow (None gdy brak odczytu)."""
+    out = {}
+    for name, ku, ki in STRINGS:
+        u, i = values.get(ku), values.get(ki)
+        out[name] = round(max(u * i, 0) / 1000, 3) if u is not None and i is not None else None
+    return out
+
+
+def grouped(values):
+    """Wartosci w strukturze grup do wyswietlenia."""
+    res = []
+    for gname, regs in GROUPS:
+        items = []
+        if gname == "Strona PV":
+            for name, p in string_powers(values).items():
+                items.append({"key": f"p_{name}", "name": f"{name} – moc (U×I)", "addr": "—",
+                              "value": p, "unit": "kW", "text": None})
+        for key, name, _unit, addr, _c, _t, _d, jm, *opt in regs:
+            v = values.get(key)
+            text = None
+            if v is not None and opt:
+                text = opt[0].get(v, f"kod {v}")
+            items.append({"key": key, "name": name, "addr": addr, "value": v, "unit": jm, "text": text})
+        res.append({"group": gname, "items": items})
+    return res
+
+
+# --- ustawienia (holding registers, funkcja 0x03) - TYLKO ODCZYT ----------
+# Wg Sigenergy Modbus Protocol V2.7, tabela 5-2 (plant) i 5-4 (falownik).
+# Rejestry tylko do zapisu (40000/40500 start-stop, 41000) celowo pominiete.
+WLACZONE = {0: "wyłączone", 1: "włączone"}
+REMOTE_EMS_MODE = {
+    0: "zdalne sterowanie PCS", 1: "standby", 2: "maks. autokonsumpcja",
+    3: "wymuszone ładowanie (najpierw sieć)", 4: "wymuszone ładowanie (najpierw PV)",
+    5: "wymuszone rozładowanie (najpierw PV)", 6: "wymuszone rozładowanie (najpierw magazyn)",
+}
+NO_LIMIT = 0xFFFFFFFF   # dla limitow U32: "brak limitu / wartosc nieustawiona"
+
+# (klucz, opis, slave, rejestr, liczba, typ, dzielnik, jednostka, ryzyko, kiedy dziala[, slownik])
+# ryzyko: bezpieczne / ostroznie / nie_ruszac
+SETTINGS_GROUPS = [
+    ("Magazyn – granice SOC", [
+        ("soc_charge_cut", "Górna granica ładowania", PLANT, 40047, 1, "u", 10, "%", "bezpieczne", "zawsze"),
+        ("soc_discharge_cut", "Dolna granica rozładowania", PLANT, 40048, 1, "u", 10, "%", "bezpieczne", "zawsze"),
+        ("soc_backup", "Rezerwa SOC (backup)", PLANT, 40046, 1, "u", 10, "%", "bezpieczne",
+         "przy pracy bez sieci"),
+    ]),
+    ("Limity mocy na przyłączu", [
+        ("grid_export_max", "Maks. eksport (punkt przyłączenia)", PLANT, 40038, 2, "u", 1000, "kW", "ostroznie",
+         "zawsze, wymaga licznika sieci"),
+        ("grid_import_max", "Maks. import (punkt przyłączenia)", PLANT, 40040, 2, "u", 1000, "kW", "ostroznie",
+         "zawsze, wymaga licznika sieci"),
+        ("pcs_export_max", "Maks. eksport falownika (PCS)", PLANT, 40042, 2, "u", 1000, "kW", "ostroznie", "zawsze"),
+        ("pcs_import_max", "Maks. import falownika (PCS)", PLANT, 40044, 2, "u", 1000, "kW", "ostroznie", "zawsze"),
+    ]),
+    ("Zdalne sterowanie (Remote EMS)", [
+        ("remote_ems", "Remote EMS", PLANT, 40029, 1, "u", 1, "", "ostroznie", "—", WLACZONE),
+        ("remote_ems_mode", "Tryb Remote EMS", PLANT, 40031, 1, "u", 1, "", "ostroznie",
+         "gdy Remote EMS włączone", REMOTE_EMS_MODE),
+        ("ess_charge_max", "Limit mocy ładowania", PLANT, 40032, 2, "u", 1000, "kW", "ostroznie", "tryby 3–4"),
+        ("ess_discharge_max", "Limit mocy rozładowania", PLANT, 40034, 2, "u", 1000, "kW", "ostroznie", "tryby 5–6"),
+        ("pv_max", "Limit mocy PV", PLANT, 40036, 2, "u", 1000, "kW", "ostroznie", "tryby 3–6"),
+    ]),
+    ("Zadawanie mocy (nie ruszać)", [
+        ("p_fixed", "Moc czynna – wartość zadana", PLANT, 40001, 2, "s", 1000, "kW", "nie_ruszac", "tryb 0"),
+        ("p_percent", "Moc czynna – % zadany", PLANT, 40005, 1, "s", 100, "%", "nie_ruszac", "tryb 0"),
+        ("q_fixed", "Moc bierna – wartość zadana", PLANT, 40003, 2, "s", 1000, "kvar", "nie_ruszac", "zawsze"),
+        ("q_s", "Moc bierna Q/S", PLANT, 40006, 1, "s", 100, "%", "nie_ruszac", "zawsze"),
+        ("pf", "Współczynnik mocy – zadany", PLANT, 40007, 1, "s", 1000, "", "nie_ruszac", "zawsze"),
+        ("phase_ctrl", "Sterowanie fazami niezależnie", PLANT, 40030, 1, "u", 1, "", "nie_ruszac", "—", WLACZONE),
+        ("inv_dispatch", "Sterowanie falownikiem (dispatch)", INV, 41500, 1, "u", 1, "", "nie_ruszac", "—",
+         WLACZONE),
+    ]),
+]
+
+SETTINGS = [r for _, regs in SETTINGS_GROUPS for r in regs]
+
+
+def read_settings(client, read_holding):
+    """Odczyt ustawien. read_holding(client, addr, count, unit). Zwraca {klucz: wartosc|None|'brak limitu'}."""
+    out = {}
+    for key, _n, unit, addr, count, typ, div, *_ in SETTINGS:
+        rr = read_holding(client, addr, count, unit)
+        if rr.isError():
+            out[key] = None
+        elif count == 2 and typ == "u" and decode(rr.registers, "u", 1) == NO_LIMIT:
+            out[key] = "brak limitu"
+        else:
+            out[key] = decode(rr.registers, typ, div)
+    return out
+
+
+def grouped_settings(values):
+    res = []
+    for gname, regs in SETTINGS_GROUPS:
+        items = []
+        for key, name, _u, addr, _c, _t, _d, jm, risk, when, *opt in regs:
+            v = values.get(key)
+            text = None
+            if isinstance(v, str):
+                text = v
+            elif v is not None and opt:
+                text = opt[0].get(v, f"kod {v}")
+            items.append({"key": key, "name": name, "addr": addr, "value": v, "unit": jm,
+                          "text": text, "risk": risk, "when": when})
+        res.append({"group": gname, "items": items})
+    return res

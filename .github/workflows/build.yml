@@ -1,0 +1,76 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyflakes
+      - run: python -m pyflakes *.py tools/*.py
+      - name: Smoke test (start bez falownika, API odpowiada)
+        run: |
+          mkdir -p /tmp/data
+          SIGEN_PV_DATA=/tmp/data timeout 25 python main.py --no-browser --port 8099 &
+          sleep 8
+          curl -fsS http://localhost:8099/api/version
+          curl -fsS http://localhost:8099/ -o /dev/null
+          curl -fsS http://localhost:8099/api/config -o /dev/null
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Wersja
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path app.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - run: pip install -r requirements.txt pyinstaller
+      - name: PyInstaller (SigenPVMonitor.exe)
+        run: pyinstaller --noconfirm --distpath dist --workpath build packaging/sigen_pv_monitor.spec
+      - name: Wersja przenosna (zip)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force portable | Out-Null
+          Copy-Item dist/SigenPVMonitor.exe, README.md, LICENSE, config.example.ini portable/
+          "Wersja przenosna: dane i config.ini sa w tym folderze." | Out-File -Encoding utf8 portable/portable.txt
+          Compress-Archive -Path portable/* -DestinationPath "dist/SigenPVMonitor-${{ steps.ver.outputs.version }}-portable.zip" -Force
+      - name: Instalator (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging/installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SigenPVMonitor-${{ steps.ver.outputs.version }}
+          path: |
+            dist/*-setup.exe
+            dist/*-portable.zip
+      - name: Wydanie na GitHub (tylko dla tagu v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*-setup.exe
+            dist/*-portable.zip
+          generate_release_notes: true
