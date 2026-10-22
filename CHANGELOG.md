@@ -2,6 +2,11 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.12.1] - 2026-10-23
+
+### Poprawiono
+- Budowanie aplikacji Android w GitHub Actions (w 1.12.0 plik APK nie trafił do wydania).
+
 ## [1.12.0] - 2026-10-23
 
 ### Dodano

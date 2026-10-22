@@ -77,14 +77,21 @@ jobs:
 
   android:
     needs: test
-    runs-on: ubuntu-latest
+    # obraz z gotowym Android SDK (ubuntu-latest przechodzi na Ubuntu 26 - tam setup-android nie dziala)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          test -n "$SDK" && test -d "$SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"

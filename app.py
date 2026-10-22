@@ -26,7 +26,7 @@ import strategy
 import registers
 import access
 
-__version__ = "1.12.0"
+__version__ = "1.12.1"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
