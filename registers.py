@@ -41,6 +41,8 @@ GROUPS = [
         ("avail_chg",   "Dostępna energia do ładowania", PLANT, 30064, 2, "u", 100, "kWh"),
         ("avail_dis",   "Dostępna energia do rozładowania", PLANT, 30066, 2, "u", 100, "kWh"),
         ("cell_temp",   "Śr. temperatura ogniw",         INV,   30603, 1, "s", 10, "°C"),
+        ("bat_t_max",   "Maks. temperatura baterii",     INV,   30620, 1, "s", 10, "°C"),
+        ("bat_t_min",   "Min. temperatura baterii",      INV,   30621, 1, "s", 10, "°C"),
         ("cell_v",      "Śr. napięcie ogniwa",           INV,   30604, 1, "u", 1000, "V"),
     ]),
     ("Liczniki dzienne", [
@@ -193,16 +195,6 @@ SETTINGS_GROUPS = [
         ("ess_charge_max", "Limit mocy ładowania", PLANT, 40032, 2, "u", 1000, "kW", "ostroznie", "tryby 3–4"),
         ("ess_discharge_max", "Limit mocy rozładowania", PLANT, 40034, 2, "u", 1000, "kW", "ostroznie", "tryby 5–6"),
         ("pv_max", "Limit mocy PV", PLANT, 40036, 2, "u", 1000, "kW", "ostroznie", "tryby 3–6"),
-    ]),
-    ("Zadawanie mocy (nie ruszać)", [
-        ("p_fixed", "Moc czynna – wartość zadana", PLANT, 40001, 2, "s", 1000, "kW", "nie_ruszac", "tryb 0"),
-        ("p_percent", "Moc czynna – % zadany", PLANT, 40005, 1, "s", 100, "%", "nie_ruszac", "tryb 0"),
-        ("q_fixed", "Moc bierna – wartość zadana", PLANT, 40003, 2, "s", 1000, "kvar", "nie_ruszac", "zawsze"),
-        ("q_s", "Moc bierna Q/S", PLANT, 40006, 1, "s", 100, "%", "nie_ruszac", "zawsze"),
-        ("pf", "Współczynnik mocy – zadany", PLANT, 40007, 1, "s", 1000, "", "nie_ruszac", "zawsze"),
-        ("phase_ctrl", "Sterowanie fazami niezależnie", PLANT, 40030, 1, "u", 1, "", "nie_ruszac", "—", WLACZONE),
-        ("inv_dispatch", "Sterowanie falownikiem (dispatch)", INV, 41500, 1, "u", 1, "", "nie_ruszac", "—",
-         WLACZONE),
     ]),
 ]
 

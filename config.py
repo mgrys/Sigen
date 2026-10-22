@@ -74,6 +74,14 @@ DEFAULTS = {
         "forecast_solar": "tak",         # forecast.solar (limit 12 zapytan/h)
         "korekta": "",                   # np. open_meteo=1.05, om_ecmwf=0.97
     },
+    "strategia": {                       # strategia osobista - tylko symulacja (nic nie trafia do falownika)
+        "pojemnosc_kwh": "",             # puste = odczyt z falownika
+        "moc_ladowania_kw": "5",         # maks. moc ladowania/rozladowania magazynu
+        "sprawnosc_ladowania": "0.95",
+        "sprawnosc_rozladowania": "0.95",
+        "wartosc_sprzedazy": "1.0",      # wartosc sprzedanej kWh = RCE x wspolczynnik (np. 0.8, gdy depozyt nie pokrywa calego rachunku)
+        "koszt_zuzycia_zl_kwh": "0.10",  # zuzycie baterii: zl za kWh oddana z magazynu (0 = pomijaj)
+    },
     "pstryk": {
         "api_key": "",                   # klucz API Pstryka (aplikacja Pstryk -> Integracje); puste = bez Pstryka
     },

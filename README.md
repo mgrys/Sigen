@@ -18,16 +18,19 @@ i pełna lista odczytów – w przeglądarce, na komputerze i telefonie w sieci 
   - Open-Meteo (6 modeli pogodowych: ECMWF, ICON-EU, UK Met Office, GFS, Météo-France i automatyczny),
   - forecast.solar,
   - porównanie z rzeczywistą produkcją i tabela trafności prognoz.
-- **Realna produkcja każdego stringu PV** (napięcie × prąd).
+- **Realna produkcja każdego stringu PV** (napięcie × prąd) – dzień oraz produkcja w miesiącach (wykres słupkowy z licznika falownika).
 - **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G13… operatorów Tauron, PGE,
   Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
+- **Temperatura ogniw magazynu** w czasie, z zakresem korzystnym dla ogniw LFP.
 - **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.
 - **Opcjonalnie dla klientów [Pstryka](https://pstryk.pl/):** po wpisaniu klucza API (aplikacja Pstryk → Integracje)
   w zakładce Ustawienia pojawia się licznik operatora (pobór i oddanie, porównanie z licznikami Sigena),
   rzeczywiste koszty dnia i miesiąca z rozbiciem oraz ceny godzinowe Pstryka na wykresie cen.
   Bez klucza dashboard działa jak dotąd.
+- **Strategia osobista – symulacja:** godzinowy plan magazynu na dziś i jutro (autokonsumpcja / standby /
+  ładowanie z sieci w tanich godzinach) z szacowaną oszczędnością. Tylko obliczenia – nic nie jest wysyłane do falownika.
 - **Sprawność falownika** w przedziałach mocy (dzień, 7/30 dni, cała historia).
-- **Wszystkie odczyty falownika** (59 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
+- **Wszystkie odczyty falownika** (61 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
 - Wszystkie ustawienia na stronie, w zakładce **Ustawienia**.
 
@@ -131,14 +134,22 @@ Wszystkie endpointy zwracają JSON, np. do własnych integracji:
 - `/api/day?date=RRRR-MM-DD`
 - `/api/forecast`
 - `/api/pv_strings`
+- `/api/pv_monthly`
 - `/api/prices`
+- `/api/strategy`
 - `/api/pstryk?date=RRRR-MM-DD` (tylko z kluczem API Pstryka)
 - `/api/efficiency?days=30`
 - `/api/registers`
 - `/api/settings`
+- `/api/bat_temps?days=1`
 - `/api/counters`
 - `/api/config`
 - `POST /api/discover`
+
+## Uwagi i zgłoszenia
+
+Błędy i pomysły zgłaszaj w [Issues](https://github.com/mgrys/Sigen/issues) albo formularzem na dole strony aplikacji.
+Autor: Marek Grys.
 
 ## Źródła danych i podziękowania
 

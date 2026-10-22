@@ -99,6 +99,37 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .alarmtile .al-item.afci { font-size: 24px; font-weight: 800; }
 .alarmtile .al-n { font-size: 11px; color: var(--muted); margin-top: 6px; }
 .pssub { font-size: 13px; font-weight: 650; color: var(--text-2); margin: 4px 0 8px; }
+.tile.c-red { border-color: color-mix(in srgb, var(--s-buy) 55%, var(--border)); background: color-mix(in srgb, var(--s-buy) 7%, transparent); }
+.tile.c-red .v { color: var(--s-buy); }
+.tile.c-green { border-color: color-mix(in srgb, var(--s-sell) 55%, var(--border)); background: color-mix(in srgb, var(--s-sell) 7%, transparent); }
+.tile.c-green .v { color: var(--s-sell); }
+.tile.c-blue { border-color: color-mix(in srgb, var(--s-load) 55%, var(--border)); background: color-mix(in srgb, var(--s-load) 7%, transparent); }
+.tile.c-blue .v { color: var(--s-load); }
+.stm { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
+.stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); }
+.pvsplit { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
+.pvmon { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+.pvmon .chart { height: 260px; }
+.pvmon-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 650; color: var(--text-2); margin-bottom: 4px; }
+@media (max-width: 860px) { .pvsplit { grid-template-columns: 1fr; } }
+.tiles.bt6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tiles.bt6 .v { font-size: 19px; white-space: nowrap; }
+@media (max-width: 900px) { .tiles.bt6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .tiles.bt6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.btgrp { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 12px; }
+.bt-range button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 6px; cursor: pointer; }
+.bt-range input { font: inherit; font-size: 12px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.bt-range button.on { border-color: var(--s-bat); color: var(--text); }
+footer a { color: var(--text-2); }
+.fb-card summary { cursor: pointer; list-style-position: inside; }
+.fb-card summary .status { margin-left: 6px; }
+.fb-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 12px; }
+.fb-form label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--text-2); }
+.fb-form .fb-wide { grid-column: 1 / -1; }
+.fb-form .fb-chk { flex-direction: row; align-items: center; gap: 6px; }
+.fb-form input:not([type=checkbox]), .fb-form select, .fb-form textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.fb-form textarea { resize: vertical; }
+@media (max-width: 600px) { .fb-form { grid-template-columns: 1fr; } }
 .risk { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .risk.bezpieczne { color: var(--ok); border-color: var(--ok); }
 .risk.ostroznie { color: var(--s-grid); border-color: var(--s-grid); }
@@ -218,7 +249,13 @@ th:first-child, td:first-child { text-align: left; }
       <span class="status" id="pvsstatus"></span>
     </div>
     <div class="tiles" id="pvstiles"></div>
-    <div class="chart"><canvas id="cPvs"></canvas></div>
+    <div class="pvsplit">
+      <div class="chart"><canvas id="cPvs"></canvas></div>
+      <div class="pvmon">
+        <div class="pvmon-h"><span>Produkcja w miesiącach</span><span class="status" id="pvmstatus"></span></div>
+        <div class="chart"><canvas id="cPvm"></canvas></div>
+      </div>
+    </div>
     <div class="empty" id="pvsempty" hidden>Brak danych ze stringów na dziś – zapis co 60 s od uruchomienia wersji 1.11.</div>
     <p class="status" style="margin-top:10px">Moc połaci = napięcie × prąd stringu (po stronie DC, przed falownikiem).
       Wschód i Zachód pracują na wspólnym MPPT – mają to samo napięcie, różnią się prądem.</p>
@@ -233,6 +270,31 @@ th:first-child, td:first-child { text-align: left; }
     <div class="chart"><canvas id="cPrice"></canvas></div>
     <div class="empty" id="prempty" hidden>Brak cen – pobieram z PSE (ceny na jutro po ok. 13:40).</div>
     <p class="status" style="margin-top:10px" id="prformula"></p>
+  </section>
+
+  <section class="card" id="stcard">
+    <div class="daynav">
+      <h2>Strategia osobista – symulacja</h2>
+      <span class="status" id="ststatus"></span>
+    </div>
+    <div class="tiles" id="sttiles"></div>
+    <div class="chart"><canvas id="cSt"></canvas></div>
+    <div class="empty" id="stempty" hidden></div>
+    <details>
+      <summary>Plan godzinowy</summary>
+      <div style="overflow-x:auto"><table><thead><tr><th>Godz.</th><th>Cena zł/kWh</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
+        <th>Z sieci kWh</th><th>SOC plan</th><th>SOC bez strategii</th><th>Koszt plan / bez</th></tr></thead><tbody id="stbody"></tbody></table></div>
+    </details>
+    <details>
+      <summary>Jak to działa</summary>
+      <p class="status" style="display:block;margin:6px 0 0">Okno: dziś od 00:00 do jutra 24:00 – minione godziny pokazują rzeczywiste odczyty, a dla każdej kolejnej godziny wybierany jest tryb magazynu, przy którym łączny koszt energii z sieci jest najmniejszy:
+        <b>autokonsumpcja</b> (jak teraz), <b>standby</b> (magazyn czeka, dom bierze prąd z sieci – np. tania noc zimą, gdy energię z magazynu warto zachować na drogi szczyt)
+        albo <b>ładowanie z sieci</b> w najtańszych godzinach. Uwzględniane są: prognoza PV, typowe zużycie domu w danej godzinie (średnia z 14 dni), ceny godzinowe,
+        sprawność ładowania i rozładowania, granice SOC z falownika, koszt zużycia baterii za każdą kWh oddaną z magazynu i cena sprzedaży (RCE × współczynnik).
+        Gdy na jutro nie ma jeszcze cen, przyjmowane są ceny z dziś, a cena sprzedaży jest liczona ostrożniej (× 0,9). Słupki: zakup w dół, sprzedaż w górę (zł na godzinę). Latem, gdy PV i tak zapełni magazyn, plan zwykle zostaje przy autokonsumpcji.
+        Energia zostawiona w magazynie na koniec okresu jest wyceniana ostrożnie (po cenie najtańszych godzin). Porównanie „bez strategii” to ta sama prognoza i ceny przy samej autokonsumpcji.
+        <b>To tylko symulacja – nic nie jest wysyłane do falownika.</b></p>
+    </details>
   </section>
 
   <section class="card">
@@ -308,6 +370,22 @@ th:first-child, td:first-child { text-align: left; }
     </div>
     <div id="alarms"></div>
     <div class="regs" id="settings"></div>
+    <div class="grp btgrp">
+      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;font-size:14px">Temperatura ogniw magazynu i falownika</h3>
+        <span class="bt-range"><button id="bt-prev" aria-label="Poprzedni dzień">‹</button><input type="date" id="bt-date">
+          <button id="bt-next" aria-label="Następny dzień">›</button><button id="bt-today">Dziś</button>
+          <button data-d="1" class="on">doba</button><button data-d="7">7 dni</button><button data-d="30">30 dni</button></span>
+        <span class="status" id="btstatus"></span></div>
+      <div class="tiles bt6" id="bttiles"></div>
+      <div class="chart"><canvas id="cBt"></canvas></div>
+      <div class="empty" id="btempty" hidden>Brak zapisów temperatury – zapis co 60 s od wersji 1.32.</div>
+      <p class="status" style="margin-top:6px;display:block"><b>Ogniwa</b> – zielone pole: zakres korzystny dla ogniw LFP (15–35 °C, najlepiej ok. 20–30 °C).
+        Poniżej ok. 10 °C BMS ogranicza ładowanie (ryzyko osadzania litu); poniżej 0 °C bateria SigenStor najpierw się grzeje (do ok. 2 h), dopiero potem ładuje.
+        Powyżej ok. 35–40 °C szybciej postępuje starzenie. Zakres pracy SigenStor: −20…55 °C.<br>
+        <b>Falownik</b> – linia pokazuje temperaturę <b>wewnętrzną</b> części mocy (rejestr 31003), przy pracy wyraźnie wyższą od otoczenia.
+        Wytyczne Sigen dotyczą temperatury <b>otoczenia</b>: zalecana 10–35 °C, powyżej 40 °C możliwe ograniczanie mocy (pomarańczowa linia), maks. zakres pracy TP2 −30…60 °C.
+        Sigen nie publikuje limitu temperatury wewnętrznej PCS.</p>
+    </div>
     <details>
       <summary>Historia zmian ustawień i alarmów</summary>
       <table><thead><tr><th>Czas</th><th>Ustawienie</th><th>Wartość</th></tr></thead>
@@ -399,8 +477,26 @@ th:first-child, td:first-child { text-align: left; }
   </div>
 
 
+  <section class="card fb-card">
+    <details id="fb">
+      <summary><b>Masz uwagi lub pomysł?</b> <span class="status">Napisz do autora – każda informacja zwrotna pomaga rozwijać aplikację.</span></summary>
+      <div class="fb-form">
+        <label>Rodzaj<select id="fb-kind"><option>Uwaga / sugestia</option><option>Błąd</option><option>Pomysł na funkcję</option><option>Pytanie</option></select></label>
+        <label>Twój kontakt (opcjonalnie)<input id="fb-from" placeholder="e-mail lub imię" autocomplete="off"></label>
+        <label class="fb-wide">Wiadomość<textarea id="fb-msg" rows="5" maxlength="1500" placeholder="Co działa, co nie działa, czego brakuje…"></textarea></label>
+        <label class="fb-wide fb-chk"><input type="checkbox" id="fb-diag" checked> dołącz wersję aplikacji i przeglądarki (bez adresów IP i kluczy)</label>
+        <div class="fb-wide fs-act">
+          <button class="fs-btn primary" id="fb-mail" type="button">Wyślij e-mailem</button>
+          <button class="fs-btn" id="fb-gh" type="button">Zgłoś na GitHubie</button>
+          <span class="status" id="fb-info"></span>
+        </div>
+      </div>
+    </details>
+  </section>
+
   <footer style="text-align:center;color:var(--muted);font-size:12px;padding:8px 0 16px">Sigen PV Monitor <span id="ver"></span>
-    · nieoficjalny projekt, niezwiązany z Sigenergy</footer>
+    · autor: <b>Marek Grys</b> · <a href="https://github.com/mgrys/Sigen" target="_blank" rel="noopener">github.com/mgrys/Sigen</a>
+    · licencja MIT · nieoficjalny projekt, niezwiązany z Sigenergy</footer>
 </main>
 
 <script>
@@ -472,6 +568,9 @@ function baseOpts(unit) {
 }
 function ds(label, data, color) {
   return { label, data, borderColor: color, backgroundColor: color, fill: false };
+}
+function ctile(cls, t, v, unit, note) {
+  return tile(t, v, unit, note).replace('<div class="tile">', `<div class="tile ${cls}">`);
 }
 function tile(t, v, unit, note) {
   return `<div class="tile"><div class="t">${t}</div><div class="v">${v ?? '–'} <small>${v == null ? '' : unit}</small></div>` +
@@ -560,7 +659,7 @@ const fcWhen = f => {
   if (!f) return '';
   const at = f.fetched ? fmtDT(f.fetched) : '–';
   if (f.kind === 'dzien_wczesniej')
-    return `<br>prognoza z dnia poprzedniego (${at})` + (f.latest_kwh != null && f.latest_kwh !== f.total_kwh ? ` · aktualna ${f.latest_kwh} kWh` : '');
+    return `<br>prognoza z dnia poprzedniego (${at})` + (f.latest_kwh != null && f.latest_kwh !== f.total_kwh ? ` · aktualna (pobrana ${fmtDT(f.latest_fetched)}): ${f.latest_kwh} kWh na cały dzień` : '');
   if (f.kind === 'do_polnocy') return `<br>aktualizowana do północy · ostatnio ${at}`;
   return `<br><span style="color:var(--eff-mid)">brak prognozy z dnia poprzedniego – bieżąca (${at})</span>`;
 };
@@ -578,15 +677,21 @@ async function loadForecast() {
     return v.length ? [Math.min(...v), Math.max(...v)] : null;
   };
   const rT = range('today'), rJ = range('tomorrow');
-  const note = (r, fs, ec) => [ec ? `ECMWF ${ec.total_kwh}` : '', fs ? `forecast.solar ${fs.total_kwh}` : '',
+  const OM = S.open_meteo || {};
+  const note = (r, fs, ec, om) => [d.main !== 'open_meteo' && om ? `Open-Meteo ${om.total_kwh}` : '',
+    d.main !== 'om_ecmwf' && ec ? `ECMWF ${ec.total_kwh}` : '', d.main !== 'forecast_solar' && fs ? `forecast.solar ${fs.total_kwh}` : '',
     r ? `modele ${r[0].toFixed(1)}–${r[1].toFixed(1)}` : ''].filter(Boolean).join(' · ');
+  const nowHM = hm(d.now_min);
+  const fcSrc = T ? `${N[d.main]}${T.kind === 'dzien_wczesniej' ? ' z ' + fmtDT(T.fetched) : ' (bieżąca)'}` : '';
   const pct = T && d.forecast_until_now_kwh > 0.05 ? Math.round(100 * d.actual_kwh / d.forecast_until_now_kwh) : null;
   $('fctiles').innerHTML =
-    tile('Prognoza na dziś', T?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rT, FS.today, EC.today) + fcWhen(T)) +
+    tile('Prognoza na dziś', T?.total_kwh, 'kWh', '<b>' + N[d.main] + '</b> (główna) · cały dzień' + fcWhen(T) +
+      (note(rT, FS.today, EC.today, OM.today) ? '<br>dla porównania: ' + note(rT, FS.today, EC.today, OM.today) : '')) +
     tile('Wyprodukowano dziś', d.actual_kwh, 'kWh', d.actual_src === 'falownik' ? 'licznik falownika' : 'obliczone z mocy') +
-    tile('Prognoza do teraz', d.forecast_until_now_kwh, 'kWh') +
-    tile('Realizacja prognozy', pct, '%', T ? (T.kind === 'dzien_wczesniej' ? 'względem prognozy z dnia poprzedniego' : 'względem prognozy bieżącej') : '') +
-    tile('Prognoza na jutro', J?.total_kwh, 'kWh', N[d.main] + ' · ' + note(rJ, FS.tomorrow, EC.tomorrow) + fcWhen(J)) +
+    tile('Prognoza do teraz', d.forecast_until_now_kwh, 'kWh', T ? `od wschodu do ${nowHM} · ${fcSrc}` : '') +
+    tile('Realizacja prognozy', pct, '%', pct != null ? `wyprodukowano ${d.actual_kwh} z ${d.forecast_until_now_kwh} kWh przewidzianych do ${nowHM} (${fcSrc})` : '') +
+    tile('Prognoza na jutro', J?.total_kwh, 'kWh', '<b>' + N[d.main] + '</b> (główna) · cały dzień' + fcWhen(J) +
+      (note(rJ, FS.tomorrow, EC.tomorrow, OM.tomorrow) ? '<br>dla porównania: ' + note(rJ, FS.tomorrow, EC.tomorrow, OM.tomorrow) : '')) +
     tile('Szczyt jutro', J ? J.peak_kw : null, J ? 'kW o ' + hm(J.peak_min) : '');
   $('fcempty').hidden = !!(T || J);
 
@@ -698,6 +803,32 @@ async function loadPvStrings() {
 }
 
 
+
+// ---- produkcja PV w miesiacach ----
+let cPvm;
+async function loadPvMonthly() {
+  let d;
+  try { d = await (await fetch('/api/pv_monthly')).json(); } catch (e) { return; }
+  const M = d.months || [];
+  $('pvmstatus').textContent = d.total != null ? `licznik: ${d.total.toLocaleString('pl-PL')} kWh` : 'brak danych';
+  const labels = M.map(m => m.label);
+  const sets = [{ label: 'Produkcja PV', data: M.map(m => m.kwh), backgroundColor: css('--s-pv'), borderWidth: 0, borderRadius: 4,
+    maxBarThickness: 60 }];
+  if (!cPvm) {
+    const o = baseOpts('kWh');
+    o.scales.y.min = 0;
+    o.scales.y.ticks.callback = v => v + ' kWh';
+    o.plugins.legend.display = false;
+    o.plugins.tooltip.callbacks.label = c => ` Produkcja PV: ${c.parsed.y.toFixed(1)} kWh`;
+    o.plugins.tooltip.callbacks.footer = it => {
+      const m = cPvm.$m[it[0].dataIndex];
+      return m ? [`${m.days} dni z odczytami`].concat(m.pre > 0.05 ? [`w tym ${m.pre.toFixed(1)} kWh sprzed startu zapisu`] : []) : [];
+    };
+    cPvm = new Chart($('cPvm'), { type: 'bar', data: { labels, datasets: sets }, options: o });
+  } else { cPvm.data = { labels, datasets: sets }; }
+  cPvm.$m = M; cPvm.update();
+}
+
 // ---- Pstryk (opcjonalnie - tylko z kluczem API) ----
 const zl2 = v => v == null ? null : v.toFixed(2);
 async function loadPstryk(date) {
@@ -714,16 +845,16 @@ async function loadPstryk(date) {
   const lastH = D.last_ts ? new Date(D.last_ts * 1000).getHours() + 1 : null;
   const upto = D.hours && D.hours < 24 && lastH ? ` · dane do ${String(lastH).padStart(2, '0')}:00` : '';
   $('pstiles').innerHTML = !D.hours ? '<div class="empty">Brak danych licznika dla tego dnia.</div>' :
-    tile('Pobór (licznik)', D.imp.toFixed(3), 'kWh', diff(D.imp, S.imp)) +
-    tile('Oddanie (licznik)', D.exp.toFixed(3), 'kWh', diff(D.exp, S.exp)) +
-    tile('Koszt dnia', zl2(D.cost), 'zł', `w tym stałe ok. ${zl2(D.fixed_gross)} zł${upto}`) +
-    tile('Sprzedaż energii', zl2(D.sold), 'zł') +
-    tile('Bilans dnia', zl2(D.balance), 'zł', 'koszt − sprzedaż');
-  $('psmtitle').textContent = `Miesiąc: ${M.label}` + (M.days ? ` (${M.days} dni z danymi)` : '');
+    ctile('c-red', 'Pobór (licznik)', D.imp.toFixed(3), 'kWh', diff(D.imp, S.imp)) +
+    ctile('c-green', 'Oddanie (licznik)', D.exp.toFixed(3), 'kWh', diff(D.exp, S.exp)) +
+    ctile('c-red', 'Koszt dnia', zl2(D.cost), 'zł', `w tym stałe ok. ${zl2(D.fixed_gross)} zł${upto}`) +
+    ctile('c-green', 'Sprzedaż energii', zl2(D.sold), 'zł') +
+    ctile('c-blue', 'Bilans dnia', zl2(D.balance), 'zł', 'koszt − sprzedaż');
+  $('psmtitle').textContent = `Miesiąc: ${M.label}` + (M.days ? ` (${M.days} ${M.days === 1 ? 'dzień' : 'dni'} z danymi)` : '');
   $('psmonth').innerHTML = !M.hours ? '<div class="empty">Brak danych w tym miesiącu.</div>' :
-    tile('Koszt miesiąca', zl2(M.cost), 'zł', `w tym stałe ok. ${zl2(M.fixed_gross)} zł`) +
-    tile('Pobór', M.imp.toFixed(2), 'kWh') + tile('Oddanie', M.exp.toFixed(2), 'kWh') +
-    tile('Sprzedaż', zl2(M.sold), 'zł') + tile('Bilans', zl2(M.balance), 'zł', 'koszt − sprzedaż');
+    ctile('c-red', 'Koszt miesiąca', zl2(M.cost), 'zł', `w tym stałe ok. ${zl2(M.fixed_gross)} zł`) +
+    ctile('c-red', 'Pobór', M.imp.toFixed(2), 'kWh') + ctile('c-green', 'Oddanie', M.exp.toFixed(2), 'kWh') +
+    ctile('c-green', 'Sprzedaż', zl2(M.sold), 'zł') + ctile('c-blue', 'Bilans', zl2(M.balance), 'zł', 'koszt − sprzedaż');
   const rows = [['Energia (netto)', 'energy_net'], ['Dystrybucja zmienna (netto)', 'dist_var'], ['Dystrybucja stała (netto)', 'dist_fix'],
     ['Opłata handlowa (netto)', 'service'], ['Opłata mocowa (netto)', 'power_fee'], ['Akcyza', 'excise'], ['VAT', 'vat']];
   $('pscost').innerHTML = rows.map(([n, k]) => `<tr><td>${n}</td><td>${zl2(D[k]) ?? '–'}</td><td>${zl2(M[k]) ?? '–'}</td></tr>`).join('') +
@@ -732,6 +863,57 @@ async function loadPstryk(date) {
   const f = (v, n) => v == null ? '–' : v.toFixed(n);
   $('pshours').innerHTML = d.hours.map(h => `<tr><td>${new Date(h.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td>` +
     `<td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td></tr>`).join('');
+}
+
+
+// ---- strategia osobista (symulacja) ----
+let cSt;
+async function loadStrategy() {
+  let d;
+  try { d = await (await fetch('/api/strategy')).json(); } catch (e) { return; }
+  const em = $('stempty');
+  if (!d.ok) { em.hidden = false; em.textContent = 'Symulacja niedostępna: ' + (d.error || ''); $('sttiles').innerHTML = ''; $('ststatus').textContent = ''; return; }
+  em.hidden = true;
+  const P = d.params, T = d.totals, n = d.now, x = d.next;
+  $('ststatus').textContent = `przeliczono ${new Date(d.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ceny: ${d.price_source} · tylko symulacja`;
+  const col = v => v >= 0.005 ? 'c-green' : v <= -0.005 ? 'c-red' : 'c-blue';
+  const sav = (lbl, t) => !t ? '' : ctile(col(t.saving_total), lbl, t.saving_total.toFixed(2), 'zł',
+    `plan ${t.plan.toFixed(2)} zł · bez strategii ${t.base.toFixed(2)} zł` + (t.grid_charge ? ` · z sieci do magazynu ${t.grid_charge.toFixed(1)} kWh` : '') +
+    (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFixed(2)} zł` : ''));
+  $('sttiles').innerHTML =
+    tile('Teraz wg planu', esc(n.label), '', `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)`) +
+    tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? esc(x.label) : 'bez zmian do końca jutra') +
+    sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) +
+    ctile('c-blue', 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
+      `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · sprzedaż = RCE × ${P.sell_factor}`);
+  const H = d.hours, labels = H.map(h => `${h.day} ${h.t}`);
+  const money = h => h.buy == null ? 0 : h.grid > 0 ? -h.grid * h.buy : -h.grid * h.sell;   // bez kosztu zuzycia baterii
+  const sets = [
+    { ...ds('SOC – plan', H.map(h => h.soc), css('--s-bat')), yAxisID: 'y' },
+    { ...ds('SOC – bez strategii', H.map(h => h.base_soc), css('--muted')), yAxisID: 'y', borderDash: [4, 4] },
+    { ...ds('Cena zakupu', H.map(h => h.buy), css('--s-buy')), yAxisID: 'y1', stepped: true, borderWidth: 1.5 },
+    { ...ds('Cena sprzedaży', H.map(h => h.sell), css('--s-sell')), yAxisID: 'y1', stepped: true, borderWidth: 1.5 },
+    { ...ds('Zakup (−) / sprzedaż (+) – plan', H.map(money), css('--s-grid')), yAxisID: 'y2', type: 'bar', borderWidth: 0,
+      backgroundColor: H.map(h => money(h) < 0 ? css('--s-buy') : css('--s-sell')) },
+  ];
+  if (!cSt) {
+    const o = baseOpts('%');
+    o.scales.y.min = 0; o.scales.y.max = 100;
+    o.scales.y1 = { position: 'right', grid: { display: false }, ticks: { color: css('--muted'), callback: v => v.toFixed(2) + ' zł' } };
+    o.scales.y2 = { position: 'left', offset: false, grid: { display: false }, ticks: { display: false } };
+    o.plugins.tooltip.callbacks.label = c => c.dataset.yAxisID === 'y1' ? ` ${c.dataset.label}: ${c.parsed.y.toFixed(3)} zł/kWh`
+      : c.dataset.yAxisID === 'y2' ? ` ${c.parsed.y >= 0 ? 'sprzedaż' : 'zakup'}: ${Math.abs(c.parsed.y).toFixed(2)} zł` : ` ${c.dataset.label}: ${c.parsed.y.toFixed(0)} %`;
+    o.plugins.tooltip.callbacks.afterBody = it => { const h = cSt.$h[it[0].dataIndex]; return h ? [`plan: ${h.label}`, `sieć: ${h.grid >= 0 ? 'pobór ' + h.grid.toFixed(2) : 'oddanie ' + (-h.grid).toFixed(2)} kWh`] : []; };
+    cSt = new Chart($('cSt'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [nowLine] });
+  } else { cSt.data = { labels, datasets: sets }; }
+  const mx = Math.max(0.5, ...H.map(h => Math.abs(money(h))));
+  cSt.options.scales.y2.min = -mx; cSt.options.scales.y2.max = mx;   // zero na srodku: zakup w dol, sprzedaz w gore
+  cSt.$h = H; cSt.$nowIdx = d.now_index || null; cSt.update();
+  const f = (v, k) => v == null ? '–' : v.toFixed(k);
+  $('stbody').innerHTML = H.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? '*' : ''}</td><td>${f(h.load, 2)}</td><td>${f(h.pv, 2)}</td>` +
+    `<td><span class="stm ${h.mode}">${esc(h.label)}</span></td><td>${f(Math.max(h.grid, 0), 2)}</td><td>${h.soc == null ? '–' : f(h.soc, 0) + ' %'}</td><td>${h.base_soc == null ? '–' : f(h.base_soc, 0) + ' %'}</td>` +
+    `<td>${f(h.cost, 2)} / ${f(h.base_cost, 2)}</td></tr>`).join('') +
+    (H.some(h => h.est) ? '<tr><td colspan="9" class="status">* brak cen na jutro – przyjęto ceny z dziś z tej samej godziny</td></tr>' : '');
 }
 
 // ---- ceny energii ----
@@ -858,8 +1040,102 @@ async function loadSettings() {
     : '<tr><td colspan="3" class="empty">Brak zapisów.</td></tr>';
 }
 
+
+// ---- temperatura ogniw ----
+let cBt, btDays = 1;
+const optBand = {
+  id: 'optBand',
+  beforeDatasetsDraw(chart) {
+    const o = chart.$opt; if (!o) return;
+    const y = chart.scales.y, { left, right } = chart.chartArea, c = chart.ctx;
+    const t = y.getPixelForValue(o[1]), b = y.getPixelForValue(o[0]);
+    c.fillStyle = css('--ok') + '22'; c.fillRect(left, t, right - left, b - t); c.restore();
+  }
+};
+async function loadBatTemps() {
+  let d;
+  const day = btDate || todayStr();
+  try { d = await (await fetch(`/api/bat_temps?date=${day}&days=${btDays}`)).json(); } catch (e) { return; }
+  $('bt-date').value = day;
+  const isToday = day === todayStr();
+  const P = d.points, S = d.stats, R = d.rooms || [];
+  const lastOf = k => { for (let i = P.length - 1; i >= 0; i--) if (P[i][k] != null) return P[i]; return null; };
+  const last = lastOf('avg') || {}, lastP = lastOf('pcs') || {};
+  const has = P.some(p => p.avg != null || p.pcs != null);
+  $('btempty').hidden = has;
+  const f = v => v == null ? null : v.toFixed(1);
+  const inOpt = v => v != null && v >= d.opt[0] && v <= d.opt[1];
+  const when = isToday && btDays === 1 ? 'teraz' : 'ostatnio';
+  $('btstatus').textContent = last.ts ? 'ostatni pomiar ' + new Date(last.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const pv = P.map(p => p.pcs).filter(v => v != null);
+  const pmax = pv.length ? Math.max(...pv) : null, pavg = pv.length ? pv.reduce((a, b) => a + b, 0) / pv.length : null;
+  const room = R.find(r => r.room) || null;
+  const rLast = room ? [...room.temp].reverse().find(v => v != null) : null;
+  const rv = room ? room.temp.filter(v => v != null) : [];
+  $('bttiles').innerHTML = !has ? '' :
+    ctile(inOpt(last.avg) ? 'c-green' : 'c-red', 'Ogniwa ' + when, f(last.avg), '°C', `min ${f(last.min) ?? '–'} · maks ${f(last.max) ?? '–'}`) +
+    tile('Ogniwa w okresie', S.min != null ? `${f(S.min)}…${f(S.max)}` : null, '°C', `średnio ${f(S.avg)} °C`) +
+    ctile(S.in_opt >= 90 ? 'c-green' : S.in_opt >= 50 ? 'c-blue' : 'c-red', 'Ogniwa w zakresie', S.in_opt, '%', `${d.opt[0]}–${d.opt[1]} °C`) +
+    ctile(lastP.pcs == null ? 'c-blue' : lastP.pcs < 40 ? 'c-green' : lastP.pcs < 60 ? 'c-blue' : 'c-red', 'Falownik ' + when, f(lastP.pcs), '°C', 'wewnętrzna PCS') +
+    tile('Falownik w okresie', f(pmax), '°C', `maks. · średnio ${f(pavg)} °C`) +
+    (room ? ctile(rLast != null && rLast >= 10 && rLast <= 35 ? 'c-green' : 'c-red', 'Pomieszczenie ' + when, f(rLast), '°C',
+        `${esc(room.name)} · ${rv.length ? f(Math.min(...rv)) + '…' + f(Math.max(...rv)) : ''}`)
+      : tile('Falownik − ogniwa', lastP.pcs != null && last.avg != null ? (lastP.pcs - last.avg).toFixed(1) : null, '°C', 'różnica'));
+  const fmt = btDays === 1 ? { hour: '2-digit', minute: '2-digit' } : { weekday: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+  const labels = P.map(p => new Date(p.ts * 1000).toLocaleString('pl-PL', fmt));
+  const sets = [
+    { ...ds('Ogniwa – maks.', P.map(p => p.max), css('--s-buy')), borderWidth: 1, borderDash: [3, 3] },
+    { ...ds('Ogniwa – średnio', P.map(p => p.avg), css('--s-bat')), borderWidth: 2.5 },
+    { ...ds('Ogniwa – min.', P.map(p => p.min), css('--s-load')), borderWidth: 1, borderDash: [3, 3] },
+    { ...ds('Falownik (PCS)', P.map(p => p.pcs), css('--s-pv')), borderWidth: 2 },
+  ];
+  const rcol = [css('--s-fc2'), css('--s-east'), css('--s-west'), css('--muted')];
+  R.forEach((r, i) => sets.push({ ...ds((r.room ? 'Pomieszczenie: ' : 'Sonoff: ') + r.name, r.temp, rcol[i % rcol.length]),
+    borderWidth: r.room ? 2 : 1, hidden: !r.room, spanGaps: true }));
+  const hid = cBt ? Object.fromEntries(cBt.data.datasets.map((x, i) => [x.label, !cBt.isDatasetVisible(i)])) : {};
+  sets.forEach(x => { if (x.label in hid) x.hidden = hid[x.label]; });   // zachowaj wlaczone/wylaczone w legendzie linie
+  if (!cBt) {
+    const o = baseOpts('°C');
+    o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)} °C`;
+    cBt = new Chart($('cBt'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [optBand, refLines, nowLine] });
+  } else { cBt.data = { labels, datasets: sets }; }
+  const vals = [...P.flatMap(p => [p.min, p.max, p.avg, p.pcs]), ...R.flatMap(r => r.temp)].filter(v => v != null);
+  cBt.options.scales.y.suggestedMin = Math.min(d.opt[0] - 3, ...vals);
+  cBt.options.scales.y.suggestedMax = Math.max(43, ...vals);
+  const nowTs = Date.now() / 1000;
+  const ni = isToday ? P.findIndex(p => p.ts <= nowTs && nowTs < p.ts + d.bucket) : -1;
+  cBt.$nowIdx = ni >= 0 && btDays === 1 ? ni : null;
+  cBt.$opt = d.opt; cBt.$lines = [[40, css('--s-grid'), 'falownik: ograniczanie mocy > 40 °C (otoczenie)']];
+  cBt.update();
+}
+let btDate = null;
+const btShift = n => { const x = new Date((btDate || todayStr()) + 'T12:00'); x.setDate(x.getDate() + n);
+  const s = x.toISOString().slice(0, 10); btDate = s > todayStr() ? todayStr() : s; loadBatTemps(); };
+$('bt-prev').onclick = () => btShift(-1);
+$('bt-next').onclick = () => btShift(1);
+$('bt-today').onclick = () => { btDate = null; loadBatTemps(); };
+$('bt-date').onchange = e => { btDate = e.target.value || null; loadBatTemps(); };
+const refLines = {
+  id: 'refLines',
+  afterDatasetsDraw(chart) {
+    const L = chart.$lines; if (!L) return;
+    const y = chart.scales.y, { left, right } = chart.chartArea, c = chart.ctx;
+    L.forEach(([v, col, txt]) => {
+      const py = y.getPixelForValue(v);
+      c.save(); c.strokeStyle = col; c.setLineDash([5, 4]); c.lineWidth = 1.2;
+      c.beginPath(); c.moveTo(left, py); c.lineTo(right, py); c.stroke();
+      c.fillStyle = col; c.font = '11px system-ui'; c.fillText(txt, left + 6, py - 4); c.restore();
+    });
+  }
+};
+document.querySelectorAll('.bt-range button[data-d]').forEach(b => b.onclick = () => {
+  btDays = +b.dataset.d;
+  document.querySelectorAll('.bt-range button[data-d]').forEach(x => x.classList.toggle('on', x === b));
+  loadBatTemps();
+});
+
 // ---- zakladki ----
-const charts = () => [cPower, cFc, cPrice, cPvs].filter(Boolean);
+const charts = () => [cPower, cFc, cPrice, cSt, cPvs, cPvm, cBt].filter(Boolean);
 function showTab(name) {
   ['pv', 'set'].forEach(t => {
     $('tab-' + t).hidden = t !== name;
@@ -960,12 +1236,40 @@ $('cfg-stop').onclick = async () => {
 };
 
 fetch('/api/version').then(r => r.json()).then(v => $('ver').textContent = 'v' + v.version).catch(() => {});
-refreshLive(); loadDay(current); loadForecast(); loadRegs(); loadSettings(); loadPrices(); loadPvStrings();
+
+// ---- uwagi do autora ----
+const FB_TO = ['mgrys', 'opteam.pl'].join('@');       // adres autora
+const FB_REPO = 'https://github.com/mgrys/Sigen';
+let fbVer = '';
+fetch('/api/version').then(r => r.json()).then(v => fbVer = v.version).catch(() => {});
+function fbText() {
+  const kind = $('fb-kind').value, msg = $('fb-msg').value.trim(), from = $('fb-from').value.trim();
+  if (!msg) { $('fb-info').textContent = 'Wpisz treść wiadomości.'; $('fb-msg').focus(); return null; }
+  let body = msg + '\n';
+  if (from) body += '\nKontakt: ' + from + '\n';
+  if ($('fb-diag').checked) body += `\n---\nSigen PV Monitor v${fbVer || '?'} · ${navigator.userAgent}\n`;
+  return { title: `[${kind}] ` + msg.split('\n')[0].slice(0, 60), body, kind };
+}
+$('fb-mail').onclick = () => {
+  const t = fbText(); if (!t) return;
+  location.href = `mailto:${FB_TO}?subject=${encodeURIComponent(`Sigen PV Monitor – ${t.kind}`)}&body=${encodeURIComponent(t.body)}`;
+  $('fb-info').textContent = `Otwieram program pocztowy… Jeśli się nie otworzył, napisz na ${FB_TO}.`;
+};
+$('fb-gh').onclick = () => {
+  const t = fbText(); if (!t) return;
+  window.open(`${FB_REPO}/issues/new?title=${encodeURIComponent(t.title)}&body=${encodeURIComponent(t.body)}`, '_blank', 'noopener');
+  $('fb-info').textContent = 'Otwieram GitHub (wymaga konta GitHub).';
+};
+
+refreshLive(); loadDay(current); loadForecast(); loadRegs(); loadSettings(); loadBatTemps(); loadPrices(); loadStrategy(); loadPvStrings(); loadPvMonthly();
 if (location.hash === '#ustawienia') showTab('set');
 setInterval(loadPvStrings, 60000);
+setInterval(loadPvMonthly, 600000);
 setInterval(loadPrices, 300000);
+setInterval(loadStrategy, 300000);
 setInterval(loadRegs, 60000);
 setInterval(loadSettings, 60000);
+setInterval(loadBatTemps, 120000);
 setInterval(loadForecast, 300000);
 setInterval(refreshLive, 5000);
 setInterval(() => { if (current === todayStr()) loadDay(current); }, 60000);

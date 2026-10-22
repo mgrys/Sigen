@@ -24,6 +24,7 @@ def describe():
 
 
 SCHEMA = [
+    'CREATE TABLE IF NOT EXISTS bat_temps (ts INTEGER PRIMARY KEY, t_avg REAL, t_max REAL, t_min REAL, t_pcs REAL)',
     'CREATE TABLE IF NOT EXISTS pstryk_hour (ts INTEGER PRIMARY KEY, "day" TEXT, "imp" REAL, "exp" REAL, '
     'cost REAL, sold REAL, energy_net REAL, dist_var REAL, dist_fix REAL, service REAL, excise REAL, vat REAL, '
     'power_fee REAL, price_gross REAL, price_pros REAL, updated INTEGER)',
@@ -134,3 +135,16 @@ def load_pv_strings(con, start, end):
     rows = con.execute('SELECT ts, u1, i1, u2, i2, u3, i3, u4, i4 FROM pv_strings '
                        'WHERE ts >= ? AND ts < ? ORDER BY ts', (start, end)).fetchall()
     return [(r[0], [(r[1 + 2 * k], r[2 + 2 * k]) for k in range(4)]) for r in rows]
+
+
+# --- temperatura ogniw magazynu ---------------------------------------------
+def insert_bat_temps(con, ts, vals):
+    con.execute("INSERT OR IGNORE INTO bat_temps (ts, t_avg, t_max, t_min, t_pcs) VALUES (?, ?, ?, ?, ?)", (ts, *vals))
+    con.commit()
+
+
+def load_bat_temps(con, start, end, bucket=60):
+    """[(ts, avg, max, min, pcs)] - srednie w przedzialach bucket sekund."""
+    return con.execute(f"SELECT (ts / {int(bucket)}) * {int(bucket)} AS b, AVG(t_avg), MAX(t_max), MIN(t_min), AVG(t_pcs) "
+                       f"FROM bat_temps WHERE ts >= ? AND ts < ? GROUP BY (ts / {int(bucket)}) * {int(bucket)} ORDER BY b",
+                       (start, end)).fetchall()

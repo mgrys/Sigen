@@ -2,6 +2,114 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.10.3] - 2026-10-22
+
+### Poprawiono
+- Strategia osobista: siatka stanu magazynu jest 3× gęstsza i zaokrąglana do najbliższej wartości. Wcześniejsze zaokrąglanie w dół gubiło do 0,2 kWh na godzinę, więc plan zaniżał opłacalność magazynu.
+
+## [1.10.2] - 2026-10-22
+
+### Zmieniono
+- Czytelniejsze kafle prognozy:
+  - przy głównej prognozie dopisek „(główna) · cały dzień”, a inne źródła jako „dla porównania”,
+  - „Realizacja prognozy” podaje „wyprodukowano X z Y kWh przewidzianych do HH:MM”, z jakiej prognozy i kiedy pobranej,
+  - przy prognozie bieżącej podana jest godzina pobrania.
+  Główne źródło wybierasz w zakładce Ustawienia → Prognoza.
+
+## [1.10.1] - 2026-10-22
+
+### Poprawiono
+- Linie włączone lub wyłączone w legendzie wykresu temperatur nie resetują się już przy odświeżeniu.
+
+## [1.10.0] - 2026-10-22
+
+### Zmieniono
+- Wykres temperatur jest **dobowy, od północy do północy**, z wyborem dnia (‹ › / kalendarz / Dziś) i linią „teraz”.
+  Widoki 7 i 30 dni kończą się na wybranej dobie. API: `/api/bat_temps?date=RRRR-MM-DD&days=1`.
+
+## [1.9.0] - 2026-10-22
+
+### Dodano
+- Na dole strony:
+  - **formularz uwag do autora**: rodzaj zgłoszenia, wiadomość i opcjonalny kontakt; wysyłka e-mailem przez program pocztowy albo jako zgłoszenie (issue) na GitHubie,
+  - opcjonalnie dołączana wersja aplikacji i przeglądarki (bez adresów IP i kluczy),
+  - stopka z autorem (Marek Grys), linkiem do repozytorium i licencją.
+
+## [1.8.2] - 2026-10-22
+
+### Zmieniono
+- Temperatura ogniw i falownika na **jednym wykresie**: linie ogniw (średnio, maks., min.) i falownika (PCS),
+  zielone pole zakresu korzystnego dla ogniw, linia 40 °C (falownik: możliwe ograniczanie mocy).
+  - Sześć kafli w jednym rzędzie: ogniwa teraz, w okresie, % w zakresie; falownik teraz, maks. w okresie, różnica falownik − ogniwa.
+
+## [1.8.1] - 2026-10-22
+
+### Dodano
+- Ustawienia falownika: osobny wykres **Temperatura falownika (PCS)** pod temperaturą ogniw:
+  - temperatura wewnętrzna części mocy falownika,
+  - progi Sigen dla temperatury otoczenia: zalecana 10–35 °C, ograniczanie mocy powyżej 40 °C, maksimum pracy 60 °C (TP2),
+  - kafle: temperatura teraz, maksimum w okresie, różnica falownik − ogniwa.
+
+### Zmieniono
+- Opis temperatury ogniw: poniżej 0 °C bateria SigenStor najpierw się grzeje (do ok. 2 h), dopiero potem się ładuje (wg instrukcji Sigen).
+
+## [1.8.0] - 2026-10-22
+
+### Dodano
+- Ustawienia falownika: zamiast grupy „Zadawanie mocy (nie ruszać)” jest wykres **Temperatura ogniw magazynu**:
+  - średnia, maksymalna i minimalna temperatura ogniw, a do włączenia temperatura falownika (PCS),
+  - zakres 24 h, 7 lub 30 dni,
+  - zielone pole z zakresem korzystnym dla ogniw LFP (15–35 °C),
+  - kafle: temperatura teraz, zakres w okresie, procent czasu w zakresie korzystnym, temperatura falownika.
+  - Zapis co 60 s w tabeli `bat_temps`. Nowe rejestry: maks. i min. temperatura baterii (30620, 30621).
+  - API: `/api/bat_temps?days=1|7|30`.
+
+### Usunięto
+- Grupa „Zadawanie mocy” w ustawieniach falownika: rejestry 40001–40007, 40030, 41500 nie są już odczytywane.
+
+## [1.7.0] - 2026-10-22
+
+### Dodano
+- Realna produkcja PV – połacie: obok wykresu dnia (teraz na pół szerokości) kafel **Produkcja w miesiącach**.
+  - Prosty wykres słupkowy z sumaryczną produkcją PV w każdym miesiącu (ostatnie 12 miesięcy).
+  - Wartości z licznika narastającego produkcji falownika, tego samego co „Produkcja PV (instalacja)”.
+  - Energia sprzed pierwszego odczytu (od uruchomienia instalacji) jest doliczana do pierwszego miesiąca.
+  - API: `/api/pv_monthly`.
+
+## [1.6.1] - 2026-10-22
+
+### Zmieniono
+- Strategia osobista (nowe parametry w `[strategia]`: `wartosc_sprzedazy`, `koszt_zuzycia_zl_kwh`):
+  - okno zawsze od dziś 00:00 do jutra 24:00; minione godziny pokazują rzeczywiste odczyty, a pionowa linia oznacza „teraz”,
+  - słupki pokazują zakup (w dół, na czerwono) i sprzedaż (w górę, na zielono) w zł na godzinę; dodano linię ceny sprzedaży,
+  - oszczędność uwzględnia różnicę stanu magazynu na koniec okresu; kafel „Razem dziś + jutro”,
+  - koszt zużycia baterii za każdą kWh oddaną z magazynu (domyślnie 0,10 zł/kWh) – plan nie cykluje magazynu dla grosza zysku,
+  - wartość sprzedaży = RCE × współczynnik (domyślnie 1,0); bez cen na jutro cena sprzedaży liczona ostrożniej (× 0,9),
+  - opis „standby – PV na sprzedaż”, gdy w trybie standby nadwyżka PV trafia do sieci.
+
+## [1.6.0] - 2026-10-22
+
+### Dodano
+- **Strategia osobista – symulacja** (karta pod cenami energii). **Nic nie jest wysyłane do falownika.**
+  - Godzinowy plan pracy magazynu od bieżącej godziny do końca jutra, z trzema trybami:
+    - autokonsumpcja,
+    - standby: magazyn czeka, a dom bierze prąd z sieci, np. w tanie noce zimą,
+    - ładowanie z sieci w najtańszych godzinach.
+  - Plan wybiera najtańszy wariant (programowanie dynamiczne). Uwzględnia:
+    - prognozę PV,
+    - typowe zużycie domu w każdej godzinie (średnia z 14 dni),
+    - ceny godzinowe (z Pstryka, jeśli jest klucz, w przeciwnym razie z PSE i taryfy),
+    - sprawność ładowania i rozładowania,
+    - granice SOC z falownika.
+  - Plan ogranicza liczbę przełączeń trybu.
+  - Kafle: tryb teraz, następna zmiana, oszczędność na resztę dnia i na jutro względem samej autokonsumpcji.
+  - Wykres SOC (plan i bez strategii), ceny i poboru z sieci; tabela godzinowa i opis metody.
+  - API: `/api/strategy`. Parametry w `config.ini`, sekcja `[strategia]`: pojemność (puste = z falownika),
+    moc ładowania oraz sprawność ładowania i rozładowania.
+
+### Zmieniono
+- Kafle Pstryka w kolorach: pobór i koszt na czerwono, oddanie i sprzedaż na zielono, bilans na niebiesko.
+
 ## [1.5.0] - 2026-10-21
 
 ### Dodano

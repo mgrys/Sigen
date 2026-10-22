@@ -22,9 +22,10 @@ import discover
 import forecast
 import prices
 import pstryk
+import strategy
 import registers
 
-__version__ = "1.5.0"
+__version__ = "1.10.3"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -147,6 +148,12 @@ def read_counters(client, con):
     with lock:
         counters_state.update(values=vals, unsupported=unsupported, ts=now)
         registers_state.update(values=allv, ts=now)
+    if allv.get("cell_temp") is not None:
+        try:
+            db.insert_bat_temps(con, now, [allv.get(k) for k in ("cell_temp", "bat_t_max", "bat_t_min", "pcs_temp")])
+        except Exception as e:  # noqa: BLE001
+            with lock:
+                latest["db_error"] = str(e)
     try:
         for key, v in vals.items():
             db.upsert_counter(con, day, key, v, now)
@@ -808,6 +815,43 @@ MONTHS = ["styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec"
           "październik", "listopad", "grudzień"]
 
 
+# --- produkcja PV w miesiacach (licznik narastajacy produkcji PV instalacji) ---------
+MONTHS_SHORT = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"]
+
+
+@app.get("/api/pv_monthly")
+def api_pv_monthly(months: int = 12):
+    """Produkcja PV w miesiacach z licznika narastajacego pv_total (ta sama wartosc co "Produkcja PV (instalacja)").
+
+    Miesiac = przyrost licznika od ostatniego odczytu poprzedniego dnia. Energia wyprodukowana przed pierwszym
+    odczytem (od uruchomienia instalacji do startu aplikacji) jest doliczana do pierwszego miesiaca zapisu.
+    """
+    con = db_connect()
+    try:
+        rows = con.execute('SELECT "day", "first", "last" FROM counters WHERE "key" = ? ORDER BY "day"',
+                           ("pv_total",)).fetchall()
+    finally:
+        con.close()
+    out, prev = {}, None
+    for day, first, last in rows:
+        if first is None or last is None:
+            continue
+        m = out.setdefault(day[:7], {"kwh": 0.0, "pre": 0.0, "days": 0})
+        if prev is None:
+            m["pre"] = float(first)                  # przed rozpoczeciem zapisu
+            base = float(first)
+        else:
+            base = prev
+        m["kwh"] += max(float(last) - base, 0.0)
+        m["days"] += 1
+        prev = float(last)
+    res = []
+    for ym, m in sorted(out.items())[-months:]:
+        y, mo = map(int, ym.split("-"))
+        res.append({"month": ym, "label": f"{MONTHS_SHORT[mo - 1]} {y}", "days": m["days"],
+                    "kwh": round(m["kwh"] + m["pre"], 1), "pre": round(m["pre"], 1)})
+    return {"months": res, "total": round(prev, 1) if prev is not None else None}
+
 @app.get("/api/pstryk")
 def api_pstryk(date: str | None = None):
     """Licznik operatora z API Pstryka (dzien + miesiac) i porownanie z licznikami Sigena. Bez klucza: enabled=False."""
@@ -835,6 +879,192 @@ def api_pstryk(date: str | None = None):
             "sigen": {"imp": e.get("imp"), "exp": e.get("exp")}}
 
 
+# --- strategia osobista (SYMULACJA - nic nie jest wysylane do falownika) -----------------
+STRAT = {"cap_kwh": config.getf("strategia", "pojemnosc_kwh", 0) or None,
+         "p_max_kw": config.getf("strategia", "moc_ladowania_kw", 5.0),
+         "eta_c": config.getf("strategia", "sprawnosc_ladowania", 0.95),
+         "eta_d": config.getf("strategia", "sprawnosc_rozladowania", 0.95),
+         "sell_factor": config.getf("strategia", "wartosc_sprzedazy", 1.0),
+         "wear": config.getf("strategia", "koszt_zuzycia_zl_kwh", 0.10)}
+EST_SELL = 0.9   # gdy brak cen na jutro (przyjete z dzis), cena sprzedazy liczona ostrozniej
+_strat_cache = {"ts": 0, "data": None}
+
+
+def _interp(pts, m):
+    if not pts or m < pts[0][0] or m > pts[-1][0]:
+        return 0.0
+    for k in range(1, len(pts)):
+        (m1, p1), (m2, p2) = pts[k - 1], pts[k]
+        if m <= m2:
+            return p2 if m2 == m1 else p1 + (p2 - p1) * (m - m1) / (m2 - m1)
+    return 0.0
+
+
+def _hourly_pv(con, day):
+    """Prognoza PV [kWh] dla kazdej godziny doby (biezaca prognoza)."""
+    try:
+        f = forecast.load_day(con, day.isoformat(), latest=True)
+    except Exception:  # noqa: BLE001
+        f = None
+    pts = (f or {}).get("points") or []
+    return [sum(_interp(pts, h * 60 + k * 5) for k in range(12)) / 12 for h in range(24)]
+
+
+def _load_profile(con, now):
+    """Typowe zuzycie domu [kWh] w kazdej godzinie doby - srednia z 14 dni."""
+    rows = con.execute('SELECT ts / 3600, AVG("load") FROM samples WHERE ts >= ? GROUP BY ts / 3600',
+                       (int(now) - 14 * 86400,)).fetchall()
+    by = {}
+    for hts, v in rows:
+        if v is not None:
+            by.setdefault(time.localtime(int(hts) * 3600).tm_hour, []).append(float(v))
+    allv = [x for v in by.values() for x in v]
+    dflt = sum(allv) / len(allv) if allv else 0.3
+    return [sum(by[h]) / len(by[h]) if by.get(h) else dflt for h in range(24)], len(rows)
+
+
+def _hourly_prices(con, day):
+    """{poczatek godziny: (zakup, sprzedaz)} - zakup z Pstryka (jesli jest) albo z PSE + taryfy."""
+    pse = {}
+    try:
+        pts, _t = prices.series(con, day.isoformat())
+    except Exception:  # noqa: BLE001
+        pts = []
+    for p in pts:
+        pse.setdefault(p["ts"] // 3600 * 3600, []).append((p["buy"], p["sell"]))
+    out = {h: (sum(b for b, _ in v) / len(v), sum(s for _, s in v) / len(v)) for h, v in pse.items()}
+    src = "PSE"
+    if pstryk.enabled():
+        s, e = day_range(day)
+        ps = {r["ts"]: r["price_gross"] for r in pstryk.load(con, s, e) if r.get("price_gross") is not None}
+        if ps:
+            src = "Pstryk"
+            out = {h: (b, out.get(h, (None, 0.0))[1]) for h, b in ps.items()}
+    return out, src
+
+
+def compute_strategy():
+    now = time.time()
+    if _strat_cache["data"] and now - _strat_cache["ts"] < 300:
+        return _strat_cache["data"]
+    with lock:
+        soc = latest.get("soc")
+        regs = dict(registers_state["values"])
+        sv = dict(settings_state["values"])
+    cap = STRAT["cap_kwh"] or regs.get("cap_ess") or regs.get("cap_bat")
+    if not cap or soc is None:
+        return {"ok": False, "error": "czekam na odczyt SOC i pojemności magazynu z falownika"}
+    cap = float(cap)
+    smin = float(sv.get("soc_discharge_cut") or 10) / 100 * cap
+    smax = float(sv.get("soc_charge_cut") or 100) / 100 * cap
+    today = dt.date.today()
+    days = [today, today + dt.timedelta(days=1)]
+    con = db_connect()
+    try:
+        prof, nprof = _load_profile(con, now)
+        pv = {d: _hourly_pv(con, d) for d in days}
+        pr, srcs = {}, set()
+        for d in days:
+            p, src = _hourly_prices(con, d)
+            pr.update(p)
+            if p:
+                srcs.add(src)
+    finally:
+        con.close()
+    h0 = int(now) // 3600 * 3600
+    end = day_range(days[1])[1]
+    hours = []
+    for ts in range(h0, end, 3600):
+        lt = time.localtime(ts)
+        d = dt.date(lt.tm_year, lt.tm_mon, lt.tm_mday)
+        frac = (ts + 3600 - now) / 3600 if ts == h0 else 1.0
+        est = ts not in pr
+        buy, sell = pr.get(ts) or pr.get(ts - 86400) or (None, None)   # brak cen na jutro -> ceny z dzis
+        if buy is None:
+            continue
+        sell = (sell or 0.0) * STRAT["sell_factor"] * (EST_SELL if est else 1.0)   # szacowana cena - ostrozniej
+        hours.append({"ts": ts, "day": "dziś" if d == today else "jutro", "t": time.strftime("%H:00", lt),
+                      "load": prof[lt.tm_hour] * frac, "pv": pv.get(d, [0] * 24)[lt.tm_hour] * frac,
+                      "buy": buy, "sell": sell, "est": est})
+    if not hours:
+        return {"ok": False, "error": "brak cen energii na dziś (PSE / Pstryk)"}
+    st0 = min(max(float(soc) / 100 * cap, smin), smax)
+    last = sorted(h["buy"] for h in hours[-24:])
+    terminal = sum(last[:6]) / max(1, len(last[:6]))
+    args = (smin, smax, STRAT["p_max_kw"], STRAT["eta_c"], STRAT["eta_d"])
+    strategy.WEAR = STRAT["wear"]
+    pl = strategy.plan(hours, st0, *args, terminal_price=terminal)
+    bl = strategy.baseline(hours, st0, *args)
+    out, tot = [], {}
+    for h, p, b in zip(hours, pl, bl):
+        out.append({**{k: (round(v, 3) if isinstance(v, float) else v) for k, v in h.items()},
+                    "mode": p["mode"], "label": strategy.label(p, h), "ems_mode": strategy.MODES[p["mode"]][1],
+                    "grid": round(p["grid"], 3), "soc": round(100 * p["stored"] / cap, 1), "cost": round(p["cost"], 3),
+                    "base_grid": round(b["grid"], 3), "base_soc": round(100 * b["stored"] / cap, 1),
+                    "base_cost": round(b["cost"], 3)})
+        t = tot.setdefault(h["day"], {"plan": 0.0, "base": 0.0, "grid_charge": 0.0})
+        t["plan"] += p["cost"]
+        t["base"] += b["cost"]
+        if p["mode"] == "grid":
+            t["grid_charge"] += max(p["d"] - max(h["pv"] - h["load"], 0), 0)
+    for t in tot.values():
+        t["saving"] = round(t["base"] - t["plan"], 2)
+        t["plan"], t["base"], t["grid_charge"] = round(t["plan"], 2), round(t["base"], 2), round(t["grid_charge"], 2)
+    # koncowy stan magazynu inaczej w planie i bez strategii - roznica wyceniona jak w planie
+    end_diff = round((pl[-1]["stored"] - bl[-1]["stored"]) * STRAT["eta_d"] * terminal, 2)
+    tot["jutro" if "jutro" in tot else "dziś"]["end_diff"] = end_diff
+    for t in tot.values():
+        t["saving_total"] = round(t["saving"] + t.get("end_diff", 0.0), 2)
+    total_saving = round(sum(t["saving_total"] for t in tot.values()), 2)
+    nxt = next((o for o in out[1:] if o["label"] != out[0]["label"]), None)
+    cur = out[0]
+    # godziny dzisiaj przed biezaca - rzeczywiste odczyty (okno zawsze: dzis 00:00 - jutro 24:00)
+    past = []
+    d0 = day_range(today)[0]
+    if h0 > d0:
+        con = db_connect()
+        try:
+            rows = con.execute('SELECT ts / 3600, AVG(soc), AVG(grid), AVG("load"), AVG(pv) FROM samples '
+                               'WHERE ts >= ? AND ts < ? GROUP BY ts / 3600', (d0, h0)).fetchall()
+        finally:
+            con.close()
+        by = {int(r[0]) * 3600: r for r in rows}
+        for ts in range(d0, h0, 3600):
+            r = by.get(ts)
+            buy, sell = pr.get(ts) or (None, 0.0)
+            sell = (sell or 0.0) * STRAT["sell_factor"]
+            if r is None or r[1] is None:
+                past.append({"ts": ts, "day": "dziś", "t": time.strftime("%H:00", time.localtime(ts)), "mode": "past",
+                             "label": "brak danych", "load": None, "pv": None, "buy": buy, "sell": sell, "est": False,
+                             "grid": 0.0, "soc": None, "base_soc": None, "cost": 0.0, "base_cost": 0.0, "base_grid": 0.0})
+                continue
+            g = float(r[2] or 0)
+            c = round((g * buy if g > 0 else g * sell) if buy is not None else 0.0, 3)
+            past.append({"ts": ts, "day": "dziś", "t": time.strftime("%H:00", time.localtime(ts)), "mode": "past",
+                         "label": "rzeczywiste", "load": round(float(r[3] or 0), 3), "pv": round(float(r[4] or 0), 3),
+                         "buy": buy, "sell": sell, "est": False, "grid": round(g, 3), "soc": round(float(r[1]), 1),
+                         "base_soc": round(float(r[1]), 1), "cost": c, "base_cost": c, "base_grid": round(g, 3)})
+    out = past + out
+    data = {"ok": True, "ts": int(now), "hours": out, "totals": tot, "end_value_diff": end_diff,
+            "total_saving": total_saving,
+            "now": cur, "next": nxt, "now_index": len(past), "price_source": " + ".join(sorted(srcs)) or "–",
+            "params": {"cap_kwh": round(cap, 2), "soc_min": round(100 * smin / cap), "soc_max": round(100 * smax / cap),
+                       "p_max_kw": STRAT["p_max_kw"], "eta_c": STRAT["eta_c"], "eta_d": STRAT["eta_d"],
+                       "sell_factor": STRAT["sell_factor"], "wear": STRAT["wear"], "terminal_price": round(terminal, 3),
+                       "profile_hours": nprof, "soc_now": soc}}
+    _strat_cache.update(ts=now, data=data)
+    return data
+
+
+@app.get("/api/strategy")
+def api_strategy():
+    """Strategia osobista - symulacja planu magazynu na dzis i jutro (tylko obliczenia, bez sterowania)."""
+    try:
+        return compute_strategy()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/prices")
 def api_prices():
     """Ceny zakupu/sprzedazy na dzis i jutro (co 15 min) + najtansze godziny."""
@@ -858,6 +1088,39 @@ def api_prices():
             "tariff": {"source": tariff["source"], "dist": tariff["dist"], "system": tariff["system"]},
             **days}
 
+
+# --- temperatura ogniw magazynu ------------------------------------------------
+BAT_T_OPT = (15, 35)   # zakres korzystny dla ogniw LFP [°C] (praca 20-35, ladowanie 15-40; Sigen: praca -20..55)
+
+
+@app.get("/api/bat_temps")
+def api_bat_temps(date: str | None = None, days: int = 1):
+    """Temperatura ogniw magazynu (srednia / maks. / min.) i falownika - doba od polnocy (lub 7/30 dni do tej doby).
+
+    Wynik na stalej siatce czasu (start..koniec doby), zeby os wykresu zawsze obejmowala cala dobe."""
+    days = max(1, min(int(days), 90))
+    d = dt.date.fromisoformat(date) if date else dt.date.today()
+    start = day_range(d - dt.timedelta(days=days - 1))[0]
+    end = day_range(d)[1]
+    bucket = 300 if days == 1 else (1800 if days <= 7 else 7200)
+    con = db_connect()
+    try:
+        rows = db.load_bat_temps(con, start, end, bucket)
+    finally:
+        con.close()
+    by = {int(b): (a, mx, mn, p) for b, a, mx, mn, p in rows}
+    slots = list(range(start // bucket * bucket, end, bucket))
+    r1 = lambda v: None if v is None else round(v, 1)  # noqa: E731
+    pts = [{"ts": x, **dict(zip(("avg", "max", "min", "pcs"), map(r1, by.get(x, (None,) * 4))))} for x in slots]
+    rooms = []
+    vals = [p["avg"] for p in pts if p["avg"] is not None]
+    lo, hi = BAT_T_OPT
+    return {"date": d.isoformat(), "days": days, "bucket": bucket, "points": pts, "rooms": rooms,
+            "opt": [lo, hi], "limits": [-20, 55],
+            "stats": {"min": min((p["min"] for p in pts if p["min"] is not None), default=None),
+                      "max": max((p["max"] for p in pts if p["max"] is not None), default=None),
+                      "avg": round(sum(vals) / len(vals), 1) if vals else None,
+                      "in_opt": round(100 * sum(lo <= v <= hi for v in vals) / len(vals)) if vals else None}}
 
 @app.get("/api/settings")
 def api_settings():
