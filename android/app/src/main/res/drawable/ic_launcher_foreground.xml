@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Slonce nad panelem fotowoltaicznym (pole bezpieczne ikony: srodkowe 66 x 66 z 108 x 108) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- promienie -->
+    <path android:strokeColor="#F5B841" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M54,24 L54,30 M36,31 L40,35 M72,31 L68,35 M29,46 L35,46 M79,46 L73,46" />
+    <!-- slonce -->
+    <path android:fillColor="#F5B841" android:pathData="M54,46 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
+    <!-- panel -->
+    <path android:fillColor="#FFFFFF" android:pathData="M33,56 L75,56 L81,80 L27,80 Z" />
+    <path android:strokeColor="#1F3A5F" android:strokeWidth="2"
+        android:pathData="M30,68 L78,68 M47,56 L45,80 M61,56 L63,80" />
+</vector>

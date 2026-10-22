@@ -130,6 +130,13 @@ footer a { color: var(--text-2); }
 .fb-form input:not([type=checkbox]), .fb-form select, .fb-form textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 .fb-form textarea { resize: vertical; }
 @media (max-width: 600px) { .fb-form { grid-template-columns: 1fr; } }
+tr.ps-buy td { background: color-mix(in srgb, var(--s-buy) 10%, transparent); }
+tr.ps-sell td { background: color-mix(in srgb, var(--s-sell) 12%, transparent); }
+tr.ps-buy td:nth-child(4) { color: var(--s-buy); font-weight: 600; }
+tr.ps-sell td:nth-child(5) { color: var(--s-sell); font-weight: 600; }
+.fc-pick { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-2); margin: 0 0 6px; }
+.fc-pick label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.fc-pick i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .risk { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .risk.bezpieczne { color: var(--ok); border-color: var(--ok); }
 .risk.ostroznie { color: var(--s-grid); border-color: var(--s-grid); }
@@ -153,6 +160,12 @@ th:first-child, td:first-child { text-align: left; }
 .cfg-row { display: flex; gap: 6px; } .cfg-row input { flex: 1; min-width: 0; }
 .cfg-hit { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
 .cfg-planes { width: 100%; } .cfg-planes input { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+#pinbox { position: fixed; inset: 0; background: #0008; display: flex; align-items: center; justify-content: center; z-index: 50; }
+#pinbox[hidden] { display: none; }
+#pinbox form { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: min(320px, 90vw); display: grid; gap: 10px; }
+#pinbox input { font-size: 22px; letter-spacing: 6px; text-align: center; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; }
+#pinbox .row { display: flex; gap: 8px; justify-content: flex-end; }
+#accbtn, .accb { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -234,6 +247,7 @@ th:first-child, td:first-child { text-align: left; }
       <span class="status" id="fcstatus"></span>
     </div>
     <div class="tiles" id="fctiles"></div>
+    <div class="fc-pick" id="fc-pick"></div>
     <div class="chart"><canvas id="cFc"></canvas></div>
     <div class="empty" id="fcempty" hidden>Brak prognozy – aplikacja pobierze ją z Open-Meteo i forecast.solar, gdy będzie dostęp do internetu.</div>
     <details>
@@ -353,6 +367,7 @@ th:first-child, td:first-child { text-align: left; }
         <option value="30">30 dni</option>
         <option value="0">Cała historia</option>
       </select>
+      <label class="status" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="effhide"> ukryj przedziały z * (&lt; 15 min danych)</label>
     </div>
     <div style="overflow-x:auto">
     <table><thead><tr><th>Moc przetwarzana</th><th>Czas [h]</th><th>Śr. moc [kW]</th><th>Energia wej. [kWh]</th>
@@ -463,6 +478,7 @@ th:first-child, td:first-child { text-align: left; }
         <label>Port strony<input data-k="serwer.port" type="number"></label>
         <label>Dostęp<select data-k="serwer.host"><option value="0.0.0.0">cała sieć domowa (telefon)</option>
           <option value="127.0.0.1">tylko ten komputer</option></select></label>
+        <label>PIN do zmian z innych urządzeń<input data-k="serwer.pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="puste = z sieci tylko podgląd"></label>
         <label>Otwórz przeglądarkę przy starcie<select data-k="serwer.otworz_przegladarke"><option value="tak">tak</option><option value="nie">nie</option></select></label>
       </fieldset>
     </div>
@@ -496,10 +512,58 @@ th:first-child, td:first-child { text-align: left; }
 
   <footer style="text-align:center;color:var(--muted);font-size:12px;padding:8px 0 16px">Sigen PV Monitor <span id="ver"></span>
     · autor: <b>Marek Grys</b> · <a href="https://github.com/mgrys/Sigen" target="_blank" rel="noopener">github.com/mgrys/Sigen</a>
-    · licencja MIT · nieoficjalny projekt, niezwiązany z Sigenergy</footer>
+    · licencja MIT · nieoficjalny projekt, niezwiązany z Sigenergy <span id="acc"></span></footer>
+  <div id="pinbox" hidden><form id="pinform">
+    <b>PIN do sterowania</b>
+    <span class="status" style="display:block" id="pinmsg">Zmiany z tego urządzenia wymagają PIN-u (raz – urządzenie zostanie zapamiętane).</span>
+    <input id="pinin" type="password" inputmode="numeric" autocomplete="current-password" required>
+    <div class="row"><button type="button" id="pincancel">Anuluj</button><button type="submit">OK</button></div>
+  </form></div>
 </main>
 
 <script>
+// --- dostep z innych urzadzen: PIN dla zmian (access.py) ---
+const _fetch = window.fetch.bind(window);
+let _pinWait = null;
+function askPin(msg) {
+  if (_pinWait) return _pinWait;
+  _pinWait = new Promise(res => {
+    const box = document.getElementById('pinbox'), inp = document.getElementById('pinin');
+    if (msg) document.getElementById('pinmsg').textContent = msg;
+    box.hidden = false; inp.value = ''; setTimeout(() => inp.focus(), 50);
+    const done = ok => { box.hidden = true; _pinWait = null; res(ok); };
+    document.getElementById('pincancel').onclick = () => done(false);
+    document.getElementById('pinform').onsubmit = async e => {
+      e.preventDefault();
+      const r = await _fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: inp.value }) }).then(x => x.json()).catch(() => ({ ok: false, error: 'brak połączenia' }));
+      if (r.ok) { done(true); accInfo(); } else { document.getElementById('pinmsg').textContent = r.error; inp.value = ''; }
+    };
+  });
+  return _pinWait;
+}
+window.fetch = async (url, opts = {}) => {
+  const r = await _fetch(url, opts);
+  if (r.status !== 401 || !(opts.method && opts.method !== 'GET')) return r;
+  const j = await r.clone().json().catch(() => ({}));
+  if (!j.need_pin) return r;
+  if (!j.pin_set) { alert(j.error); return r; }
+  return (await askPin()) ? _fetch(url, opts) : r;
+};
+async function accInfo() {
+  const a = await _fetch('/api/access').then(x => x.json()).catch(() => null), el = document.getElementById('acc');
+  const appBtn = window.SigenApp ? ' · <button id="appaddr" class="accb">adres serwera</button>' : '';
+  const bindApp = () => { const b = document.getElementById('appaddr'); if (b) b.onclick = () => window.SigenApp.changeAddress(); };
+  if (!a || a.local) { el.innerHTML = appBtn; bindApp(); return; }
+  el.innerHTML = appBtn + (a.authed ? ' · sterowanie odblokowane <button id="accbtn" class="accb">wyloguj</button>'
+    : a.pin_set ? ' · podgląd <button id="accbtn" class="accb">odblokuj sterowanie</button>' : ' · tylko podgląd');
+  bindApp();
+  const b = document.getElementById('accbtn');
+  if (b) b.onclick = async () => {
+    if (a.authed) { await _fetch('/api/logout', { method: 'POST' }); accInfo(); } else askPin();
+  };
+}
+accInfo();
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const kw = v => (Math.abs(v) < 1 ? (v * 1000).toFixed(0) + ' W' : v.toFixed(2) + ' kW');
@@ -632,7 +696,7 @@ function lossTiles(e) {
     tile('Sprawność falownika', e.sprawnosc, '%', 'konwersja + czuwanie');
 }
 // ---- prognoza ----
-let cFc;
+let cFc, fcPick = null;
 const hm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
 function interp(pts, m) {
   if (!pts || !pts.length || m < pts[0][0] || m > pts[pts.length - 1][0]) return 0;
@@ -712,7 +776,7 @@ async function loadForecast() {
   $('accsugg').textContent = sg.length ? 'Ranking (średni błąd): ' + sg.map(([k, v]) =>
     `${N[k]} ${v.blad_sr_proc} % (korekta ${v.korekta})`).join(' · ') + ` – z ${sg[0][1].days} dni; KOREKTA ustawiasz w forecast.py` : '';
 
-  const all = [T, J, FS.today, EC.today].filter(x => x && x.sunrise != null);
+  const all = [T, J, ...Object.values(S).flatMap(x => [x?.today, x?.tomorrow])].filter(x => x && x.sunrise != null);
   if (!all.length) return;
   // skala: wschod slonca + margines .. zachod - margines (dzis)
   const [sr, ss] = d.sun?.today || [null, null];
@@ -730,16 +794,32 @@ async function loadForecast() {
   const bandSet = (label, data, color, fill) => ({ label, data, borderColor: color + '55', backgroundColor: color + '26',
     pointRadius: 0, borderWidth: 0, fill, tension: 0.2, pointStyle: 'rect' });
   const L = { pointStyle: 'line' };
-  const sets = [
-    { ...ds('Produkcja dziś', grid.map(m => m <= d.now_min ? (act.get(m) ?? null) : null), css('--s-pv')), ...L },
-    { ...ds(`${N[d.main]} dziś`, line(T), css('--s-fc')), borderDash: [6, 4], ...L },
-    { ...ds('forecast.solar dziś', line(FS.today), css('--muted')), borderDash: [3, 3], borderWidth: 1.5, ...L },
-    { ...ds('ECMWF dziś', line(EC.today), css('--s-ecmwf')), borderDash: [8, 3], ...L },
-    { ...ds(`${N[d.main]} jutro`, line(J), css('--s-fc2')), borderDash: [2, 3], ...L },
-    { ...ds('ECMWF jutro', line(EC.tomorrow), css('--s-ecmwf')), borderDash: [2, 3], borderWidth: 1.5, ...L },
-    bandSet('_tmin', tMin, css('--s-fc'), false), bandSet('Rozrzut modeli dziś', tMax, css('--s-fc'), '-1'),
-    bandSet('_jmin', jMin, css('--s-fc2'), false), bandSet('Rozrzut modeli jutro', jMax, css('--s-fc2'), '-1'),
-  ];
+  // wybor prognoz do wykresu (wielokrotny) - zapamietywany w przegladarce
+  const SRC_COL = { open_meteo: '--s-fc', om_srednia: '--s-fc2', om_ecmwf: '--s-ecmwf', om_icon_eu: '--s-east', om_ukmo: '--s-west',
+    om_gfs: '--s-south', om_meteofrance: '--s-load', forecast_solar: '--s-grid' };
+  const srcKeys = Object.keys(N).filter(k => S[k]?.today || S[k]?.tomorrow);
+  if (!fcPick) { try { fcPick = JSON.parse(localStorage.getItem('fcPick') || 'null'); } catch (e) { fcPick = null; } }
+  if (!Array.isArray(fcPick) || !fcPick.some(k => srcKeys.includes(k)))
+    fcPick = [d.main, d.main === 'om_ecmwf' ? 'open_meteo' : 'om_ecmwf'].filter(k => srcKeys.includes(k));
+  const pickBox = $('fc-pick');
+  pickBox.innerHTML = srcKeys.map(k => `<label><input type="checkbox" value="${k}"${fcPick.includes(k) ? ' checked' : ''}>` +
+    `<i style="background:${css(SRC_COL[k] || '--muted')}"></i>${esc(N[k])}${k === d.main ? ' (główna)' : ''}</label>`).join('') +
+    `<label><input type="checkbox" value="_band"${fcPick.includes('_band') ? '' : ' checked'} id="fc-band"> rozrzut modeli</label>`;
+  pickBox.querySelectorAll('input').forEach(x => x.onchange = () => {
+    const sel = [...pickBox.querySelectorAll('input:checked')].map(y => y.value).filter(v => v !== '_band');
+    fcPick = $('fc-band').checked ? sel : [...sel, '_band'];
+    try { localStorage.setItem('fcPick', JSON.stringify(fcPick)); } catch (e) { /* brak storage */ }
+    loadForecast();
+  });
+  const showBand = !fcPick.includes('_band');
+  const sets = [{ ...ds('Produkcja dziś', grid.map(m => m <= d.now_min ? (act.get(m) ?? null) : null), css('--s-pv')), borderWidth: 3, ...L }];
+  fcPick.filter(k => srcKeys.includes(k)).forEach(k => {
+    const c = css(SRC_COL[k] || '--muted');
+    if (S[k].today) sets.push({ ...ds(`${N[k]} dziś`, line(S[k].today), c), borderDash: [6, 4], borderWidth: 2, ...L });
+    if (S[k].tomorrow) sets.push({ ...ds(`${N[k]} jutro`, line(S[k].tomorrow), c), borderDash: [2, 3], borderWidth: 1.5, ...L });
+  });
+  if (showBand) sets.push(bandSet('_tmin', tMin, css('--s-fc'), false), bandSet('Rozrzut modeli dziś', tMax, css('--s-fc'), '-1'),
+    bandSet('_jmin', jMin, css('--s-fc2'), false), bandSet('Rozrzut modeli jutro', jMax, css('--s-fc2'), '-1'));
   const labels = grid.map(hm);
   const nowIdx = d.now_min >= from && d.now_min <= to ? (d.now_min - from) / 10 : null;
   const ref = T || J || FS.today;
@@ -774,21 +854,21 @@ async function loadPvStrings() {
   let d;
   try { d = await (await fetch('/api/pv_strings')).json(); } catch (e) { return; }
   const col = { 'Południe': css('--s-south'), 'Wschód': css('--s-east'), 'Zachód': css('--s-west') };
-  const [sr, ss] = d.sun || [null, null];
   const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
-  const pts = sr == null ? d.points
-    : d.points.filter(p => toMin(p.t) >= sr + d.margin_min && toMin(p.t) <= ss - d.margin_min);
+  // os czasu: od pierwszej do ostatniej minuty z produkcja (> 10 W na ktorejkolwiek polaci)
+  const prod = p => d.names.some(n => (p[n] || 0) > 0.01);
+  const fi = d.points.findIndex(prod);
+  let li = -1; for (let k = d.points.length - 1; k >= 0; k--) if (prod(d.points[k])) { li = k; break; }
+  const pts = fi < 0 ? [] : d.points.slice(fi, li + 1);
   $('pvsempty').hidden = pts.length > 0;
-  const last = pts[pts.length - 1];
-  $('pvsstatus').textContent = (sr != null ? `wykres ${hm(sr + d.margin_min)}–${hm(ss - d.margin_min)} · ` : '')
+  const last = d.points[d.points.length - 1];
+  $('pvsstatus').textContent = (pts.length ? `produkcja ${pts[0].t}–${pts[pts.length - 1].t} · ` : '')
     + (last ? 'ostatni odczyt ' + last.t + ' · co 60 s' : '');
   $('pvstiles').innerHTML = d.names.map(n => tile('PV ' + n + ' dziś', d.kwh[n], 'kWh',
     (d.share[n] != null ? d.share[n] + ' % produkcji' : '') + (last ? ` · teraz ${kw(last[n])}` : ''))).join('');
   if (!pts.length) return;
-  // os czasu dynamiczna: od pierwszego do ostatniego odczytu (w granicach wschod+30 .. zachod-30)
   const byMin = new Map(pts.map(p => [toMin(p.t), p]));
-  const a = Math.max(sr != null ? Math.ceil(sr + d.margin_min) : 0, toMin(pts[0].t));
-  const b = Math.min(ss != null ? Math.floor(ss - d.margin_min) : 1439, toMin(last.t));
+  const a = toMin(pts[0].t), b = toMin(pts[pts.length - 1].t);
   const mins = []; for (let m = a; m <= b; m++) mins.push(m);
   const labels = mins.map(hm);
   const sets = d.names.map(n => ({ ...ds('PV ' + n, mins.map(m => byMin.get(m)?.[n] ?? null), col[n]),
@@ -861,7 +941,8 @@ async function loadPstryk(date) {
     `<tr><td><b>Razem brutto</b></td><td><b>${zl2(D.cost)}</b></td><td><b>${zl2(M.cost)}</b></td></tr>` +
     `<tr><td>Sprzedaż energii</td><td>${zl2(D.sold)}</td><td>${zl2(M.sold)}</td></tr>`;
   const f = (v, n) => v == null ? '–' : v.toFixed(n);
-  $('pshours').innerHTML = d.hours.map(h => `<tr><td>${new Date(h.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td>` +
+  const rowCls = h => h.cost == null && h.sold == null ? '' : (h.cost || 0) > (h.sold || 0) ? ' class="ps-buy"' : (h.sold || 0) > (h.cost || 0) ? ' class="ps-sell"' : '';
+  $('pshours').innerHTML = d.hours.map(h => `<tr${rowCls(h)}><td>${new Date(h.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td>` +
     `<td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td></tr>`).join('');
 }
 
@@ -977,7 +1058,10 @@ async function loadEff() {
   const d = await (await fetch(`/api/efficiency?date=${date}&days=${days}`)).json();
   $('effinfo').textContent = `Dni z danymi w zestawieniu: ${d.n_days}. Dane dzienne zapisywane w bazie (tabela efficiency_daily), dzisiejszy dzień liczony na bieżąco.`;
   const range = b => b.do == null ? `≥ ${b.od} kW` : `${b.od}–${b.do} kW`;
-  $('effbody').innerHTML = d.bins.length ? d.bins.map(b =>
+  const hide = $('effhide').checked, bins = hide ? d.bins.filter(b => !b.mala_probka) : d.bins;
+  const hidden = d.bins.length - bins.length;
+  if (hidden) $('effinfo').textContent += ` Ukryto ${hidden} przedz. z małą próbką (* – łącznie mniej niż 15 min danych w przedziale).`;
+  $('effbody').innerHTML = bins.length ? bins.map(b =>
     `<tr${b.mala_probka ? ' style="color:var(--muted)" title="mniej niż 15 min danych – wynik orientacyjny"' : ''}><td>${range(b)}${b.mala_probka ? ' *' : ''}</td><td>${b.godzin.toFixed(2)}</td><td>${b.moc_sr_kw.toFixed(2)}</td><td>${b.e_in.toFixed(2)}</td>` +
     `<td>${b.straty_kwh.toFixed(3)}</td><td>${b.strata_sr_w}</td>` +
     `<td>${b.sprawnosc == null ? '–' : (() => { const c = b.sprawnosc >= 90 ? '--eff-good' : b.sprawnosc >= 70 ? '--eff-mid' : '--eff-bad';
@@ -986,6 +1070,7 @@ async function loadEff() {
   ).join('') : '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
 }
 $('effdays').onchange = loadEff;
+$('effhide').onchange = loadEff;
 
 // ---- odczyty falownika ----
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

@@ -1,0 +1,45 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "pl.mgrys.sigenpv"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "pl.mgrys.sigenpv"
+        minSdk 26
+        targetSdk 34
+        // wersja jak aplikacji na komputerze (workflow podaje -PappVersion=1.12.0)
+        def v = (project.findProperty("appVersion") ?: "1.0.0").toString()
+        def p = v.tokenize(".").collect { it.replaceAll("\\D", "") ?: "0" }*.toInteger() + [0, 0, 0]
+        versionCode p[0] * 10000 + p[1] * 100 + p[2]
+        versionName v
+    }
+
+    signingConfigs {
+        // Stały klucz z repozytorium: kolejne wersje instalują się jako aktualizacja (bez odinstalowania).
+        // To klucz "hobbystyczny" (nie Google Play) - instaluj APK tylko z wydań github.com/mgrys/Sigen.
+        app {
+            storeFile file("sigen-app.keystore")
+            storePassword "sigenpv"
+            keyAlias "sigenpv"
+            keyPassword "sigenpv"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.app
+        }
+        debug {
+            signingConfig signingConfigs.app
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

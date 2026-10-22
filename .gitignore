@@ -10,3 +10,8 @@ dist/
 config.ini
 tariff_cache_*.json
 portable.txt
+git_push_public.bat
+android/.gradle/
+android/local.properties
+android/app/build/
+build.yml.nowy

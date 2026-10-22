@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from fastapi import Body, FastAPI
+from fastapi import Body, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pymodbus.client import ModbusTcpClient
 
@@ -24,8 +24,9 @@ import prices
 import pstryk
 import strategy
 import registers
+import access
 
-__version__ = "1.10.3"
+__version__ = "1.12.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -353,6 +354,40 @@ def energy(rows):
 
 # --- API -----------------------------------------------------------------
 app = FastAPI(title=config.APP_TITLE, version=__version__)
+access.INI, access.SECTION = config.CONFIG_FILE, "serwer"
+access.PIN_HINT = "na komputerze z aplikacją: Ustawienia → Strona → PIN"
+access.SESSIONS_FILE = config.DATA_DIR / "access_sessions.json"
+
+
+@app.middleware("http")
+async def _access_guard(request: Request, call_next):
+    """Zmiany z innych urzadzen w sieci tylko po PIN-ie (access.py); z tego komputera bez zmian."""
+    if access.needs_auth(request):
+        return JSONResponse(access.denied_body(), status_code=401)
+    return await call_next(request)
+
+
+@app.get("/api/access")
+def api_access(request: Request):
+    return access.status(request)
+
+
+@app.post("/api/login")
+def api_login(request: Request, payload: dict = Body(default={})):
+    ok, msg, sid = access.login(request, payload.get("pin"))
+    if not ok:
+        return JSONResponse({"ok": False, "error": msg}, status_code=403)
+    r = JSONResponse({"ok": True})
+    r.set_cookie(access.COOKIE, sid, max_age=access.MAX_AGE, httponly=True, samesite="lax")
+    return r
+
+
+@app.post("/api/logout")
+def api_logout(request: Request):
+    access.logout(request)
+    r = JSONResponse({"ok": True})
+    r.delete_cookie(access.COOKIE)
+    return r
 STATIC = config.WEB_DIR / "static"
 
 

@@ -73,6 +73,19 @@ Program działa w tle, bez okna. Ponowne kliknięcie skrótu tylko otwiera stron
 Ustawienia przyciskiem **Zamknij aplikację**. Żeby dane zapisywały się bez przerwy, komputer musi być włączony.
 Dobrze sprawdza się mały komputer, np. mini PC albo Raspberry Pi.
 
+### Telefon i aplikacja Android
+
+Strona działa w całej sieci domowej: na telefonie lub innym komputerze otwórz `http://<IP-komputera>:8000`
+(adres IPv4 z polecenia `ipconfig`). Podgląd jest dostępny bez hasła. Zmiany ustawień z innych urządzeń wymagają
+**PIN-u**: ustaw go w zakładce Ustawienia → Strona. Bez PIN-u z innych urządzeń działa tylko podgląd. Na komputerze
+z aplikacją PIN nie jest potrzebny. Urządzenie jest zapamiętywane po pierwszym wpisaniu PIN-u, a zmiana PIN-u
+wylogowuje wszystkie urządzenia.
+
+Aplikacja na Androida (8.0+): pobierz `SigenPV-android-x.y.z.apk` z [Releases](https://github.com/mgrys/Sigen/releases),
+zainstaluj (Android zapyta o zgodę na instalację z nieznanego źródła) i podaj adres komputera. Aplikacja wyświetla
+ten sam dashboard na pełnym ekranie; adres zmienisz przyciskiem „adres serwera” w stopce strony.
+Spoza domu nie otwieraj portu w routerze: użyj VPN, np. Tailscale.
+
 ### Gdzie są dane
 
 | wersja | folder z `config.ini`, bazą `sigen.db` i logiem |
@@ -112,7 +125,7 @@ Wszystko jest w `config.ini`. Plik tworzy się sam przy pierwszym starcie, a prz
 ## Budowanie wersji dla Windows
 
 Wydania buduje GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)). Każdy tag `v*`
-tworzy wydanie z instalatorem i wersją przenośną:
+tworzy wydanie z instalatorem, wersją przenośną i aplikacją Android (`android/`, `gradle -p android assembleRelease`):
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0

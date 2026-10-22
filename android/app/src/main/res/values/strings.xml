@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sigen PV</string>
+    <string name="address_title">Adres serwera</string>
+    <string name="address_info">Adres komputera z aplikacją Sigen w sieci domowej, np. http://192.168.0.50:8000 (adres IPv4 z polecenia ipconfig na tym komputerze).</string>
+    <string name="connect">Połącz</string>
+    <string name="cancel">Anuluj</string>
+    <string name="close_app">Zamknij</string>
+    <string name="bad_address">Niepoprawny adres</string>
+    <string name="no_connection">Brak połączenia</string>
+    <string name="no_connection_msg">Nie udało się połączyć z %1$s (%2$s).\n\nSprawdź, czy komputer z aplikacją jest włączony, telefon jest w tej samej sieci Wi-Fi, a zapora Windows wpuszcza port aplikacji.</string>
+    <string name="retry">Ponów</string>
+    <string name="change_address">Zmień adres</string>
+</resources>

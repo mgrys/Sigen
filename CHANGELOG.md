@@ -2,6 +2,30 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.12.0] - 2026-10-23
+
+### Dodano
+- **Aplikacja Android** (`SigenPV-android-x.y.z.apk` w wydaniu): dashboard na pełnym ekranie telefonu, adres komputera
+  podawany przy pierwszym uruchomieniu, okno błędu połączenia z ponowieniem i zmianą adresu.
+- **PIN do zmian z innych urządzeń** w sieci (Ustawienia → Strona). Podgląd bez hasła; zapis ustawień, restart i
+  wyszukiwanie falownika z telefonu dopiero po PIN-ie (urządzenie zapamiętywane na rok). 5 błędnych prób = 5 min blokady.
+  Na komputerze z aplikacją bez zmian.
+
+## [1.11.1] - 2026-10-23
+
+### Dodano
+- Sprawność falownika: pole „ukryj przedziały z * (< 15 min danych)”, domyślnie wyłączone.
+
+## [1.11.0] - 2026-10-22
+
+### Zmieniono
+- Prognoza PV: **wybór prognoz do wykresu** (można zaznaczyć kilka, np. ECMWF i Open-Meteo).
+  - Dla każdej wybranej prognozy są dwie linie: dziś (kreskowana) i jutro (kropkowana), w stałym kolorze źródła.
+  - Na wykresie zostaje też rzeczywista produkcja i rozrzut modeli (można go wyłączyć).
+  - Wybór jest zapamiętywany w przeglądarce.
+- Realna produkcja PV – połacie: oś czasu wykresu dnia obejmuje okres od pierwszej do ostatniej minuty z produkcją, a nie od wschodu do zachodu słońca.
+- Licznik operatora (Pstryk), tabela godzinowa: godziny, w których koszt jest większy od sprzedaży, mają czerwone tło, a te, w których sprzedaż przewyższa koszt, zielone.
+
 ## [1.10.3] - 2026-10-22
 
 ### Poprawiono

@@ -47,6 +47,7 @@ DEFAULTS = {
         "port": "8000",
         "host": "0.0.0.0",           # 0.0.0.0 = dostep z telefonu w sieci domowej; 127.0.0.1 = tylko ten komputer
         "otworz_przegladarke": "tak",
+        "pin": "",                   # PIN do zmian z innych urzadzen w sieci (telefon, aplikacja Android); puste = tylko podglad
     },
     "baza": {
         "plik": "sigen.db",          # baza SQLite (wzgledem folderu danych)
@@ -198,8 +199,10 @@ SECRET = "********"     # tak strona widzi zapisany klucz API (prawdziwy klucz n
 
 def as_dict():
     d = {s: dict(CFG.items(s)) for s in CFG.sections()}
-    if d.get("pstryk", {}).get("api_key"):
-        d["pstryk"]["api_key"] = SECRET
+    cur = load()        # sekrety wg aktualnego pliku (np. PIN zapisany przed restartem)
+    for sec, k in (("pstryk", "api_key"), ("serwer", "pin")):
+        if sec in d:
+            d[sec][k] = SECRET if cur.get(sec, k, fallback="").strip() else ""
     return d
 
 
@@ -214,7 +217,7 @@ def update(data):
             cp.add_section(sec)
         for k, v in vals.items():
             k = str(k).strip()
-            if sec == "pstryk" and k == "api_key" and str(v).strip() == SECRET:
+            if (sec, k) in (("pstryk", "api_key"), ("serwer", "pin")) and str(v).strip() == SECRET:
                 continue        # bez zmiany zapisanego klucza
             if not k or any(c in k for c in "[]=;#\n\r"):
                 continue
