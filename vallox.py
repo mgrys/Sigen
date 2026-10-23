@@ -28,9 +28,28 @@ FAN_MIN, FAN_MAX = 10, 80  # dozwolony zakres ustawienia [%]
 FAN_MAX_STEP = 10          # maks. zmiana jednym zapisem [%]
 FAN_WRITE_INTERVAL = 10    # min. odstep miedzy zapisami [s]
 # przeplyw powietrza [m3/h] - seria MV nie mierzy przeplywu, SZACUNEK z obrotow wentylatora:
-# maks. przeplyw z karty katalogowej (Ustawienia: przeplyw_max_m3h, np. 110 MV = 385) przy ok. 3300 obr/min.
-# Kalibracja: pomiary z protokolu regulacji instalatora (anemometr) jako punkty (obroty, m3/h) w AIRFLOW_CAL.
-AIRFLOW_M3H_PER_RPM = config.getf("rekuperacja", "przeplyw_max_m3h", 385) / 3300
+#   przeplyw = maks. przeplyw modelu (karta katalogowa Vallox, 100 Pa) x obroty / obroty przy 100 %.
+# Obroty przy 100 %: z Ustawien (obroty_max) albo zapamietane automatycznie, gdy wentylacja pracuje na >= 98 %
+# (np. Boost 100 %); do tego czasu 3300 obr/min (110 MV). Kalibracja z protokolu instalatora (anemometr):
+# punkty (obroty, m3/h) w AIRFLOW_CAL - wtedy liczone jest z nich (interpolacja liniowa).
+# model: (nazwa, maks. nawiew m3/h, maks. wywiew m3/h) - vallox.com, dane techniczne @ 100 Pa
+MODELS = {
+    "096": ("Vallox 096 MV", 292, 310),
+    "110": ("Vallox 110 MV", 385, 400),
+    "145": ("Vallox 145 MV", 511, 576),
+    "245": ("Vallox 245 MV", 889, 976),
+}
+MODEL = config.get("rekuperacja", "model", "110") or "110"
+if MODEL in MODELS:
+    MODEL_NAME, _q_sup, _q_ext = MODELS[MODEL]
+else:                                           # "inny": maks. przeplyw wpisany recznie (obie strony)
+    _q = config.getf("rekuperacja", "przeplyw_max_m3h", 385) or 385
+    _qe = config.getf("rekuperacja", "przeplyw_max_wywiew_m3h", 0) or _q
+    MODEL_NAME, _q_sup, _q_ext = "Vallox (model spoza listy)", _q, _qe
+FLOW_MAX = {"sup": _q_sup, "ext": _q_ext}
+RPM_MAX_DEFAULT = 3300
+RPM_MAX_CFG = config.getf("rekuperacja", "obroty_max", 0) or None
+CAL_FILE = config.DATA_DIR / "vallox_rpm_max.json"      # obroty przy >= 98 % zapamietane automatycznie
 AIRFLOW_CAL = {"sup": [], "ext": []}       # np. {"sup": [(1560, 180)], "ext": [(1300, 175)]}
 AIR_RHO_CP = 0.335                         # Wh/(m3·K): gestosc 1,2 kg/m3 x cieplo wl. 1005 J/(kg·K) / 3600
 # automatyczne wyrownywanie przeplywow (balans nawiew / wywiew)
@@ -258,6 +277,7 @@ def loop(db_connect, db_mod):
                     BACKFILL.update(ts=int(time.time()), error=f"{type(e).__name__}: {e}")
         try:
             vals, extra = read_once()
+            learn_rpm_max(vals)
             ts = int(t0)
             with _lock:
                 latest.clear()
@@ -370,13 +390,49 @@ def airflow(rpm, side):
         return None
     pts = sorted(AIRFLOW_CAL.get(side) or [])
     if not pts:
-        return round(rpm * AIRFLOW_M3H_PER_RPM)
+        return round(rpm * FLOW_MAX[side] / rpm_max(side))
     pts = [(0, 0)] + pts
     for (r1, q1), (r2, q2) in zip(pts, pts[1:]):
         if rpm <= r2:
             return round(q1 + (q2 - q1) * (rpm - r1) / (r2 - r1)) if r2 > r1 else round(q2)
     r1, q1 = pts[-1]
     return round(q1 * rpm / r1) if r1 else None
+
+
+_rpm_learned = None
+
+
+def _rpm_load():
+    global _rpm_learned
+    if _rpm_learned is None:
+        try:
+            _rpm_learned = json.loads(CAL_FILE.read_text(encoding="utf-8")) if CAL_FILE.exists() else {}
+        except Exception:  # noqa: BLE001
+            _rpm_learned = {}
+    return _rpm_learned
+
+
+def rpm_max(side):
+    """Obroty wentylatora przy 100 % [obr/min]: Ustawienia > zapamietane przy >= 98 % > 3300."""
+    return RPM_MAX_CFG or _rpm_load().get(side) or RPM_MAX_DEFAULT
+
+
+def learn_rpm_max(vals):
+    """Wentylacja na >= 98 % (np. Boost 100 %) -> zapamietaj obroty jako obroty przy 100 %."""
+    if (vals.get("fan_pct") or 0) < 98:
+        return
+    d, changed = _rpm_load(), False
+    for side, key in (("sup", "rpm_sup"), ("ext", "rpm_ext")):
+        r = vals.get(key)
+        if r and r > 500 and abs(r - (d.get(side) or 0)) > 30:
+            d[side] = int(r)
+            changed = True
+    if changed:
+        d["ts"] = int(time.time())
+        try:
+            CAL_FILE.write_text(json.dumps(d), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def recovered_w(t_out, t_sup_cell, q_sup, cell_state):
@@ -893,6 +949,10 @@ def status():
     d["flow_sup"], d["flow_ext"] = airflow(d.get("rpm_sup"), "sup"), airflow(d.get("rpm_ext"), "ext")
     d["p_rec_w"] = recovered_w(d.get("t_out"), d.get("t_sup_cell"), d["flow_sup"], d.get("cell_state"))
     d["flow_calibrated"] = bool(AIRFLOW_CAL.get("sup") or AIRFLOW_CAL.get("ext"))
+    cal = _rpm_load()
+    d["model"] = {"key": MODEL, "name": MODEL_NAME, "flow_max": FLOW_MAX,
+                  "rpm_max": {k: rpm_max(k) for k in ("sup", "ext")},
+                  "rpm_source": "ustawienia" if RPM_MAX_CFG else ("zapamiętane przy 100 %" if cal.get("sup") else "domyślne 3300")}
     a = _auto_load()
     diff, span, n = auto_window()
     a.update(avg_diff=None if diff is None else round(diff, 2), avg_span=None if span is None else round(span, 1), samples=n,

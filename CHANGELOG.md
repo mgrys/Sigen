@@ -2,13 +2,24 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.15.1] - 2026-10-23
+
+### Poprawiono
+- Rekuperacja: **wybór modelu Vallox** trafia do wydania (1.15.0 liczyło przepływ zawsze jak dla 110 MV, 385 m³/h przy
+  3300 obr/min). Przepływ = maks. przepływ modelu (osobno nawiew i wywiew) × obroty ÷ obroty przy 100 %;
+  obroty przy 100 % zapamiętywane same przy pracy na ≥ 98 % (np. 145 MV: ok. 2300 / 2560 obr/min).
+- Model „inny”: osobny maks. przepływ nawiewu i wywiewu.
+
 ## [1.15.0] - 2026-10-23
 
 ### Dodano
 - **Rekuperacja (opcjonalnie): rekuperator Vallox seria MV** (MyVallox, lokalny websocket). Zakładka pojawia się
   po wpisaniu adresu IP w Ustawieniach → Rekuperacja; bez tego aplikacja wygląda jak dotąd.
-  - Na żywo: temperatury (zewn., nawiew, wywiew, wyrzut), sprawność odzysku, profil, stan wymiennika, przepływ
-    (szacunek z obrotów i maks. przepływu z karty katalogowej), CO₂, wilgotność, filtr, nagrzewnica.
+  - Na żywo: temperatury (zewn., nawiew, wywiew, wyrzut), sprawność odzysku, profil, stan wymiennika, CO₂,
+    wilgotność, filtr, nagrzewnica, przepływ m³/h i moc odzyskana.
+  - **Wybór modelu** (096 / 110 / 145 / 245 MV albo inny z ręcznie wpisanym przepływem): przepływ szacowany
+    z obrotów wentylatorów i maks. przepływu modelu osobno dla nawiewu i wywiewu (dane Vallox przy 100 Pa);
+    obroty przy 100 % zapamiętywane automatycznie przy pracy na ≥ 98 % (np. Boost 100 %) albo wpisane w Ustawieniach.
   - Balans przepływów nawiew / wywiew z temperatur wymiennika; ręczna zmiana wentylatorów trybu Dom
     (zakres 10–80 %, maks. ±10 % na raz) i **automat korekty** (1 % co godzinę, z zabezpieczeniem).
   - Obejście wymiennika (bypass, częściowe, chłodzenie) ręcznie albo **automat komfortu** (letnie chłodzenie).

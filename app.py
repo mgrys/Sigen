@@ -29,7 +29,7 @@ import gridwatch
 import meter
 import vallox
 
-__version__ = "1.15.0"
+__version__ = "1.15.1"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")

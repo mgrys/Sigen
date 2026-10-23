@@ -24,7 +24,7 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G13… operatorów Tauron, PGE,
   Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
 - **Temperatura ogniw magazynu** w czasie, z zakresem korzystnym dla ogniw LFP.
-- **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox)** – zakładka Rekuperacja po wpisaniu IP w Ustawieniach:
+- **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox: 096 / 110 / 145 / 245 MV i inne)** – zakładka Rekuperacja po wpisaniu IP i wyborze modelu w Ustawieniach:
   temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą, obejście wymiennika
   z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem, wykresy dnia i energia odzyskana.
   Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus); inny miernik, np. Tuya – patrz `meter.py`.

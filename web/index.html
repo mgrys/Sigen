@@ -497,7 +497,7 @@ th:first-child, td:first-child { text-align: left; }
     <div class="eltiles" id="v-el"></div>
     </div>
     <div>
-      <h2>Rekuperator Vallox <span class="status" id="vstatus" style="display:inline"></span></h2>
+      <h2><span id="vname">Rekuperator Vallox</span> <span class="status" id="vstatus" style="display:inline"></span></h2>
       <div class="soc-big" id="v-eff">–</div>
       <div class="status" style="margin:4px 0 14px">sprawność odzysku ciepła (nawiew / wywiew)</div>
       <div class="kv" id="v-kv"></div>
@@ -716,10 +716,21 @@ th:first-child, td:first-child { text-align: left; }
       </fieldset>
       <fieldset><legend>Rekuperacja (opcjonalnie)</legend>
         <label>Adres IP rekuperatora Vallox (seria MV)<input data-k="rekuperacja.vallox_ip" placeholder="puste = bez zakładki Rekuperacja"></label>
-        <label>Maks. przepływ z karty katalogowej [m³/h]<input data-k="rekuperacja.przeplyw_max_m3h" type="number" placeholder="385"></label>
+        <label>Model rekuperatora<select data-k="rekuperacja.model">
+          <option value="096">Vallox 096 MV (maks. 292 / 310 m³/h)</option>
+          <option value="110">Vallox 110 MV (maks. 385 / 400 m³/h)</option>
+          <option value="145">Vallox 145 MV (maks. 511 / 576 m³/h)</option>
+          <option value="245">Vallox 245 MV (maks. 889 / 976 m³/h)</option>
+          <option value="inny">inny – wpisz maks. przepływ</option></select></label>
+        <label>Maks. przepływ nawiewu [m³/h] – tylko dla „inny”<input data-k="rekuperacja.przeplyw_max_m3h" type="number" placeholder="z karty katalogowej"></label>
+        <label>Maks. przepływ wywiewu [m³/h] – tylko dla „inny”<input data-k="rekuperacja.przeplyw_max_wywiew_m3h" type="number" placeholder="puste = jak nawiew"></label>
+        <label>Obroty wentylatora przy 100 % [obr/min]<input data-k="rekuperacja.obroty_max" type="number" placeholder="puste = automatycznie"></label>
         <label>Miernik poboru prądu rekuperatora<select data-k="rekuperacja.miernik"><option value="">brak</option>
           <option value="shelly">gniazdko Shelly (Gen1 / Plus)</option></select></label>
         <label>Adres IP miernika<input data-k="rekuperacja.miernik_ip" placeholder="np. 192.168.1.50"></label>
+        <p class="status" style="margin-top:6px">Przepływ (m³/h) i moc odzyskana są szacowane z obrotów wentylatorów: maks. przepływ
+          modelu (nawiew / wywiew, karta Vallox przy 100 Pa) × obroty ÷ obroty przy 100 %. Obroty przy 100 % aplikacja zapamięta sama,
+          gdy rekuperator raz popracuje na 100 % (np. Boost 100 % przez 2–3 min); do tego czasu przyjmuje 3300 obr/min.</p>
         <p class="status" style="margin-top:6px">Rekuperator musi być w tej samej sieci (MyVallox, port 80). Sterowanie wentylatorami,
           obejściem i nastawą nawiewu – tylko po potwierdzeniu albo przez włączony automat. Inny miernik niż Shelly (np. Tuya) –
           opis w pliku meter.py.</p>
@@ -1749,6 +1760,7 @@ const fmtT = v => v == null ? '–' : v.toFixed(1) + ' °C';
 async function loadVallox() {
   let d;
   try { d = await (await fetch('/api/vallox/live')).json(); } catch (e) { return; }
+  if (d.model) $('vname').textContent = d.model.name;
   $('vstatus').textContent = d.ok ? '· ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') : '· błąd: ' + d.error;
   lastVallox = d; renderBalance(d); renderBypass(d); renderSupply(d);
   $('v-tout').textContent = fmtT(d.t_out); $('v-tsup').textContent = fmtT(d.t_sup);
@@ -1762,6 +1774,7 @@ async function loadVallox() {
   $('v-kv').innerHTML =
     row('Profil', d.profile_txt) + row('Stan wymiennika', d.cell_state_txt) + row('Wentylacja', d.fan_pct != null ? d.fan_pct + ' %' : null) +
     row('Przepływ nawiew / wywiew', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext} m³/h (${d.rpm_sup} / ${d.rpm_ext} obr/min)` : null) +
+    (d.model ? row('Szacunek przepływu', `maks. ${d.model.flow_max.sup} / ${d.model.flow_max.ext} m³/h przy ${d.model.rpm_max.sup} obr/min (${d.model.rpm_source})`) : '') +
     row('Moc odzyskana', d.p_rec_w != null ? Math.round(d.p_rec_w) + ' W' : null) +
     row('Nawiew za wymiennikiem', fmtT(d.t_sup_cell)) +
     row('CO₂ – ' + (d.co2_names?.co2_s0 || 'czujnik 1'), d.co2_s0 != null ? d.co2_s0 + ' ppm' : null) +
