@@ -26,7 +26,7 @@ import strategy
 import registers
 import access
 
-__version__ = "1.12.1"
+__version__ = "1.13.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -407,7 +407,8 @@ def static_file(name: str):
 
 @app.get("/api/version")
 def version():
-    return {"version": __version__, "db": db.describe(), "data_dir": str(config.DATA_DIR), "title": config.APP_TITLE}
+    return {"version": __version__, "db": db.describe(), "data_dir": str(config.DATA_DIR), "title": config.APP_TITLE,
+            "service": config.SERVICE}
 
 
 @app.get("/api/config")
@@ -452,6 +453,9 @@ def api_discover(payload: dict = Body(default={})):
 @app.post("/api/shutdown")
 def api_shutdown():
     """Zamkniecie aplikacji (przycisk w zakladce Ustawienia)."""
+    if config.SERVICE:
+        return JSONResponse({"ok": False, "error": "aplikacja działa jako usługa Windows – zatrzymasz ją w Usługach Windows "
+                             "(„Sigen PV Monitor”) albo odinstalowując usługę"}, status_code=400)
     threading.Thread(target=lambda: (time.sleep(1), os._exit(0)), daemon=True).start()
     return {"ok": True}
 
@@ -462,6 +466,16 @@ def api_restart():
     def _later():
         import subprocess
         time.sleep(1)
+        if config.SERVICE:              # usluga Windows: restart przez WinSW ("restart!" = z wnetrza uslugi)
+            svc = config.EXE_DIR / "SigenPVMonitor-service.exe"
+            if svc.exists():
+                try:
+                    subprocess.Popen([str(svc), "restart!"], cwd=str(svc.parent), close_fds=True,
+                                     creationflags=0x00000008 | 0x00000200)
+                    time.sleep(30)      # WinSW zatrzyma ten proces
+                except Exception as e:  # noqa: BLE001
+                    print(f"restart uslugi: {e}")
+            os._exit(1)                 # awaryjnie: odzyskiwanie uslugi (sc failureflag) uruchomi aplikacje ponownie
         args = [sys.executable] + (sys.argv[1:] if config.FROZEN else sys.argv)
         args = [a for a in args if a != "--wait-port"] + ["--wait-port", "--no-browser"]
         flags = 0x00000008 | 0x00000200 if sys.platform == "win32" else 0   # DETACHED_PROCESS | NEW_PROCESS_GROUP

@@ -7,7 +7,9 @@ i pełna lista odczytów – w przeglądarce, na komputerze i telefonie w sieci 
 > Nieoficjalny projekt open source, **niezwiązany z Sigenergy**. Aplikacja **tylko odczytuje** dane
 > z falownika (Modbus TCP, funkcje 0x03/0x04) – niczego w nim nie zmienia.
 
-![Zrzut ekranu](docs/screenshot.png)
+![Przegląd: przepływy mocy na żywo i prognoza produkcji](docs/screens/01_przeglad.png)
+
+Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 
 ## Co potrafi
 
@@ -33,6 +35,20 @@ i pełna lista odczytów – w przeglądarce, na komputerze i telefonie w sieci 
 - **Wszystkie odczyty falownika** (61 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
 - Wszystkie ustawienia na stronie, w zakładce **Ustawienia**.
+
+## Zrzuty ekranu
+
+| | |
+|---|---|
+| **Produkcja każdej połaci i w miesiącach**<br>![Połacie](docs/screens/02_polacie.png) | **Dzień: liczniki, straty, wykres mocy**<br>![Dzień](docs/screens/04_dzien.png) |
+| **Ceny energii i strategia magazynu (symulacja)**<br>![Ceny i strategia](docs/screens/03_ceny_strategia.png) | **Pstryk (opcjonalnie) i sprawność falownika**<br>![Pstryk i sprawność](docs/screens/05_pstryk_sprawnosc.png) |
+| **Alarmy (AFCI), ustawienia falownika, temperatury**<br>![Alarmy i temperatury](docs/screens/06_alarmy_temperatury.png) | **Zakładka Ustawienia**<br>![Ustawienia](docs/screens/07_ustawienia.png) |
+
+**Telefon / aplikacja Android**
+
+<img src="docs/screens/08_telefon.png" alt="Widok na telefonie" width="320">
+
+Zrzuty pokazują przykładową instalację (10 kW, 3 połacie, magazyn 27 kWh); numer seryjny i nazwy czujników są zmienione.
 
 ## Jak znaleźć adres IP falownika
 
@@ -68,6 +84,10 @@ Po uruchomieniu otworzy się przeglądarka z adresem `http://localhost:8000`.
 
 Przy pierwszym uruchomieniu Windows zapyta o dostęp przez zaporę. Zezwól na sieć prywatną, jeśli chcesz
 otwierać stronę z telefonu (`http://<IP-komputera>:8000`).
+
+Instalator ma też opcję **„Uruchamiaj w tle jako usługę Windows”**: program startuje razem z systemem (także bez
+logowania) i sam się podnosi po awarii. Wymaga jednorazowej zgody administratora; ustawienia i dane zostają w tym samym
+folderze. Usługę zatrzymasz w „Usługach” Windows („Sigen PV Monitor”), a odinstalowanie programu ją usuwa.
 
 Program działa w tle, bez okna. Ponowne kliknięcie skrótu tylko otwiera stronę. Program zamkniesz w zakładce
 Ustawienia przyciskiem **Zamknij aplikację**. Żeby dane zapisywały się bez przerwy, komputer musi być włączony.

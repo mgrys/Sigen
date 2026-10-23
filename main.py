@@ -39,7 +39,7 @@ def _port_in_use(port):
 def _message(text):
     """Komunikat dla uzytkownika (okienko w Windows, inaczej konsola)."""
     print(text)
-    if sys.platform == "win32" and config.FROZEN:
+    if sys.platform == "win32" and config.FROZEN and not config.SERVICE:   # usluga nie ma pulpitu - okienko by wisialo
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, text, config.APP_TITLE, 0x40)
@@ -62,6 +62,9 @@ def main():
                 break
             time.sleep(0.25)
     if _port_in_use(args.port):                 # juz dziala - tylko pokaz strone
+        if config.SERVICE:                      # usluga: zajety port (np. otwarte okno programu) - sprobuj pozniej
+            time.sleep(60)
+            sys.exit(1)
         if open_browser:
             webbrowser.open(url)
         return

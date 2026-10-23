@@ -15,6 +15,7 @@ APP_NAME = "SigenPVMonitor"
 APP_TITLE = "Sigen PV Monitor"
 
 FROZEN = getattr(sys, "frozen", False)
+SERVICE = os.environ.get("SIGEN_SERVICE") == "1"      # dziala jako usluga Windows (WinSW, opcja instalatora)
 # pliki aplikacji (index.html, static/) - w .exe rozpakowane do katalogu tymczasowego
 RES_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 WEB_DIR = RES_DIR / "web"

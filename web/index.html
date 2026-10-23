@@ -1316,8 +1316,9 @@ $('cfg-save').onclick = () => saveConfig(false);
 $('cfg-restart').onclick = () => saveConfig(true);
 $('cfg-stop').onclick = async () => {
   if (!confirm('Zamknąć aplikację? Odczyty przestaną być zapisywane do czasu ponownego uruchomienia.')) return;
-  await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
-  $('cfg-msg').style.color = 'var(--text-2)'; $('cfg-msg').textContent = 'Aplikacja została zamknięta.';
+  const r = await fetch('/api/shutdown', { method: 'POST' }).then(x => x.json()).catch(() => ({ ok: true }));
+  $('cfg-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
+  $('cfg-msg').textContent = r.ok ? 'Aplikacja została zamknięta.' : r.error;
 };
 
 fetch('/api/version').then(r => r.json()).then(v => $('ver').textContent = 'v' + v.version).catch(() => {});

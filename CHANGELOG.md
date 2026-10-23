@@ -2,6 +2,17 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.13.0] - 2026-10-23
+
+### Dodano
+- Instalator: opcja **„Uruchamiaj w tle jako usługę Windows”** (domyślnie wyłączona, wymaga zgody administratora) –
+  start z systemem także bez logowania, automatyczny restart po awarii (WinSW 2.12, licencja MIT). Dane i ustawienia
+  zostają w folderze użytkownika (`%LOCALAPPDATA%\SigenPVMonitor`). Odinstalowanie programu usuwa też usługę.
+
+### Zmieniono
+- Przy pracy jako usługa: restart z zakładki Ustawienia ponownie uruchamia usługę, a przycisk „Zamknij aplikację”
+  podpowiada, jak zatrzymać usługę.
+
 ## [1.12.1] - 2026-10-23
 
 ### Poprawiono
