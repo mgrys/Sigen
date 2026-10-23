@@ -24,6 +24,12 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G13… operatorów Tauron, PGE,
   Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
 - **Temperatura ogniw magazynu** w czasie, z zakresem korzystnym dla ogniw LFP.
+- **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox)** – zakładka Rekuperacja po wpisaniu IP w Ustawieniach:
+  temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą, obejście wymiennika
+  z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem, wykresy dnia i energia odzyskana.
+  Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus); inny miernik, np. Tuya – patrz `meter.py`.
+- **Zaniki sieci (off-grid):** czerwony pasek i tło strony, gdy dom pracuje bez sieci, oraz historia zaników
+  (od kiedy, jak długo).
 - **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.
 - **Opcjonalnie dla klientów [Pstryka](https://pstryk.pl/):** po wpisaniu klucza API (aplikacja Pstryk → Integracje)
   w zakładce Ustawienia pojawia się licznik operatora (pobór i oddanie, porównanie z licznikami Sigena),
@@ -43,6 +49,7 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 | **Produkcja każdej połaci i w miesiącach**<br>![Połacie](docs/screens/02_polacie.png) | **Dzień: liczniki, straty, wykres mocy**<br>![Dzień](docs/screens/04_dzien.png) |
 | **Ceny energii i strategia magazynu (symulacja)**<br>![Ceny i strategia](docs/screens/03_ceny_strategia.png) | **Pstryk (opcjonalnie) i sprawność falownika**<br>![Pstryk i sprawność](docs/screens/05_pstryk_sprawnosc.png) |
 | **Alarmy (AFCI), ustawienia falownika, temperatury**<br>![Alarmy i temperatury](docs/screens/06_alarmy_temperatury.png) | **Zakładka Ustawienia**<br>![Ustawienia](docs/screens/07_ustawienia.png) |
+| **Zanik sieci – praca wyspowa (off-grid)**<br>![Zanik sieci](docs/screens/09_zanik_sieci.png) | **Rekuperacja Vallox (opcjonalnie)**<br>![Rekuperacja](docs/screens/10_rekuperacja.png) |
 
 **Telefon / aplikacja Android**
 
@@ -164,6 +171,8 @@ iscc /DAppVersion=1.0.0 packaging\installer.iss                   # -> dist\Sige
 Wszystkie endpointy zwracają JSON, np. do własnych integracji:
 
 - `/api/live`
+- `/api/grid_events` (historia zaników sieci)
+- `/api/vallox/live`, `/api/vallox/day?date=RRRR-MM-DD`, `/api/vallox/log` (gdy ustawiony rekuperator)
 - `/api/day?date=RRRR-MM-DD`
 - `/api/forecast`
 - `/api/pv_strings`

@@ -24,6 +24,17 @@
   }
 }
 * { box-sizing: border-box; }
+body.offgrid { background: color-mix(in srgb, var(--err) 16%, var(--bg)); }
+.offgrid-banner { background: var(--err); color: #fff; border-radius: 12px; padding: 10px 14px; margin: 0 0 14px;
+  font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.offgrid-banner[hidden] { display: none; }
+.offgrid-banner .sub2 { font-weight: 400; opacity: .9; font-size: 13px; }
+@keyframes ogpulse { 50% { opacity: .55; } }
+.offgrid-banner .bolt { animation: ogpulse 1.4s infinite; font-size: 20px; }
+.outages { font-size: 13px; margin-top: 8px; }
+.outages table { width: 100%; border-collapse: collapse; }
+.outages td, .outages th { padding: 3px 6px; border-bottom: 1px solid var(--grid); text-align: left; }
+
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
 main { max-width: 1100px; margin: 0 auto; padding: 16px; }
@@ -54,6 +65,38 @@ svg.flow { width: 100%; height: auto; display: block; }
 .line.on.rev { animation-direction: reverse; }
 @keyframes flow { to { stroke-dashoffset: -14; } }
 @media (prefers-reduced-motion: reduce) { .line.on { animation: none; } }
+.eltiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.eltiles .tile { transition: background .4s; }
+.eltiles .tile.lvl-good { background: color-mix(in srgb, var(--eff-good) 16%, transparent); border-color: var(--eff-good); }
+.eltiles .tile.lvl-mid { background: color-mix(in srgb, var(--eff-mid) 18%, transparent); border-color: var(--eff-mid); }
+.eltiles .tile.lvl-bad { background: color-mix(in srgb, var(--eff-bad) 18%, transparent); border-color: var(--eff-bad); }
+.fanset { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; margin-top: 14px; }
+@media (max-width: 760px) { .fanset { grid-template-columns: 1fr; } }
+.fanbox { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.fanbox h3 { font-size: 15px; margin: 0 0 12px; }
+.fs-row { margin-bottom: 12px; }
+.fs-lbl { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+.fs-line { display: flex; align-items: center; gap: 14px; }
+.fs-num { width: 52px; text-align: center; border: 1px solid var(--border); border-radius: 4px; padding: 5px 0; font: inherit; font-weight: 650; font-variant-numeric: tabular-nums; background: var(--surface); color: var(--text); }
+.fs-num.pend { border-color: var(--eff-mid); color: var(--eff-mid); }
+.fs-track { cursor: pointer; touch-action: none; }
+.fs-track { position: relative; flex: 1; height: 12px; background: var(--grid); border: 1px solid var(--border); border-radius: 3px; }
+.fs-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; transition: width .5s; }
+.fs-thumb, .fs-ghost { position: absolute; top: -7px; width: 22px; height: 24px; margin-left: -11px; border-radius: 3px; transition: left .5s; }
+.fs-thumb { background: var(--muted); }
+.fs-ghost { border: 2px dashed var(--eff-mid); background: transparent; }
+.fs-sub { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); padding-left: 16px; margin-top: 2px; }
+.bp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.bp-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); gap: 10px; }
+.bp-row:last-of-type { border-bottom: 0; }
+.tgl { position: relative; width: 52px; height: 28px; flex: none; }
+.tgl input { opacity: 0; width: 0; height: 0; }
+.tgl span { position: absolute; inset: 0; border-radius: 14px; background: var(--border); cursor: pointer; transition: background .15s; }
+.tgl span::after { content: ''; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px #0003; }
+.tgl input:checked + span { background: var(--s-fc); }
+.tgl input:checked + span::after { left: 27px; }
+.tgl input:disabled + span { opacity: .55; cursor: default; }
+.bp-num { width: 70px; font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 .fs-act { display: flex; gap: 8px; margin-top: 4px; }
 .fs-act[hidden] { display: none; }
 .fs-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
@@ -173,10 +216,13 @@ th:first-child, td:first-child { text-align: left; }
   <header>
     <nav class="tabs" role="tablist">
       <button role="tab" id="tabbtn-pv" aria-selected="true" data-tab="pv">Instalacja PV</button>
+      <button role="tab" id="tabbtn-rek" aria-selected="false" data-tab="rek" hidden>Rekuperacja</button>
       <button role="tab" id="tabbtn-set" aria-selected="false" data-tab="set">Ustawienia</button>
     </nav>
     <div class="status"><span class="dot" id="dot"></span><span id="status">łączenie…</span></div>
   </header>
+  <div class="offgrid-banner" id="offgrid" hidden><span class="bolt">⚡</span><span id="og-txt">Brak sieci – praca wyspowa (off-grid)</span>
+    <span class="sub2" id="og-sub"></span></div>
 
   <div id="tab-pv" role="tabpanel">
   <section class="card live">
@@ -237,7 +283,9 @@ th:first-child, td:first-child { text-align: left; }
         <span><i class="sw" style="background:var(--s-grid)"></i>Sieć</span><span id="k-grid">–</span>
         <span>Moc AC falownika</span><span id="k-plant">–</span>
         <span><i class="sw" style="background:var(--s-loss)"></i>Straty falownika</span><span id="k-loss">–</span>
+        <span>Ostatni zanik sieci</span><span id="k-outage">–</span>
       </div>
+      <details class="outages" id="outages"><summary>Zaniki sieci – historia</summary><div id="outlist">–</div></details>
     </div>
   </section>
 
@@ -417,6 +465,198 @@ th:first-child, td:first-child { text-align: left; }
   </section>
   </div>
 
+  <div id="tab-rek" role="tabpanel" hidden>
+  <section class="card live">
+    <div>
+    <svg class="flow" viewBox="0 0 400 260" role="img" aria-label="Przepływ powietrza w rekuperatorze">
+      <!-- dom (lewa) -->
+      <g class="icon" transform="translate(45 36)" stroke="var(--s-load)">
+        <path d="M-24,-1 L0,-21 L24,-1"/><path d="M-18,-5 V22 H18 V-5" class="icon-bg"/>
+        <rect x="-4.5" y="8" width="9" height="14"/><rect x="7" y="1" width="6" height="6"/>
+      </g>
+      <text class="sub" x="45" y="72">DOM</text>
+      <!-- na zewnatrz (prawa): krajobraz -->
+      <g class="icon" transform="translate(355 36)" stroke="var(--s-sell)">
+        <path d="M-27,20 Q-14,4 -2,14 Q10,2 27,20 Z" class="icon-bg"/>
+        <line x1="-15" y1="20" x2="-15" y2="9"/><polygon points="-22,10 -8,10 -15,-9" class="icon-bg"/>
+        <circle cx="12" cy="-10" r="5" stroke="var(--s-east)"/>
+        <line x1="12" y1="-20" x2="12" y2="-18" stroke="var(--s-east)"/><line x1="22" y1="-10" x2="20" y2="-10" stroke="var(--s-east)"/>
+        <line x1="19" y1="-17" x2="17.5" y2="-15.5" stroke="var(--s-east)"/><line x1="5" y1="-17" x2="6.5" y2="-15.5" stroke="var(--s-east)"/>
+      </g>
+      <text class="sub" x="355" y="72">NA ZEWNĄTRZ</text>
+      <!-- przeplywy: gora zewnatrz -> dom (nawiew), dol dom -> zewnatrz (wywiew/wyrzut) -->
+      <path id="v-l-in"  class="line" d="M345 112 L55 112"  stroke="var(--s-fc)"/>
+      <path id="v-l-out" class="line" d="M55 192 L345 192" stroke="var(--s-pv)"/>
+      <image href="/static/recuperator.svg" x="146" y="102" width="108" height="104" preserveAspectRatio="xMidYMid meet">
+        <title>Rekuperator Vallox</title></image>
+      <text class="lbl" x="325" y="100">Powietrze zewn.</text><text class="val" x="325" y="134" id="v-tout">–</text>
+      <text class="lbl" x="75" y="100">Nawiew</text><text class="val" x="75" y="134" id="v-tsup">–</text>
+      <text class="lbl" x="75" y="180">Wywiew</text><text class="val" x="75" y="214" id="v-text">–</text>
+      <text class="lbl" x="325" y="180">Wyrzut</text><text class="val" x="325" y="214" id="v-texh">–</text>
+    </svg>
+    <div class="eltiles" id="v-el"></div>
+    </div>
+    <div>
+      <h2>Rekuperator Vallox <span class="status" id="vstatus" style="display:inline"></span></h2>
+      <div class="soc-big" id="v-eff">–</div>
+      <div class="status" style="margin:4px 0 14px">sprawność odzysku ciepła (nawiew / wywiew)</div>
+      <div class="kv" id="v-kv"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Balans przepływów – nawiew / wywiew</h2>
+      <span class="status" id="balstatus"></span>
+    </div>
+    <svg class="flow" viewBox="0 0 640 225" role="img" aria-label="Balans temperatur wymiennika" style="max-width:860px;margin:0 auto">
+      <!-- lewa: strona domu -->
+      <text class="lbl" x="95" y="62">ΔT dom</text>
+      <text class="val" x="95" y="92" id="b-ddom" style="font-size:26px">–</text>
+      <text class="sub" x="95" y="114">wywiew − nawiew</text>
+      <!-- prawa: strona zewnetrzna -->
+      <text class="lbl" x="545" y="62">ΔT zewnątrz</text>
+      <text class="val" x="545" y="92" id="b-dzew" style="font-size:26px">–</text>
+      <text class="sub" x="545" y="114">wyrzut − czerpnia</text>
+      <!-- wymiennik krzyzowy (2/3 poprzedniej wielkosci) -->
+      <g class="icon" stroke="var(--muted)">
+        <polygon points="320,52 380,112 320,172 260,112" class="icon-bg"/>
+        <line x1="290" y1="82" x2="350" y2="142"/><line x1="350" y1="82" x2="290" y2="142"/>
+      </g>
+      <!-- przeplywy: nawiew czerpnia -> wymiennik -> dom, wywiew dom -> wymiennik -> wyrzut -->
+      <path id="b-l-in1"  class="line" d="M440 74 L352 82" stroke="var(--s-fc)"/>
+      <path id="b-l-in2"  class="line" d="M288 82 L200 74" stroke="var(--s-fc)"/>
+      <path id="b-l-out1" class="line" d="M200 150 L288 142" stroke="var(--s-pv)"/>
+      <path id="b-l-out2" class="line" d="M352 142 L440 150" stroke="var(--s-pv)"/>
+      <text class="lbl" x="200" y="36">Nawiew</text><text class="val" x="200" y="60" id="b-sup">–</text>
+      <text class="lbl" x="200" y="176">Wywiew</text><text class="val" x="200" y="200" id="b-ext">–</text>
+      <text class="lbl" x="440" y="36">Czerpnia</text><text class="val" x="440" y="60" id="b-out">–</text>
+      <text class="lbl" x="440" y="176">Wyrzut</text><text class="val" x="440" y="200" id="b-exh">–</text>
+    </svg>
+    <div class="tiles" id="baltiles" style="margin-top:12px"></div>
+    <p class="status" id="balnote" style="margin-top:6px"></p>
+    <div class="fanset">
+      <div class="fanbox">
+        <h3>Podstawowe ustawienia wentylatorów w trybie W domu</h3>
+        <div class="fs-row">
+          <div class="fs-lbl">Powietrze nawiewane</div>
+          <div class="fs-line"><input class="fs-num" id="fs-sup" type="number" inputmode="numeric">
+            <div class="fs-track" id="fs-sup-tr"><div class="fs-fill" id="fs-sup-fill" style="background:var(--s-fc)"></div>
+              <div class="fs-thumb" id="fs-sup-th"></div><div class="fs-ghost" id="fs-sup-gh" hidden></div></div></div>
+          <div class="fs-sub"><span>%</span><span id="fs-sup-rpm"></span></div>
+        </div>
+        <div class="fs-row">
+          <div class="fs-lbl">Powietrze wywiewane</div>
+          <div class="fs-line"><input class="fs-num" id="fs-ext" type="number" inputmode="numeric">
+            <div class="fs-track" id="fs-ext-tr"><div class="fs-fill" id="fs-ext-fill" style="background:var(--s-pv)"></div>
+              <div class="fs-thumb" id="fs-ext-th"></div><div class="fs-ghost" id="fs-ext-gh" hidden></div></div></div>
+          <div class="fs-sub"><span>%</span><span id="fs-ext-rpm"></span></div>
+        </div>
+        <div class="fs-act" id="fs-act" hidden>
+          <button id="fs-save" class="fs-btn primary">Zapisz w rekuperatorze</button>
+          <button id="fs-cancel" class="fs-btn">Anuluj</button>
+        </div>
+        <div id="fs-msg" style="font-size:13px;margin-top:6px"></div>
+        <div id="fs-hint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        <div id="fs-pw" style="font-size:13px;color:var(--text-2);margin-top:8px"></div>
+      </div>
+      <div class="fanbox">
+        <label class="fs-auto"><input type="checkbox" id="fs-auto"> Automatyczna korekta przepływów</label>
+        <p style="font-size:13px;color:var(--text-2);margin:6px 0 10px">Co godzinę jedna zmiana o 1 % – na przemian wywiew i nawiew –
+          aż różnica (średnia z 30 min) będzie w zakresie ±0,5 °C. Działa w aplikacji także przy zamkniętej stronie;
+          tylko w profilu Dom, przy odzysku ciepła i różnicy wywiew − zewnątrz ≥ 8 °C. Gdy wyłączone – poniżej propozycja do ręcznego zapisu.</p>
+        <div id="fs-autost" style="font-size:13px;margin-bottom:8px"></div>
+        <div id="fs-prop" style="font-size:13px;color:var(--text-2)"></div>
+        <button id="fs-apply" class="fs-btn" style="margin-top:10px" hidden>Zastosuj propozycję</button>
+        <div style="font-size:13px;font-weight:600;margin:14px 0 4px">Ostatnie zmiany</div>
+        <div id="fs-log" style="font-size:12px;color:var(--text-2)"></div>
+      </div>
+    </div>
+    <p class="status" style="margin-top:6px">Przy zrównoważonych przepływach powietrze nawiewane ogrzewa się na wymienniku o tyle samo,
+      o ile schładza się wywiewane, czyli ΔT dom ≈ ΔT zewnątrz. Różnica &gt; 0 oznacza przewagę nawiewu (nadciśnienie w domu),
+      &lt; 0 – przewagę wywiewu (podciśnienie). Nawiew liczony za wymiennikiem (przed nagrzaniem przez wentylator).
+      Wynik jest miarodajny przy różnicy wywiew − zewnątrz ≥ 8 °C (jesień/zima); kondensacja w wywiewie przy mrozie zaniża wynik.</p>
+  </section>
+
+  <section class="card">
+    <h2>Obejście wymiennika (bypass) i chłodzenie</h2>
+    <div class="bp-grid">
+      <div class="fanbox">
+        <h3>Ustawienia obejścia wymiennika</h3>
+        <div class="bp-row"><span>Obejście wymiennika</span><label class="tgl"><input type="checkbox" id="bp-bypass" data-bp="bypass"><span></span></label></div>
+        <div class="bp-row"><span>Częściowe obejście</span><label class="tgl"><input type="checkbox" id="bp-partial" data-bp="partial"><span></span></label></div>
+        <div class="bp-row"><span>Chłodzenie</span><label class="tgl"><input type="checkbox" id="bp-cooling" data-bp="cooling"><span></span></label></div>
+        <div id="bp-now" style="font-size:13px;margin-top:8px"></div>
+        <div id="bp-msg" style="font-size:13px;margin-top:4px"></div>
+      </div>
+      <div class="fanbox">
+        <label class="fs-auto"><input type="checkbox" id="bp-auto"> Automatyka komfortu (letnie chłodzenie)</label>
+        <div class="bp-row"><span>Temperatura komfortu (wywiew z domu)</span><span><input class="bp-num" id="bp-comfort" type="number" step="0.5"> °C</span></div>
+        <div class="bp-row"><span>Wyłącz, gdy na zewnątrz poniżej</span><span><input class="bp-num" id="bp-outmin" type="number" step="0.5"> °C</span></div>
+        <p style="font-size:13px;color:var(--text-2);margin:8px 0">Gdy temperatura wywiewu (z domu) jest wyższa od komfortu, a na zewnątrz jest co najmniej
+          podany próg – obejście, częściowe obejście i chłodzenie są włączane. Gdy wywiew spadnie poniżej komfortu albo na zewnątrz
+          zrobi się zimniej – wszystko wyłączane (odzysk ciepła). Średnie z 10 min, histereza ±0,3 °C, zmiana najwyżej co 30 min.
+          Działa w aplikacji także przy zamkniętej stronie; przy włączonym automacie przełączniki obok są tylko do podglądu.</p>
+        <div id="bp-autost" style="font-size:13px"></div>
+        <div style="font-size:13px;font-weight:600;margin:12px 0 4px">Ostatnie zmiany</div>
+        <div id="bp-log" style="font-size:12px;color:var(--text-2)"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Temperatura nawiewu (nastawa we wszystkich profilach)</h2>
+    <div class="bp-grid">
+      <div class="fanbox">
+        <h3>Nastawa teraz</h3>
+        <div class="bp-row"><span>W domu / Poza domem / Boost</span><b id="sp-cur">–</b></div>
+        <div class="bp-row"><span>Ustaw (wszystkie profile)</span><span><input class="bp-num" id="sp-val" type="number" min="15" max="25" step="1"> °C
+          <button class="fs-btn primary" id="sp-set">Ustaw</button></span></div>
+        <div id="sp-msg" style="font-size:13px;margin-top:6px"></div>
+        <p style="font-size:13px;color:var(--text-2);margin:8px 0 0">Nastawa to temperatura, do której rekuperator dąży z powietrzem nawiewanym:
+          niska (17 °C) – chętniej otwiera bypass i chłodzi, wysoka (22 °C) – trzyma odzysk ciepła.
+          Działa razem z obejściem wymiennika (karta wyżej).</p>
+      </div>
+      <div class="fanbox">
+        <label class="fs-auto"><input type="checkbox" id="sp-auto"> Automat nastawy nawiewu</label>
+        <div class="bp-row"><span>Lato (miesiące)</span><span><input class="bp-num" id="sp-months" style="width:120px" placeholder="5,6,7,8,9"></span></div>
+        <div class="bp-row"><span>Lato i wywiew ≥ <input class="bp-num" id="sp-hot" type="number" step="0.5"> °C → nastawa</span><span><input class="bp-num" id="sp-st" type="number" step="1"> °C</span></div>
+        <div class="bp-row"><span>Wywiew ≤ <input class="bp-num" id="sp-cold" type="number" step="0.5"> °C → nastawa</span><span><input class="bp-num" id="sp-nt" type="number" step="1"> °C</span></div>
+        <div class="bp-row"><span>Mróz: zewn. ≤ <input class="bp-num" id="sp-fo" type="number" step="0.5"> °C (koniec ≥ <input class="bp-num" id="sp-fe" type="number" step="0.5"> °C)</span></div>
+        <div class="bp-row"><span>– nagrzewnica: pobór ≥ <input class="bp-num" id="sp-spike" type="number" step="10"> W przez ≥ <input class="bp-num" id="sp-smin" type="number" step="1"> min → −1 °C co godzinę, min.</span><span><input class="bp-num" id="sp-min" type="number" step="1"> °C</span></div>
+        <div class="row" style="margin-top:8px"><button class="fs-btn" id="sp-save">Zapisz progi</button></div>
+        <div id="sp-autost" style="font-size:13px;margin-top:8px"></div>
+        <p style="font-size:12px;color:var(--muted);margin:6px 0 0">Średnie temperatur z 30 min, histereza między progami wywiewu, zmiana najwyżej co 30 min
+          (w mrozie co godzinę). Praca nagrzewnicy z miernika poboru prądu (Ustawienia → Rekuperacja): średni pobór w każdej minucie (z licznika energii) przez podany czas bez przerwy –
+          krótkie piki kontrolne Vallox są pomijane.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2 id="vdaytitle">Dzisiaj</h2>
+      <button id="vprev" aria-label="Poprzedni dzień">‹</button>
+      <input type="date" id="vdate">
+      <button id="vnext" aria-label="Następny dzień">›</button>
+      <button id="vtoday">Dziś</button>
+    </div>
+    <div class="tiles" id="vtiles"></div>
+    <div class="daynav" style="margin-bottom:4px">
+      <span class="status">Kliknij nazwę serii w legendzie, aby ją włączyć lub wyłączyć</span>
+      <span><button id="vall" class="fs-btn">Pokaż wszystkie</button> <button id="vnone" class="fs-btn">Ukryj wszystkie</button></span>
+    </div>
+    <h2>Jakość powietrza i sprawność – CO₂ [ppm] / sprawność, wilgotność [%]</h2>
+    <div class="chart"><canvas id="cVair"></canvas></div>
+    <h2 style="margin-top:16px">Temperatury [°C] i pobór mocy [W]</h2>
+    <div class="chart"><canvas id="cVtw"></canvas></div>
+    <div class="empty" id="vempty" hidden>Brak danych z rekuperatora dla tego dnia.</div>
+    <div class="muted" id="vlognote" hidden style="font-size:.85em;margin:4px 0 8px"></div>
+    <p class="status" style="margin-top:10px">Sprawność liczona z temperatur: nawiew = (za wymiennikiem − zewn.) ÷ (wywiew − zewn.),
+      wywiew = (wywiew − wyrzut) ÷ (wywiew − zewn.). Przy różnicy temperatur &lt; 3 °C nie jest liczona. Odczyt co 60 s, wykres – średnie 5-minutowe.</p>
+  </section>
+  </div>
+
   <div id="tab-set" role="tabpanel" hidden>
   <section class="card">
     <div class="daynav"><h2>Ustawienia</h2><span class="status" id="cfgfile"></span></div>
@@ -473,6 +713,16 @@ th:first-child, td:first-child { text-align: left; }
         <p class="status" style="margin-top:6px">Tylko dla klientów Pstryka: aplikacja Pstryk → Integracje → wygeneruj klucz.
           Dodaje dane z licznika operatora, rzeczywiste koszty i ceny godzinowe Pstryka. Bez klucza dashboard działa jak dotąd.
           Klucz zostaje w pliku config.ini na tym komputerze.</p>
+      </fieldset>
+      <fieldset><legend>Rekuperacja (opcjonalnie)</legend>
+        <label>Adres IP rekuperatora Vallox (seria MV)<input data-k="rekuperacja.vallox_ip" placeholder="puste = bez zakładki Rekuperacja"></label>
+        <label>Maks. przepływ z karty katalogowej [m³/h]<input data-k="rekuperacja.przeplyw_max_m3h" type="number" placeholder="385"></label>
+        <label>Miernik poboru prądu rekuperatora<select data-k="rekuperacja.miernik"><option value="">brak</option>
+          <option value="shelly">gniazdko Shelly (Gen1 / Plus)</option></select></label>
+        <label>Adres IP miernika<input data-k="rekuperacja.miernik_ip" placeholder="np. 192.168.1.50"></label>
+        <p class="status" style="margin-top:6px">Rekuperator musi być w tej samej sieci (MyVallox, port 80). Sterowanie wentylatorami,
+          obejściem i nastawą nawiewu – tylko po potwierdzeniu albo przez włączony automat. Inny miernik niż Shelly (np. Tuya) –
+          opis w pliku meter.py.</p>
       </fieldset>
       <fieldset><legend>Strona</legend>
         <label>Port strony<input data-k="serwer.port" type="number"></label>
@@ -576,6 +826,37 @@ function setLine(id, value, inward) {
   el.classList.toggle('on', on);
   el.classList.toggle('rev', on && !inward);
 }
+const hms = t => new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+const ddmm = t => new Date(t * 1000).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
+function durTxt(s) { s = Math.max(0, Math.round(s)); return s >= 3600 ? Math.floor(s / 3600) + ' h ' + Math.floor(s % 3600 / 60) + ' min' : s >= 60 ? Math.floor(s / 60) + ' min' + (s % 60 && s < 600 ? ' ' + s % 60 + ' s' : '') : s + ' s'; }
+let lastOutageKey = null;
+function showGrid(d) {
+  const og = !!d.offgrid && d.ok;
+  document.body.classList.toggle('offgrid', og);
+  $('offgrid').hidden = !og;
+  if (og) {
+    $('og-txt').textContent = d.grid_mode === 2 ? 'Praca wyspowa (off-grid) – włączona ręcznie' : 'Brak sieci – praca wyspowa (off-grid)';
+    $('og-sub').textContent = (d.offgrid_since ? 'od ' + hms(d.offgrid_since) + ' (' + durTxt(Date.now() / 1000 - d.offgrid_since) + ') · ' : '') +
+      'dom zasilany z magazynu' + (d.pv > 0.05 ? ' i PV' : '') + ' · SOC ' + d.soc.toFixed(0) + ' %';
+    $('v-grid').textContent = 'brak';
+    $('s-grid').textContent = 'zanik sieci';
+    $('k-grid').textContent = 'brak sieci';
+  }
+  const lo = d.last_outage;
+  $('k-outage').textContent = og ? 'trwa' : lo ? `${ddmm(lo.start)} ${hms(lo.start)}–${hms(lo.end)} (${lo.approx ? '~' : ''}${durTxt(lo.end - lo.start)})` : 'brak zapisanych';
+  const key = (lo && lo.start) + '|' + og;
+  if (key !== lastOutageKey && $('outages').open) loadOutages();
+  lastOutageKey = key;
+}
+async function loadOutages() {
+  let r; try { r = await (await fetch('/api/grid_events?limit=30')).json(); } catch (e) { return; }
+  const ev = r.events || [];
+  $('outlist').innerHTML = ev.length ? '<table><thead><tr><th>Dzień</th><th>Od</th><th>Do</th><th>Czas</th><th>Rodzaj</th></tr></thead><tbody>' +
+    ev.map(e => `<tr><td>${ddmm(e.start)}</td><td>${hms(e.start)}</td><td>${e.end ? hms(e.end) : '<b>trwa</b>'}</td>` +
+      `<td>${e.end ? (e.approx ? '~' : '') + durTxt(e.end - e.start) : durTxt(Date.now() / 1000 - e.start)}</td>` +
+      `<td>${esc(r.modes?.[e.mode] || e.mode)}${e.source && e.source !== 'falownik' ? ' · ' + esc(e.source) : ''}</td></tr>`).join('') + '</tbody></table>'
+    : 'Brak zapisanych zaników – zapis od wersji 1.14.0 (rejestr trybu pracy falownika co 5 s).';
+}
 async function refreshLive() {
   try {
     const d = await (await fetch('/api/live')).json();
@@ -605,6 +886,7 @@ async function refreshLive() {
     setLine('l-load', d.load, false);  // sciezka dom->falownik, wiec rev = do domu
     setLine('l-bat', d.bat, d.bat < 0);
     setLine('l-grid', d.grid, d.grid > 0);
+    showGrid(d);
   } catch (e) {
     $('dot').className = 'dot err';
     $('status').textContent = 'brak połączenia z aplikacją';
@@ -1220,17 +1502,382 @@ document.querySelectorAll('.bt-range button[data-d]').forEach(b => b.onclick = (
 });
 
 // ---- zakladki ----
-const charts = () => [cPower, cFc, cPrice, cSt, cPvs, cPvm, cBt].filter(Boolean);
+const charts = () => [cPower, cFc, cPrice, cSt, cPvs, cPvm, cBt, cVair, cVtw].filter(Boolean);
 function showTab(name) {
-  ['pv', 'set'].forEach(t => {
+  ['pv', 'rek', 'set'].forEach(t => {
     $('tab-' + t).hidden = t !== name;
     $('tabbtn-' + t).setAttribute('aria-selected', String(t === name));
   });
-  try { history.replaceState(null, '', name === 'pv' ? location.pathname : '#ustawienia'); } catch (e) {}
+  try { history.replaceState(null, '', name === 'pv' ? location.pathname : name === 'rek' ? '#rekuperacja' : '#ustawienia'); } catch (e) {}
   if (name === 'set') loadConfig();
+  if (name === 'rek') { loadVallox(); loadValloxDay(vcurrent); loadFanLog(); }
   setTimeout(() => charts().forEach(c => c.resize()), 0);
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// ---- balans przeplywow ----
+let balAvg = null, lastVallox = null;
+function balance(o) {
+  const { t_out, t_sup_cell, t_ext, t_exh } = o;
+  if ([t_out, t_sup_cell, t_ext, t_exh].some(v => v == null)) return null;
+  const ddom = t_ext - t_sup_cell, dzew = t_exh - t_out;
+  const warm = t_sup_cell - t_out, cool = t_ext - t_exh;
+  return { ddom, dzew, diff: ddom - dzew, ratio: warm > 0.3 ? cool / warm : null, span: t_ext - t_out };
+}
+function renderBalance(d) {
+  const f1 = v => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + ' °C';
+  $('b-out').textContent = fmtT(d.t_out); $('b-sup').textContent = fmtT(d.t_sup_cell);
+  $('b-ext').textContent = fmtT(d.t_ext); $('b-exh').textContent = fmtT(d.t_exh);
+  const b = balance(d);
+  $('b-ddom').textContent = b ? b.ddom.toFixed(1) + ' °C' : '–';
+  $('b-dzew').textContent = b ? b.dzew.toFixed(1) + ' °C' : '–';
+  const verdict = x => x == null ? '' : Math.abs(x) < 0.3 ? 'zrównoważone' : x > 0 ? 'przewaga nawiewu' : 'przewaga wywiewu';
+  const col = x => x == null ? '' : Math.abs(x) < 0.3 ? 'var(--eff-good)' : Math.abs(x) < 1 ? 'var(--eff-mid)' : 'var(--eff-bad)';
+  const vtile = (t, x, note) => `<div class="tile"><div class="t">${t}</div><div class="v" style="color:${col(x)}">${f1(x)}</div>` +
+    `<div class="n">${note}</div></div>`;
+  const a = balAvg;
+  $('baltiles').innerHTML =
+    vtile('Różnica ΔT dom − ΔT zewn. (teraz)', b?.diff, verdict(b?.diff)) +
+    vtile('Różnica – średnio 30 min', a?.diff, a ? verdict(a.diff) + ` · ${a.n * 5} min danych` : 'brak danych') +
+    tile('Stosunek przepływów nawiew / wywiew', b?.ratio != null ? b.ratio.toFixed(2) : null, '',
+      b?.ratio != null ? (b.ratio > 1 ? `nawiew większy o ~${Math.round((b.ratio - 1) * 100)} %` : `wywiew większy o ~${Math.round((1 / b.ratio - 1) * 100)} %`) : '') +
+    tile('Przepływ nawiew / wywiew', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext}` : null, 'm³/h',
+      (d.flow_calibrated ? 'z kalibracji' : 'szacunek z obrotów') + (d.rpm_sup != null ? ` · ${d.rpm_sup} / ${d.rpm_ext} obr/min` : '')) +
+    tile('Moc odzyskana teraz', d.p_rec_w != null ? Math.round(d.p_rec_w) : null, 'W',
+      d.eff_sup != null ? `sprawność ${Math.round(d.eff_sup)} % (nawiew) / ${d.eff_ext != null ? Math.round(d.eff_ext) : '–'} % (wywiew)` : '');
+  $('balnote').innerHTML = d.auto?.paused
+    ? `<span style="color:var(--eff-mid)">⚠ ${esc(d.auto.paused)} – różnice temperatur nie odpowiadają przepływom, bilans pokazuje tylko orientacyjnie.</span>`
+    : b && b.span < 8
+    ? `<span style="color:var(--eff-mid)">⚠ Różnica wywiew − zewnątrz to tylko ${b.span.toFixed(1)} °C – wynik orientacyjny, miarodajny od ok. 8 °C.</span>` : '';
+  $('balstatus').textContent = d.ts ? 'odczyt ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') : '';
+  const on = d.ok && (d.fan_pct || 0) > 0;
+  ['b-l-in1', 'b-l-in2', 'b-l-out1', 'b-l-out2'].forEach(id => $(id).classList.toggle('on', on));
+  renderFans(d, b);
+}
+
+// ---- ustawienia wentylatorow (tylko odczyt + propozycja) ----
+let fsAuto = false;   // automatyczna korekta - stan z aplikacji (vallox_auto.json)
+$('fs-auto').onchange = async e => {
+  const on = e.target.checked;
+  if (on && !confirm('Włączyć automatyczną korektę wentylatorów (co godzinę ±1 %)?')) { e.target.checked = false; return; }
+  const r = await (await fetch('/api/vallox/auto', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: on }) })).json().catch(() => ({ ok: false }));
+  if (!r.ok) e.target.checked = !on;
+  await loadVallox(); loadFanLog();
+};
+function fanProposal(d, b) {
+  const a = balAvg;
+  if (d.extr_base == null || d.supp_base == null) return { txt: 'Brak odczytu ustawień wentylatorów z rekuperatora.' };
+  if (d.auto?.paused) return { txt: `Bilansowanie wstrzymane – ${esc(d.auto.paused)}. Przy obejściu wymiennika pomiar różnic jest niewiarygodny.` };
+  if (!b || b.span < 8) return { txt: `Różnica wywiew − zewnątrz ${b ? b.span.toFixed(1) + ' °C' : '–'} < 8 °C – za mała, by wiarygodnie korygować.` };
+  if (!a || a.n < 3 || a.ratio == null) return { txt: 'Za mało danych z ostatnich 30 min.' };
+  if (Math.abs(a.diff) < 0.3) return { txt: 'Przepływy zrównoważone – bez zmian.', ext: d.extr_base };
+  const target = Math.round(d.extr_base * a.ratio);
+  const ext = Math.max(10, Math.min(100, Math.max(d.extr_base - 3, Math.min(d.extr_base + 3, target))));
+  if (ext === d.extr_base) return { txt: 'Korekta poniżej 1 % – bez zmian.', ext };
+  return { ext, txt: `Proponowane: wywiew <b>${d.extr_base} → ${ext} %</b> (nawiew bez zmian ${d.supp_base} %). ` +
+    `Średnia różnica ${a.diff > 0 ? '+' : ''}${a.diff.toFixed(1)} °C, stosunek przepływów ${a.ratio.toFixed(2)}.` };
+}
+let fsPend = {}, fsBusy = false, fsLastProp = null;
+const FS = { sup: 'supp_base', ext: 'extr_base' };
+const fsLim = () => lastVallox?.fan_limits || { enabled: false, min: 10, max: 80, step: 10 };
+function fsClamp(k, v) {
+  const L = fsLim(), cur = lastVallox?.[FS[k]];
+  v = Math.round(v);
+  if (cur != null) v = Math.max(cur - L.step, Math.min(cur + L.step, v));
+  return Math.max(L.min, Math.min(L.max, v));
+}
+function fsSetPend(k, v, src = 'ręcznie') {
+  if (!fsLim().enabled || lastVallox?.[FS[k]] == null) return;
+  v = fsClamp(k, v);
+  if (v === lastVallox[FS[k]]) delete fsPend[k]; else fsPend[k] = v;
+  fsPend._src = src;
+  $('fs-msg').textContent = '';
+  renderFans(lastVallox, balance(lastVallox));
+}
+['sup', 'ext'].forEach(k => {
+  const tr = $('fs-' + k + '-tr');
+  const at = ev => { const r = tr.getBoundingClientRect(); fsSetPend(k, 100 * (ev.clientX - r.left) / r.width); };
+  tr.addEventListener('pointerdown', ev => { tr.setPointerCapture(ev.pointerId); at(ev); });
+  tr.addEventListener('pointermove', ev => { if (tr.hasPointerCapture(ev.pointerId)) at(ev); });
+  $('fs-' + k).addEventListener('change', ev => fsSetPend(k, Number(ev.target.value)));
+});
+$('fs-cancel').onclick = () => { fsPend = {}; $('fs-msg').textContent = ''; renderFans(lastVallox, balance(lastVallox)); };
+$('fs-apply').onclick = () => { if (fsLastProp?.ext != null) fsSetPend('ext', fsLastProp.ext, 'propozycja'); };
+$('fs-save').onclick = async () => {
+  const body = { source: fsPend._src || 'ręcznie' };
+  if (fsPend.sup != null) body.supp_base = fsPend.sup;
+  if (fsPend.ext != null) body.extr_base = fsPend.ext;
+  fsBusy = true; $('fs-save').disabled = true; $('fs-msg').style.color = 'var(--text-2)'; $('fs-msg').textContent = 'Zapisywanie…';
+  let r;
+  try { r = await (await fetch('/api/vallox/fans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); }
+  catch (e) { r = { ok: false, error: 'brak połączenia z aplikacją' }; }
+  fsBusy = false; $('fs-save').disabled = false;
+  $('fs-msg').style.color = r.ok ? 'var(--eff-good)' : 'var(--eff-bad)';
+  $('fs-msg').textContent = r.ok ? '✓ Zapisano: ' + Object.entries(r.changed || {}).map(([k, v]) => `${k === 'supp_base' ? 'nawiew' : 'wywiew'} ${v[0]} → ${v[1]} %`).join(', ') || 'bez zmian'
+    : '✗ ' + r.error;
+  if (r.ok) fsPend = {};
+  await loadVallox(); loadFanLog();
+};
+async function loadFanLog() {
+  let rows;
+  try { rows = await (await fetch('/api/vallox/log')).json(); } catch (e) { return; }
+  const BPN = { bp_bypass: 'obejście', bp_partial: 'częściowe obejście', bp_cooling: 'chłodzenie', supply_temp: 'nastawa nawiewu' };
+  const bp = rows.filter(r => BPN[r.param]);
+  $('bp-log').innerHTML = bp.length ? bp.slice(0, 6).map(r =>
+    `<div>${new Date(r.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ` +
+    `${BPN[r.param]} ${r.param === 'supply_temp' ? r.old + ' → ' + r.new + ' °C' : (+r.new ? 'zał.' : 'wył.')} · ${r.source}` +
+    (r.ok ? '' : ` · <span style="color:var(--eff-bad)">błąd: ${r.msg}</span>`) + '</div>').join('') : 'brak';
+  rows = rows.filter(r => !BPN[r.param]);
+  $('fs-log').innerHTML = rows.length ? rows.slice(0, 6).map(r =>
+    `<div>${new Date(r.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ` +
+    `${r.param === 'supp_base' ? 'nawiew' : 'wywiew'} ${r.old} → ${r.new} % · ${r.source}` +
+    (r.ok ? '' : ` · <span style="color:var(--eff-bad)">błąd: ${r.msg}</span>`) + '</div>').join('') : 'brak';
+}
+function renderFans(d, b) {
+  const L = fsLim();
+  const set = (k, cur, rpm) => {
+    const v = fsPend[k] ?? cur;
+    const inp = $('fs-' + k);
+    if (document.activeElement !== inp) inp.value = v ?? '';
+    inp.disabled = !L.enabled || cur == null;
+    inp.classList.toggle('pend', fsPend[k] != null);
+    $('fs-' + k + '-fill').style.width = (v ?? 0) + '%';
+    $('fs-' + k + '-th').style.left = (v ?? 0) + '%';
+    const fl = k === 'sup' ? d.flow_sup : d.flow_ext;
+    $('fs-' + k + '-rpm').textContent = rpm != null ? (fl != null ? `~${fl} m³/h · ` : '') + rpm + ' obr/min' + (fsPend[k] != null ? ` (teraz ${cur} %)` : '') : '';
+  };
+  set('sup', d.supp_base, d.rpm_sup); set('ext', d.extr_base, d.rpm_ext);
+  $('fs-pw').innerHTML = d.shelly?.ok ? `Pobór mocy rekuperatora: <b>${Math.round(d.shelly.power)} W</b>` : '';
+  $('fs-act').hidden = !(fsPend.sup != null || fsPend.ext != null);
+  $('fs-hint').textContent = L.enabled ? `Przeciągnij suwak lub wpisz wartość · zakres ${L.min}–${L.max} %, maks. ±${L.step} % na raz`
+    : 'Zapis wyłączony (vallox.py: FAN_WRITE_ENABLED = False)';
+  const A = d.auto || {};
+  fsAuto = !!A.enabled;
+  if (document.activeElement !== $('fs-auto')) $('fs-auto').checked = fsAuto;
+  const tt = t => t ? new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '–';
+  $('fs-autost').innerHTML = !fsAuto ? '' : A.paused ?
+    `<b style="color:var(--s-pv)">Wstrzymany</b> – ${esc(A.paused)}; korekty wrócą po powrocie do odzysku ciepła (po 30 min stabilizacji wymiennika).` :
+    `Średnia różnica: <b>${A.avg_diff != null ? (A.avg_diff > 0 ? '+' : '') + A.avg_diff.toFixed(2) + ' °C' : '–'}</b> (${A.samples} min po ostatniej zmianie)` +
+    ` · ostatnia zmiana ${A.last_change ? tt(A.last_change) : '–'} · następna kontrola ok. ${tt(A.next_check)}` +
+    ` · kolejny: ${A.next === 'supp_base' ? 'nawiew' : 'wywiew'}<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
+  const p = fsAuto ? null : fanProposal(d, b);
+  fsLastProp = p;
+  const gh = $('fs-ext-gh');
+  gh.hidden = !(p && p.ext != null && p.ext !== d.extr_base);
+  if (!gh.hidden) gh.style.left = p.ext + '%';
+  $('fs-apply').hidden = gh.hidden || !L.enabled;
+  $('fs-prop').innerHTML = p ? p.txt : '';
+}
+
+// ---- temperatura nawiewu ----
+function renderSupply(d) {
+  const S = d.supply_ctl || {}, T = S.targets || {}, A = S.auto || {};
+  $('sp-cur').textContent = ['home_temp', 'away_temp', 'boost_temp'].map(k => T[k] != null ? Math.round(T[k]) + ' °C' : '–').join(' / ');
+  const keep = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v ?? ''; };
+  keep('sp-val', T.home_temp != null ? Math.round(T.home_temp) : '');
+  $('sp-val').disabled = $('sp-set').disabled = !!A.enabled;
+  if (document.activeElement !== $('sp-auto')) $('sp-auto').checked = !!A.enabled;
+  keep('sp-months', (A.summer_months || []).join(',')); keep('sp-hot', A.ext_hot); keep('sp-st', A.summer_target);
+  keep('sp-cold', A.ext_cold); keep('sp-nt', A.normal_target); keep('sp-fo', A.frost_out); keep('sp-fe', A.frost_exit);
+  keep('sp-spike', A.spike_w); keep('sp-smin', A.spike_min); keep('sp-min', A.frost_min);
+  $('sp-autost').innerHTML = !A.enabled ? '' : `Średnio z 30 min: wywiew <b>${A.avg_t_ext ?? '–'} °C</b>, zewnątrz <b>${A.avg_t_out ?? '–'} °C</b>` +
+    (A.frost ? ' · <b style="color:var(--s-fc)">tryb mrozowy</b>' : '') +
+    `<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
+}
+async function spPost(url, body) {
+  const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
+    .json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+  $('sp-msg').innerHTML = r.ok ? '<span style="color:var(--ok)">zapisano</span>' : `<span style="color:var(--err)">błąd: ${esc(r.error)}</span>`;
+  await loadVallox(); loadFanLog();
+  return r.ok;
+}
+$('sp-set').onclick = () => {
+  const v = +$('sp-val').value;
+  if (confirm(`Ustawić temperaturę nawiewu ${v} °C we wszystkich profilach?`)) spPost('/api/vallox/supply', { value: v });
+};
+$('sp-auto').onchange = async e => {
+  if (e.target.checked && !confirm('Włączyć automat nastawy nawiewu?')) { e.target.checked = false; return; }
+  if (!await spPost('/api/vallox/supply_auto', { enabled: e.target.checked })) e.target.checked = !e.target.checked;
+};
+$('sp-save').onclick = () => spPost('/api/vallox/supply_auto', {
+  summer_months: $('sp-months').value.split(/[,; ]+/).filter(Boolean).map(Number),
+  ext_hot: +$('sp-hot').value, summer_target: +$('sp-st').value, ext_cold: +$('sp-cold').value, normal_target: +$('sp-nt').value,
+  frost_out: +$('sp-fo').value, frost_exit: +$('sp-fe').value, spike_w: +$('sp-spike').value, spike_min: +$('sp-smin').value, frost_min: +$('sp-min').value });
+
+// ---- obejscie wymiennika (bypass) ----
+function renderBypass(d) {
+  const B = d.bypass_ctl || {}, A = B.auto || {};
+  ['bypass', 'partial', 'cooling'].forEach(k => {
+    const el = $('bp-' + k);
+    if (el.dataset.busy) return;
+    el.checked = !!B[k]; el.disabled = B[k] == null || !!A.enabled || !(d.fan_limits || {}).enabled;
+  });
+  if (document.activeElement !== $('bp-auto')) $('bp-auto').checked = !!A.enabled;
+  if (document.activeElement !== $('bp-comfort')) $('bp-comfort').value = A.comfort ?? 22;
+  if (document.activeElement !== $('bp-outmin')) $('bp-outmin').value = A.out_min ?? 5;
+  $('bp-now').innerHTML = `Wymiennik teraz: <b>${esc(d.cell_state_txt || '–')}</b> · wywiew ${fmtT(d.t_ext)} · zewnątrz ${fmtT(d.t_out)}`;
+  const tt = t => t ? new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '–';
+  $('bp-autost').innerHTML = !A.enabled ? '' :
+    `Średnio z 10 min: wywiew <b>${A.avg_t_ext ?? '–'} °C</b>, zewnątrz <b>${A.avg_t_out ?? '–'} °C</b>` +
+    ` · ostatnia zmiana ${A.last_change ? tt(A.last_change) : '–'}<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
+}
+document.querySelectorAll('[data-bp]').forEach(el => el.onchange = async () => {
+  const k = el.dataset.bp, on = el.checked;
+  el.dataset.busy = '1'; el.disabled = true; $('bp-msg').textContent = 'zapisywanie…';
+  const r = await (await fetch('/api/vallox/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [k]: on }) })).json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+  delete el.dataset.busy;
+  $('bp-msg').innerHTML = r.ok ? '<span style="color:var(--ok)">zapisano w rekuperatorze</span>' : `<span style="color:var(--err)">błąd: ${esc(r.error)}</span>`;
+  if (!r.ok) el.checked = !on;
+  await loadVallox(); loadFanLog();
+});
+async function bpAuto(body) {
+  const r = await (await fetch('/api/vallox/bypass_auto', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) })).json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+  $('bp-msg').innerHTML = r.ok ? '' : `<span style="color:var(--err)">błąd: ${esc(r.error)}</span>`;
+  await loadVallox();
+  return r.ok;
+}
+$('bp-auto').onchange = async e => { if (!await bpAuto({ enabled: e.target.checked })) e.target.checked = !e.target.checked; };
+$('bp-comfort').onchange = e => bpAuto({ comfort: +e.target.value });
+$('bp-outmin').onchange = e => bpAuto({ out_min: +e.target.value });
+
+// ---- rekuperacja ----
+let cVair, cVtw, vcurrent = todayStr();
+const fmtT = v => v == null ? '–' : v.toFixed(1) + ' °C';
+async function loadVallox() {
+  let d;
+  try { d = await (await fetch('/api/vallox/live')).json(); } catch (e) { return; }
+  $('vstatus').textContent = d.ok ? '· ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') : '· błąd: ' + d.error;
+  lastVallox = d; renderBalance(d); renderBypass(d); renderSupply(d);
+  $('v-tout').textContent = fmtT(d.t_out); $('v-tsup').textContent = fmtT(d.t_sup);
+  $('v-text').textContent = fmtT(d.t_ext); $('v-texh').textContent = fmtT(d.t_exh);
+  const on = d.ok && (d.fan_pct || 0) > 0;
+  ['v-l-in', 'v-l-out'].forEach(id => { $(id).classList.toggle('on', on); });
+  renderEl(d.shelly);
+  $('v-eff').textContent = d.eff_sup == null ? '–' : `${Math.round(d.eff_sup)} % / ${d.eff_ext == null ? '–' : Math.round(d.eff_ext) + ' %'}`;
+  const yn = v => v == null ? '–' : v ? 'tak' : 'nie';
+  const row = (k, v) => `<span>${k}</span><span>${v ?? '–'}</span>`;
+  $('v-kv').innerHTML =
+    row('Profil', d.profile_txt) + row('Stan wymiennika', d.cell_state_txt) + row('Wentylacja', d.fan_pct != null ? d.fan_pct + ' %' : null) +
+    row('Przepływ nawiew / wywiew', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext} m³/h (${d.rpm_sup} / ${d.rpm_ext} obr/min)` : null) +
+    row('Moc odzyskana', d.p_rec_w != null ? Math.round(d.p_rec_w) + ' W' : null) +
+    row('Nawiew za wymiennikiem', fmtT(d.t_sup_cell)) +
+    row('CO₂ – ' + (d.co2_names?.co2_s0 || 'czujnik 1'), d.co2_s0 != null ? d.co2_s0 + ' ppm' : null) +
+    row('CO₂ – ' + (d.co2_names?.co2_s1 || 'czujnik 2'), d.co2_s1 != null ? d.co2_s1 + ' ppm' : null) +
+    row('Próg CO₂ (wentylacja w górę)', d.co2_threshold != null ? d.co2_threshold + ' ppm' + (d.co2_ctrl_home ? '' : ' (wył.)') : null) +
+    row('Wilgotność', d.rh != null ? d.rh + ' %' + (d.rh_basic_level != null ? ` (poziom bazowy ${d.rh_basic_level} %)` : '') : null) +
+    row('Temperatura w czujniku', fmtT(d.ms_temp)) +
+    row('Filtr – do wymiany', d.filter_days != null ? `${d.filter_days} z ${d.filter_interval} dni` : null) +
+    row('Bypass zablokowany', yn(d.bypass_locked)) + row('Odszranianie', yn(d.defrosting)) + row('Nagrzewnica', yn(d.heater)) +
+    row('Profile: Dom / Poza / Boost', d.home_speed != null ? `${d.home_speed} / ${d.away_speed} / ${d.boost_speed} %` : null);
+}
+const EL_MID = 50;   // W: do 50 zielony, do progu nagrzewnicy (Ustawienia) pomaranczowy, powyzej czerwony
+function renderEl(sh) {
+  if (!sh || !sh.enabled) { $('v-el').innerHTML = ''; return; }
+  const bad = sh.heater_w || 150;
+  const p = sh.ok ? sh.power : null;
+  const lvl = p == null ? '' : p <= EL_MID ? 'lvl-good' : p <= bad ? 'lvl-mid' : 'lvl-bad';
+  const note = p == null ? (sh.error ? 'brak połączenia z miernikiem' : '')
+    : p <= EL_MID ? 'normalna praca' : p <= bad ? 'podwyższony pobór' : 'prawdopodobnie grzałka';
+  const hr = sh.hour_kwh != null ? ` · ost. 1 h: ${sh.hour_kwh.toFixed(2)} kWh` : '';
+  const t = (cls, title, v, unit, n) => `<div class="tile ${cls}"><div class="t">${title}</div>` +
+    `<div class="v">${v ?? '–'}${v != null ? ` <small>${unit}</small>` : ''}</div><div class="n">${n}</div></div>`;
+  $('v-el').innerHTML =
+    t(lvl, 'Pobór prądu teraz', p != null ? Math.round(p) : null, 'W', note + hr) +
+    t('', 'Zużycie dzisiaj', sh.day_kwh != null ? sh.day_kwh.toFixed(2) : null, 'kWh', '') +
+    t('', 'Zużycie w miesiącu', sh.month_kwh != null ? sh.month_kwh.toFixed(1) : null, 'kWh', '');
+}
+async function loadValloxDay(date) {
+  vcurrent = date; $('vdate').value = date;
+  $('vdaytitle').textContent = date === todayStr() ? 'Dzisiaj'
+    : new Date(date + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
+  let d;
+  try { d = await (await fetch('/api/vallox/day?date=' + date)).json(); } catch (e) { return; }
+  const s = d.series, m = d.summary;
+  if (date === todayStr()) {   // srednia z ostatnich 30 min do balansu
+    const last = s.slice(-6).map(balance).filter(Boolean);
+    const rs = last.map(x => x.ratio).filter(x => x != null);
+    balAvg = last.length ? { diff: last.reduce((x, y) => x + y.diff, 0) / last.length, n: last.length,
+      ratio: rs.length ? rs.reduce((x, y) => x + y, 0) / rs.length : null } : null;
+    if (lastVallox) renderBalance(lastVallox);
+  }
+  $('vempty').hidden = s.length > 0;
+  $('vlognote').hidden = !m.n_log;
+  if (m.n_log) $('vlognote').textContent = `Część odczytów (${m.n_log}) odtworzona z wewnętrznego dziennika rekuperatora – co 10 min, `
+    + 'przepływ i moc odzyskana szacowane z prędkości wentylacji.';
+  $('vtiles').innerHTML =
+    tile('Temp. zewn. min / max', m.t_out_min != null ? `${m.t_out_min} / ${m.t_out_max}` : null, '°C') +
+    tile('Śr. sprawność nawiew', m.eff_sup_avg, '%') + tile('Śr. sprawność wywiew', m.eff_ext_avg, '%') +
+    ctile('c-green', 'Energia odzyskana', m.rec_kwh, 'kWh', `w miesiącu ${m.rec_month_kwh ?? '–'} kWh` +
+      (m.flow_sup_avg != null ? ` · śr. przepływ ~${Math.round(m.flow_sup_avg)} m³/h` : '')) +
+    tile('CO₂ ' + (d.co2_names?.co2_s0 || ''), m.co2_s0_avg != null ? Math.round(m.co2_s0_avg) : null, 'ppm',
+      m.co2_s0_max != null ? `średnio · max ${Math.round(m.co2_s0_max)} ppm` : '') +
+    tile('CO₂ ' + (d.co2_names?.co2_s1 || ''), m.co2_s1_avg != null ? Math.round(m.co2_s1_avg) : null, 'ppm',
+      m.co2_s1_max != null ? `średnio · max ${Math.round(m.co2_s1_max)} ppm` : '') +
+    tile('Wilgotność średnio', m.rh_avg, '%');
+  const labels = s.map(p => p.t);
+  const L = { pointStyle: 'line' };
+  const S = (label, key, color, axis, unit, extra) =>
+    ({ ...ds(label, s.map(p => (typeof key === 'function' ? key(p) : p[key]) ?? null), color), yAxisID: axis, unit, ...L, ...extra });
+  const thr = d.co2_threshold;
+  const air = [
+    S('CO₂ – ' + (d.co2_names?.co2_s0 || 'czujnik 1'), p => p.co2_s0 ?? p.co2, css('--s-west'), 'yL', 'ppm'),
+    S('CO₂ – ' + (d.co2_names?.co2_s1 || 'czujnik 2'), 'co2_s1', css('--s-east'), 'yL', 'ppm'),
+    ...(thr ? [S(`Próg CO₂ ${thr} ppm`, () => thr, css('--s-buy'), 'yL', 'ppm', { borderDash: [2, 4], borderWidth: 1 })] : []),
+    S('Sprawność nawiew', 'eff_sup', css('--s-sell'), 'yR', '%'),
+    S('Sprawność wywiew', 'eff_ext', css('--s-sell'), 'yR', '%', { borderDash: [4, 3] }),
+    S('Wilgotność', 'rh', css('--s-fc'), 'yR', '%'),
+  ];
+  const tw = [
+    S('Zewnątrz', 't_out', css('--s-fc'), 'yL', '°C'),
+    S('Nawiew', 't_sup', css('--s-pv'), 'yL', '°C'),
+    S('Wywiew (z domu)', 't_ext', css('--s-buy'), 'yL', '°C'),
+    S('Wyrzut', 't_exh', css('--muted'), 'yL', '°C', { borderDash: [4, 3] }),
+    S('Pobór mocy', 'power', css('--s-grid'), 'yR', 'W', { fill: { target: 'origin' }, backgroundColor: css('--s-grid') + '14' }),
+    S('Moc odzyskana', 'p_rec', css('--s-sell'), 'yR', 'W', { fill: { target: 'origin' }, backgroundColor: css('--s-sell') + '14' }),
+  ];
+  const mk = (canvas, sets, left, right) => {
+    sets.forEach(x => { x.hidden = vHidden.has(vKey(x.label)); });
+    const ax = (pos, unit, o = {}) => ({ display: 'auto', position: pos, ticks: { color: css('--muted'), callback: v => +v.toFixed(2) + ' ' + unit },
+      grid: { display: pos === 'left', color: css('--grid') }, border: { display: false }, ...o });
+    const o = baseOpts('');
+    Object.assign(o.plugins.legend.labels, { usePointStyle: true, boxWidth: 24 });
+    o.plugins.legend.onClick = (e, item, legend) => {
+      const c = legend.chart, i = item.datasetIndex, vis = c.isDatasetVisible(i);
+      c.setDatasetVisibility(i, !vis); c.update();
+      const k = vKey(c.data.datasets[i].label); vis ? vHidden.add(k) : vHidden.delete(k); saveHidden();
+    };
+    o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? null :
+      ` ${c.dataset.label}: ${c.parsed.y.toFixed(c.dataset.unit === 'ppm' || c.dataset.unit === 'W' ? 0 : 1)} ${c.dataset.unit}`;
+    o.scales = { x: o.scales.x, yL: ax('left', left[0], left[1]), yR: ax('right', right[0], right[1]) };
+    return new Chart($(canvas), { type: 'line', data: { labels, datasets: sets }, options: o });
+  };
+  const upd = (c, sets) => { sets.forEach(x => { x.hidden = vHidden.has(vKey(x.label)); }); c.data = { labels, datasets: sets }; c.update(); };
+  if (!cVair) {
+    cVair = mk('cVair', air, ['ppm', { suggestedMin: 400 }], ['%', { min: 0, max: 100 }]);
+    cVtw = mk('cVtw', tw, ['°C', {}], ['W', { min: 0 }]);
+  } else { upd(cVair, air); upd(cVtw, tw); }
+}
+const vKey = l => l.replace(/ \d+ ppm$/, '');
+let vHidden = new Set();
+try { vHidden = new Set(JSON.parse(localStorage.getItem('vHidden') || '[]')); } catch (e) { /* brak storage */ }
+function saveHidden() { try { localStorage.setItem('vHidden', JSON.stringify([...vHidden])); } catch (e) { /* brak storage */ } }
+function vSetAll(show) {
+  [cVair, cVtw].filter(Boolean).forEach(c => {
+    c.data.datasets.forEach((x, i) => { c.setDatasetVisibility(i, show); show ? vHidden.delete(vKey(x.label)) : vHidden.add(vKey(x.label)); });
+    c.update();
+  });
+  saveHidden();
+}
+$('vall').onclick = () => vSetAll(true); $('vnone').onclick = () => vSetAll(false);
+function vshift(n) { const d = new Date(vcurrent + 'T12:00'); d.setDate(d.getDate() + n); loadValloxDay(d.toLocaleDateString('sv-SE')); }
+$('vprev').onclick = () => vshift(-1); $('vnext').onclick = () => vshift(1);
+$('vtoday').onclick = () => loadValloxDay(todayStr());
+$('vdate').onchange = e => e.target.value && loadValloxDay(e.target.value);
+setInterval(() => { if (!$('tab-rek').hidden) { loadVallox(); loadFanLog(); if (vcurrent === todayStr()) loadValloxDay(vcurrent); } }, 60000);
+
 
 // ---- ustawienia aplikacji (config.ini) ----
 let cfgData = null;
@@ -1347,8 +1994,14 @@ $('fb-gh').onclick = () => {
   $('fb-info').textContent = 'Otwieram GitHub (wymaga konta GitHub).';
 };
 
+$('outages').addEventListener('toggle', () => { if ($('outages').open) loadOutages(); });
 refreshLive(); loadDay(current); loadForecast(); loadRegs(); loadSettings(); loadBatTemps(); loadPrices(); loadStrategy(); loadPvStrings(); loadPvMonthly();
 if (location.hash === '#ustawienia') showTab('set');
+// zakladka Rekuperacja tylko z wpisanym adresem rekuperatora (Ustawienia -> Rekuperacja)
+fetch('/api/version').then(r => r.json()).then(v => {
+  $('tabbtn-rek').hidden = !v.vallox;
+  if (v.vallox && location.hash === '#rekuperacja') showTab('rek');
+}).catch(() => {});
 setInterval(loadPvStrings, 60000);
 setInterval(loadPvMonthly, 600000);
 setInterval(loadPrices, 300000);

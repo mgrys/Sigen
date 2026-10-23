@@ -51,6 +51,13 @@ SCHEMA = [
     'latest_kwh REAL, actual_kwh REAL, updated INTEGER, PRIMARY KEY ("day", "source"))',
     'CREATE TABLE IF NOT EXISTS pv_strings (ts INTEGER PRIMARY KEY, u1 REAL, i1 REAL, u2 REAL, i2 REAL, '
     'u3 REAL, i3 REAL, u4 REAL, i4 REAL)',
+    # rekuperator Vallox (opcjonalnie) i miernik jego poboru pradu
+    'CREATE TABLE IF NOT EXISTS vallox_samples (ts INTEGER PRIMARY KEY, t_out REAL, t_sup REAL, t_sup_cell REAL, '
+    't_ext REAL, t_exh REAL, rh REAL, co2 REAL, fan_pct REAL, rpm_sup REAL, rpm_ext REAL, cell_state INTEGER, '
+    'profile INTEGER, eff_sup REAL, eff_ext REAL, src TEXT, co2_s0 REAL, co2_s1 REAL)',
+    'CREATE TABLE IF NOT EXISTS vallox_log (ts INTEGER, param TEXT, old_value REAL, new_value REAL, '
+    'source TEXT, ok INTEGER, msg TEXT, PRIMARY KEY (ts, param))',
+    'CREATE TABLE IF NOT EXISTS meter_samples (ts INTEGER PRIMARY KEY, power REAL, total_wh REAL, energy_wh REAL)',
 ]
 
 
@@ -148,3 +155,75 @@ def load_bat_temps(con, start, end, bucket=60):
     return con.execute(f"SELECT (ts / {int(bucket)}) * {int(bucket)} AS b, AVG(t_avg), MAX(t_max), MIN(t_min), AVG(t_pcs) "
                        f"FROM bat_temps WHERE ts >= ? AND ts < ? GROUP BY (ts / {int(bucket)}) * {int(bucket)} ORDER BY b",
                        (start, end)).fetchall()
+
+
+# --- rekuperator Vallox ------------------------------------------------------
+VALLOX_COLS = ("t_out, t_sup, t_sup_cell, t_ext, t_exh, rh, co2, fan_pct, rpm_sup, rpm_ext, cell_state, co2_s0, co2_s1, "
+               "profile, eff_sup, eff_ext")
+
+
+def insert_vallox(con, ts, vals):
+    ph = ", ".join(["?"] * (len(vals) + 1))
+    con.execute(f"INSERT OR IGNORE INTO vallox_samples (ts, {VALLOX_COLS}) VALUES ({ph})", (ts, *vals))
+    con.commit()
+
+
+def load_vallox(con, start, end):
+    return con.execute(f"SELECT ts, {VALLOX_COLS} FROM vallox_samples WHERE ts >= ? AND ts < ? ORDER BY ts",
+                       (start, end)).fetchall()
+
+
+def log_vallox_change(con, ts, param, old, new, source, ok, msg):
+    con.execute("INSERT OR IGNORE INTO vallox_log (ts, param, old_value, new_value, source, ok, msg) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)", (ts, param, old, new, source, 1 if ok else 0, (msg or "")[:200]))
+    con.commit()
+
+
+def vallox_log_history(con, limit=20):
+    rows = con.execute("SELECT ts, param, old_value, new_value, source, ok, msg FROM vallox_log "
+                       "ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(ts=r[0], param=r[1], old=r[2], new=r[3], source=r[4], ok=bool(r[5]), msg=r[6]) for r in rows]
+
+
+def vallox_ts_buckets(con, start, end, bucket=600):
+    """Zbior przedzialow (ts // bucket), w ktorych sa juz odczyty rekuperatora."""
+    b = int(bucket)
+    return {int(r[0]) for r in con.execute(f"SELECT DISTINCT ts / {b} FROM vallox_samples WHERE ts >= ? AND ts < ?",
+                                           (start, end)).fetchall()}
+
+
+def insert_vallox_log(con, rows):
+    """rows: [(ts, {kolumna: wartosc})] - odczyty odtworzone z dziennika rekuperatora (src = 'log')."""
+    for ts, v in rows:
+        cols = list(v) + ["src"]
+        ph = ", ".join(["?"] * len(cols))
+        con.execute(f"INSERT OR IGNORE INTO vallox_samples (ts, {', '.join(cols)}) VALUES (?, {ph})",
+                    (ts, *v.values(), "log"))
+    con.commit()
+
+
+def vallox_rpm_fit(con, since):
+    """Pary (predkosc wentylacji %, obroty nawiewu, obroty wywiewu) z odczytow na zywo - do odtworzenia obrotow."""
+    return con.execute("SELECT fan_pct, rpm_sup, rpm_ext FROM vallox_samples WHERE ts >= ? AND src IS NULL "
+                       "AND fan_pct IS NOT NULL AND rpm_sup IS NOT NULL AND rpm_ext IS NOT NULL", (since,)).fetchall()
+
+
+# --- miernik poboru pradu rekuperatora (meter.py) ---------------------------------
+def insert_meter(con, ts, vals):
+    con.execute("INSERT OR IGNORE INTO meter_samples (ts, power, total_wh, energy_wh) VALUES (?, ?, ?, ?)", (ts, *vals))
+    con.commit()
+
+
+def last_meter_total(con):
+    r = con.execute("SELECT total_wh FROM meter_samples ORDER BY ts DESC LIMIT 1").fetchone()
+    return r[0] if r else None
+
+
+def load_meter(con, start, end):
+    return con.execute("SELECT ts, power, energy_wh FROM meter_samples WHERE ts >= ? AND ts < ? ORDER BY ts",
+                       (start, end)).fetchall()
+
+
+def meter_energy(con, start, end):
+    r = con.execute("SELECT SUM(energy_wh) FROM meter_samples WHERE ts >= ? AND ts < ?", (start, end)).fetchone()
+    return (r[0] or 0.0) if r else 0.0

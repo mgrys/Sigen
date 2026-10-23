@@ -6,16 +6,22 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.text.Html;
 import android.text.InputType;
-import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -27,23 +33,51 @@ import android.widget.TextView;
 /**
  * Sigen PV Monitor / Sigen Dashboard na telefonie: okno z dashboardem dzialajacym na komputerze w sieci domowej.
  * Adres serwera (np. http://192.168.0.50:8000) podaje sie przy pierwszym uruchomieniu; zmiana: przycisk
- * "Adres serwera" w stopce dashboardu albo okno bledu polaczenia.
+ * "Adres serwera" w stopce dashboardu albo na stronie bledu polaczenia.
+ *
+ * Brak polaczenia (np. restart aplikacji na komputerze) -> strona bledu z przyciskami i ponawianiem co 10 s,
+ * nigdy pusty (czarny) ekran. Po powrocie do aplikacji po dluzszej przerwie dashboard jest odswiezany.
  */
 public class MainActivity extends Activity {
     private static final String PREFS = "sigen", KEY_URL = "url";
+    private static final long RETRY_MS = 10_000, STALE_MS = 10 * 60_000;
+    private FrameLayout root;
     private WebView web;
     private SharedPreferences prefs;
     private AlertDialog dialog;
-    private boolean errorShown;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private boolean errorPage;          // wyswietlana strona bledu (ponawianie)
+    private boolean loadedOk;           // dashboard zaladowany
+    private long pausedAt;
+    private final Runnable retry = () -> {
+        if (errorPage && !isFinishing()) loadDashboard();
+    };
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Color.rgb(31, 30, 29));
+        setContentView(root);
+        CookieManager.getInstance().setAcceptCookie(true);   // sesja po wpisaniu PIN-u
+        createWebView();
+        if (prefs.getString(KEY_URL, null) == null) {
+            askAddress(false);
+        } else {
+            loadDashboard();
+        }
+    }
 
+    private void createWebView() {
+        if (web != null) {
+            root.removeView(web);
+            web.destroy();
+        }
         web = new WebView(this);
         web.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(web);
+        web.setBackgroundColor(Color.rgb(31, 30, 29));
+        root.addView(web);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -52,34 +86,29 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setBuiltInZoomControls(true);
         s.setDisplayZoomControls(false);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);   // zawsze aktualna strona po aktualizacji aplikacji na komputerze
         s.setUserAgentString(s.getUserAgentString() + " SigenApp/" + BuildConfigCompat.versionName(this));
-
-        CookieManager.getInstance().setAcceptCookie(true);   // sesja po wpisaniu PIN-u
         web.addJavascriptInterface(new Bridge(), "SigenApp");
         web.setWebChromeClient(new WebChromeClient());       // okna potwierdzen (confirm/alert) ze strony
         web.setWebViewClient(new Client());
+    }
 
-        if (state != null && web.restoreState(state) != null) {
-            return;
-        }
+    private void loadDashboard() {
+        ui.removeCallbacks(retry);
         String url = prefs.getString(KEY_URL, null);
         if (url == null) {
             askAddress(false);
-        } else {
-            web.loadUrl(url);
+            return;
         }
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle out) {
-        super.onSaveInstanceState(out);
-        web.saveState(out);
+        errorPage = false;
+        loadedOk = false;
+        web.loadUrl(url);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        pausedAt = SystemClock.elapsedRealtime();
         CookieManager.getInstance().flush();
         web.onPause();
     }
@@ -88,11 +117,25 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        boolean stale = pausedAt > 0 && SystemClock.elapsedRealtime() - pausedAt > STALE_MS;
+        String cur = web.getUrl();
+        boolean blank = cur == null || cur.startsWith("about:") || cur.startsWith("data:");
+        if (prefs.getString(KEY_URL, null) != null && (errorPage || stale || (blank && !loadedOk))
+                && (dialog == null || !dialog.isShowing())) {
+            loadDashboard();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        ui.removeCallbacks(retry);
+        if (web != null) web.destroy();
+        super.onDestroy();
     }
 
     @Override
     public void onBackPressed() {
-        if (web.canGoBack()) {
+        if (!errorPage && web.canGoBack()) {
             web.goBack();
         } else {
             super.onBackPressed();
@@ -146,32 +189,34 @@ public class MainActivity extends Activity {
             }
             prefs.edit().putString(KEY_URL, url).apply();
             dialog.dismiss();
-            errorShown = false;
             web.clearHistory();
-            web.loadUrl(url);
+            loadDashboard();
         }));
         dialog.show();
     }
 
+    /** Strona bledu w oknie (zamiast pustego ekranu) + ponawianie co RETRY_MS. */
     private void showError(String what) {
-        if (errorShown || isFinishing()) return;
-        errorShown = true;
-        if (dialog != null && dialog.isShowing()) dialog.dismiss();
-        dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.no_connection)
-                .setMessage(getString(R.string.no_connection_msg, prefs.getString(KEY_URL, "?"), what))
-                .setCancelable(false)
-                .setPositiveButton(R.string.retry, (d, w) -> {
-                    errorShown = false;
-                    web.loadUrl(prefs.getString(KEY_URL, "about:blank"));
-                })
-                .setNeutralButton(R.string.change_address, (d, w) -> {
-                    errorShown = false;
-                    askAddress(true);
-                })
-                .setNegativeButton(R.string.close_app, (d, w) -> finish())
-                .create();
-        dialog.show();
+        if (isFinishing()) return;
+        errorPage = true;
+        loadedOk = false;
+        String url = Html.escapeHtml(prefs.getString(KEY_URL, "?"));
+        String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                + "<style>body{margin:0;padding:28px 22px;font:16px/1.45 system-ui,sans-serif;background:#1f1e1d;color:#f0efec}"
+                + "h1{font-size:20px;margin:0 0 12px}p{color:#c3c2b7}.u{color:#f0efec;word-break:break-all}"
+                + "button{font:inherit;padding:11px 16px;margin:14px 10px 0 0;border-radius:10px;border:1px solid #555;"
+                + "background:#2a2927;color:#f0efec}.p{background:#2a78d6;border-color:#2a78d6}"
+                + "small{display:block;margin-top:22px;color:#8d8c86}</style></head><body>"
+                + "<h1>" + Html.escapeHtml(getString(R.string.no_connection)) + "</h1>"
+                + "<p>Adres: <span class='u'>" + url + "</span><br>Błąd: " + Html.escapeHtml(what) + "</p>"
+                + "<p>Sprawdź, czy komputer z aplikacją jest włączony i czy telefon jest w tej samej sieci Wi-Fi. "
+                + "Po restarcie aplikacji na komputerze połączenie wróci samo.</p>"
+                + "<button class='p' onclick='SigenApp.retry()'>" + Html.escapeHtml(getString(R.string.retry)) + "</button>"
+                + "<button onclick='SigenApp.changeAddress()'>" + Html.escapeHtml(getString(R.string.change_address)) + "</button>"
+                + "<small>Ponawiam automatycznie co 10 s…</small></body></html>";
+        web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null);
+        ui.removeCallbacks(retry);
+        ui.postDelayed(retry, RETRY_MS);
     }
 
     private boolean sameServer(Uri u) {
@@ -193,15 +238,31 @@ public class MainActivity extends Activity {
 
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
-            view.setVisibility(View.VISIBLE);
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            if (!errorPage && url != null && url.startsWith("http")) loadedOk = true;
         }
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-            if (req.isForMainFrame()) {
-                view.loadUrl("about:blank");
-                showError(String.valueOf(err.getDescription()));
-            }
+            if (req.isForMainFrame()) showError(String.valueOf(err.getDescription()));
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest req, WebResourceResponse resp) {
+            if (req.isForMainFrame() && resp.getStatusCode() >= 500) showError("HTTP " + resp.getStatusCode());
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            // proces strony padl (np. brak pamieci) - nowe okno zamiast zamkniecia aplikacji / czarnego ekranu
+            ui.post(() -> {
+                createWebView();
+                loadDashboard();
+            });
+            return true;
         }
     }
 
@@ -210,6 +271,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void changeAddress() {
             runOnUiThread(() -> askAddress(true));
+        }
+
+        @JavascriptInterface
+        public void retry() {
+            runOnUiThread(MainActivity.this::loadDashboard);
         }
 
         @JavascriptInterface

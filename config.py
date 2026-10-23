@@ -87,6 +87,13 @@ DEFAULTS = {
     "pstryk": {
         "api_key": "",                   # klucz API Pstryka (aplikacja Pstryk -> Integracje); puste = bez Pstryka
     },
+    "rekuperacja": {                     # opcjonalnie: rekuperator Vallox seria MV (MyVallox) - zakladka Rekuperacja
+        "vallox_ip": "",                 # adres IP rekuperatora; puste = bez zakladki Rekuperacja
+        "przeplyw_max_m3h": "385",       # maks. przeplyw z karty katalogowej (110 MV = 385, 145 MV = 520) - szacunek m3/h
+        "miernik": "",                   # pobor pradu rekuperatora: shelly | puste (inne: dopisz w meter.py)
+        "miernik_ip": "",                # adres IP gniazdka z pomiarem
+        "nagrzewnica_w": "150",          # pobor [W], od ktorego kafel pokazuje "prawdopodobnie grzalka"
+    },
     "ceny": {
         "operator": "tauron",            # operator dystrybucyjny (taryfy z davo22/polish-electricity-tariffs)
         "taryfa": "G11",

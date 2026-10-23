@@ -1,3 +1,4 @@
 fastapi>=0.110
 uvicorn>=0.29
 pymodbus>=3.6,<4
+vallox-websocket-api>=3.0

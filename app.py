@@ -25,8 +25,11 @@ import pstryk
 import strategy
 import registers
 import access
+import gridwatch
+import meter
+import vallox
 
-__version__ = "1.13.0"
+__version__ = "1.15.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -40,6 +43,7 @@ INTERVAL = max(2, config.geti("falownik", "interval", 5))   # s miedzy odczytami
 MAX_GAP = 60             # s - przerwy dluzsze nie sa liczone do energii
 
 # klucz: (rejestr, liczba rejestrow, signed, dzielnik)
+GRID_MODE_REG = 30009    # 0 praca z siecia, 1 off-grid (zanik sieci), 2 off-grid recznie
 REGISTERS = {
     "soc":   (30014, 1, False, 10),     # %
     "pv":    (30035, 2, True, 1000),    # kW
@@ -204,6 +208,12 @@ def poll_loop():
             vals["loss"] = live_loss_kw(vals)
             vals["loss_mode"] = "czuwanie" if vals["pv"] < STANDBY_KW and abs(vals["bat"]) < STANDBY_KW else "konwersja"
             ts = int(t0)
+            try:                                         # praca z siecia / off-grid (zanik sieci)
+                rg = read(client, GRID_MODE_REG, 1)
+                if not rg.isError():
+                    gridwatch.update(int(rg.registers[0]), ts)
+            except Exception:  # noqa: BLE001
+                pass
             with lock:
                 latest.clear()
                 latest.update(vals, ts=ts, ok=True)
@@ -357,6 +367,7 @@ app = FastAPI(title=config.APP_TITLE, version=__version__)
 access.INI, access.SECTION = config.CONFIG_FILE, "serwer"
 access.PIN_HINT = "na komputerze z aplikacją: Ustawienia → Strona → PIN"
 access.SESSIONS_FILE = config.DATA_DIR / "access_sessions.json"
+gridwatch.EVENTS = config.DATA_DIR / "grid_events.json"
 
 
 @app.middleware("http")
@@ -408,7 +419,7 @@ def static_file(name: str):
 @app.get("/api/version")
 def version():
     return {"version": __version__, "db": db.describe(), "data_dir": str(config.DATA_DIR), "title": config.APP_TITLE,
-            "service": config.SERVICE}
+            "service": config.SERVICE, "vallox": vallox.ENABLED}
 
 
 @app.get("/api/config")
@@ -490,7 +501,15 @@ def api_restart():
 @app.get("/api/live")
 def live():
     with lock:
-        return dict(latest)
+        d = dict(latest)
+    d.update(gridwatch.status())
+    return d
+
+
+@app.get("/api/grid_events")
+def api_grid_events(limit: int = 50):
+    """Historia zanikow sieci (praca off-grid)."""
+    return {"events": gridwatch.events(max(1, min(limit, 300))), "modes": gridwatch.MODES}
 
 
 def day_range(d):
@@ -1192,6 +1211,226 @@ def api_settings():
             "alarms": registers.grouped_alarms(avals), "alarms_ts": ats}
 
 
+# --- rekuperator Vallox (opcjonalnie, [rekuperacja] vallox_ip) ---------------------------------
+@app.get("/api/vallox/live")
+def api_vallox_live():
+    d = vallox.status()
+    d["enabled"] = vallox.ENABLED
+    sh = meter.status()
+    if meter.ENABLED:
+        try:
+            today = dt.date.today()
+            start, end = day_range(today)
+            m_start, _ = day_range(today.replace(day=1))
+            con = db_connect()
+            try:
+                sh["day_kwh"] = round(db.meter_energy(con, start, end) / 1000, 3)
+                sh["month_kwh"] = round(db.meter_energy(con, m_start, end) / 1000, 2)
+                sh["hour_kwh"] = round(db.meter_energy(con, int(time.time()) - 3600, int(time.time()) + 60) / 1000, 3)
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            pass
+    sh["heater_w"] = config.getf("rekuperacja", "nagrzewnica_w", 150)
+    d["shelly"] = sh            # nazwa pola jak w wersji z gniazdkiem Shelly (strona)
+    d["alert"] = None
+    return d
+
+
+@app.post("/api/vallox/fans")
+def api_vallox_fans(payload: dict = Body(...)):
+    """Zapis podstawowych ustawien wentylatorow (tryb Dom): {"supp_base": 37, "extr_base": 20, "source": "ręcznie"}."""
+    vals = {k: payload.get(k) for k in vallox.FAN_KEYS if payload.get(k) is not None}
+    r = vallox.set_fans(vals, payload.get("source", "ręcznie"), db_connect, db)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/vallox/auto")
+def api_vallox_auto(payload: dict = Body(...)):
+    """Automatyczne wyrownywanie przeplywow: {"enabled": true}."""
+    return {"ok": True, "auto": vallox.auto_set(bool(payload.get("enabled")))}
+
+
+@app.post("/api/vallox/bypass")
+def api_vallox_bypass(payload: dict = Body(...)):
+    """Obejscie wymiennika: {"bypass": true, "partial": true, "cooling": false} (True = "zal." jak w MyVallox)."""
+    if vallox._bp_load().get("enabled"):
+        return JSONResponse({"ok": False, "error": "steruje automat – wyłącz automat, aby zmieniać ręcznie"}, status_code=400)
+    vals = {k: payload.get(k) for k in vallox.BYPASS_KEYS if payload.get(k) is not None}
+    r = vallox.set_bypass(vals, "ręcznie", db_connect, db)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/vallox/supply")
+def api_vallox_supply(payload: dict = Body(...)):
+    """Nastawa temperatury nawiewu we wszystkich profilach: {"value": 22}."""
+    if vallox._sp_load().get("enabled"):
+        return JSONResponse({"ok": False, "error": "steruje automat – wyłącz automat, aby zmieniać ręcznie"}, status_code=400)
+    r = vallox.set_supply_target(payload.get("value"), "ręcznie", db_connect, db)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/vallox/supply_auto")
+def api_vallox_supply_auto(payload: dict = Body(...)):
+    """Automat nastawy nawiewu: {"enabled": true, "ext_hot": 22, ...} (dowolne z pol)."""
+    try:
+        a = vallox.supply_auto_set(**payload)
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return {"ok": True, "auto": a}
+
+
+@app.post("/api/vallox/bypass_auto")
+def api_vallox_bypass_auto(payload: dict = Body(...)):
+    """Automat obejscia: {"enabled": true, "comfort": 22, "out_min": 5} (dowolne z pol)."""
+    try:
+        a = vallox.bypass_auto_set(payload.get("enabled"), payload.get("comfort"), payload.get("out_min"))
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return {"ok": True, "auto": a}
+
+
+@app.get("/api/vallox/log")
+def api_vallox_log():
+    con = db_connect()
+    try:
+        return db.vallox_log_history(con)
+    finally:
+        con.close()
+
+
+def meter_day(d, start, end, series):
+    """Pobor pradu rekuperatora (miernik): srednia moc 5 min do serii, zuzycie i koszt dnia, zuzycie miesiaca."""
+    con = db_connect()
+    try:
+        rows = db.load_meter(con, start, end)
+        m_start, _ = day_range(d.replace(day=1))
+        month_wh = db.meter_energy(con, m_start, end)
+        try:
+            pts, _t = prices.series(con, d.isoformat())
+        except Exception:  # noqa: BLE001
+            pts = []
+    finally:
+        con.close()
+    buy = {p["ts"]: p.get("buy") for p in pts}
+    pw, kwh, cost, cost_wh = {}, 0.0, 0.0, 0.0
+    for ts, power, e_wh in rows:
+        if power is not None:
+            pw.setdefault(ts // 300 * 300, []).append(power)
+        if e_wh:
+            kwh += e_wh / 1000
+            price = buy.get(ts // 900 * 900)
+            if price is not None:
+                cost += e_wh / 1000 * price
+                cost_wh += e_wh
+    by_ts = {p["ts"]: p for p in series}
+    for b, v in pw.items():
+        p = by_ts.get(b)
+        if p is None:
+            p = {"ts": b, "t": dt.datetime.fromtimestamp(b).strftime("%H:%M")}
+            series.append(p)
+        p["power"] = round(sum(v) / len(v), 1)
+    series.sort(key=lambda p: p["ts"])
+    allp = [x for v in pw.values() for x in v]
+    return {"el_kwh": round(kwh, 3) if rows else None, "el_month_kwh": round(month_wh / 1000, 2) if month_wh else None,
+            "el_cost": round(cost, 2) if cost_wh else None,
+            "el_cost_share": round(100 * cost_wh / 1000 / kwh) if kwh > 0 else None,
+            "power_avg": round(sum(allp) / len(allp), 1) if allp else None,
+            "power_max": round(max(allp), 1) if allp else None}
+
+
+_rec_cache = vallox.REC_CACHE   # dzien -> energia odzyskana [kWh] (dni minione); czyszczone po uzupelnieniu luk
+
+
+def _rec_energy(rows, cols):
+    """Energia odzyskana [kWh] z odczytow minutowych (przerwy > 5 min pomijane)."""
+    e, prev = 0.0, None
+    for r in rows:
+        x = dict(zip(cols, r))
+        pw = vallox.recovered_w(x["t_out"], x["t_sup_cell"], vallox.airflow(x["rpm_sup"], "sup"), x["cell_state"])
+        if prev is not None and pw is not None and 0 < x["ts"] - prev[0] <= 900:   # 900 s: odczyty z dziennika co 10 min
+            e += (pw + prev[1]) / 2 * (x["ts"] - prev[0]) / 3600 / 1000
+        prev = (x["ts"], pw) if pw is not None else None
+    return e
+
+
+def vallox_rec_month(d):
+    """Energia odzyskana od poczatku miesiaca do dnia d wlacznie [kWh]."""
+    cols = ["ts"] + [c.strip() for c in db.VALLOX_COLS.split(",")]
+    total, day = 0.0, d.replace(day=1)
+    con = db_connect()
+    try:
+        while day <= d:
+            key = day.isoformat()
+            if key in _rec_cache and day < dt.date.today():
+                total += _rec_cache[key]
+            else:
+                s0, e0 = day_range(day)
+                v = _rec_energy(db.load_vallox(con, s0, e0), cols)
+                _rec_cache[key] = v
+                total += v
+            day += dt.timedelta(days=1)
+    finally:
+        con.close()
+    return round(total, 1)
+
+
+@app.get("/api/vallox/day")
+def api_vallox_day(date: str | None = None):
+    """Odczyty rekuperatora z dnia (srednie 5-minutowe) + podsumowanie."""
+    d = dt.date.fromisoformat(date) if date else dt.date.today()
+    start, end = day_range(d)
+    con = db_connect()
+    try:
+        rows = db.load_vallox(con, start, end)
+        try:
+            n_log = con.execute("SELECT COUNT(*) FROM vallox_samples WHERE ts >= ? AND ts < ? AND src = 'log'",
+                                (start, end)).fetchone()[0]
+        except Exception:  # noqa: BLE001 - starsza baza bez kolumny src
+            n_log = 0
+    finally:
+        con.close()
+    cols = ["ts"] + [c.strip() for c in db.VALLOX_COLS.split(",")]
+    buckets = {}
+    for r in rows:
+        rec = dict(zip(cols, r))
+        buckets.setdefault(rec["ts"] // 300 * 300, []).append(rec)
+    avg_keys = ["t_out", "t_sup", "t_sup_cell", "t_ext", "t_exh", "rh", "co2", "co2_s0", "co2_s1", "fan_pct",
+                "eff_sup", "eff_ext", "rpm_sup", "rpm_ext"]
+    series = []
+    for b, recs in sorted(buckets.items()):
+        p = {"ts": b, "t": dt.datetime.fromtimestamp(b).strftime("%H:%M")}
+        for k in avg_keys:
+            v = [x[k] for x in recs if x[k] is not None]
+            p[k] = round(sum(v) / len(v), 1) if v else None
+        p["flow_sup"], p["flow_ext"] = vallox.airflow(p["rpm_sup"], "sup"), vallox.airflow(p["rpm_ext"], "ext")
+        pw = [vallox.recovered_w(x["t_out"], x["t_sup_cell"], vallox.airflow(x["rpm_sup"], "sup"), x["cell_state"]) for x in recs]
+        pw = [v for v in pw if v is not None]
+        p["p_rec"] = round(sum(pw) / len(pw)) if pw else None
+        series.append(p)
+
+    def stat(k, fn):
+        v = [x[k] for x in series if x[k] is not None]
+        return round(fn(v), 1) if v else None
+    summary = {
+        "t_out_min": stat("t_out", min), "t_out_max": stat("t_out", max),
+        "co2_max": stat("co2", max), "co2_avg": stat("co2", lambda v: sum(v) / len(v)),
+        "co2_s0_avg": stat("co2_s0", lambda v: sum(v) / len(v)), "co2_s0_max": stat("co2_s0", max),
+        "co2_s1_avg": stat("co2_s1", lambda v: sum(v) / len(v)), "co2_s1_max": stat("co2_s1", max),
+        "rh_avg": stat("rh", lambda v: sum(v) / len(v)),
+        "eff_sup_avg": stat("eff_sup", lambda v: sum(v) / len(v)),
+        "eff_ext_avg": stat("eff_ext", lambda v: sum(v) / len(v)),
+    }
+    summary["rec_kwh"] = round(_rec_energy(rows, cols), 2)
+    summary["rec_month_kwh"] = vallox_rec_month(d)
+    summary["flow_sup_avg"] = stat("flow_sup", lambda v: sum(v) / len(v))
+    summary["flow_ext_avg"] = stat("flow_ext", lambda v: sum(v) / len(v))
+    summary["n_log"] = n_log
+    summary.update(meter_day(d, start, end, series))
+    return {"date": d.isoformat(), "series": series, "summary": summary, "n": len(rows),
+            "co2_names": vallox.CO2_NAMES, "co2_threshold": vallox.status().get("co2_threshold")}
+
+
 @app.get("/api/counters")
 def counters():
     """Diagnostyka: ostatnie odczyty licznikow i rejestry nieobslugiwane."""
@@ -1205,6 +1444,10 @@ def start_background():
     threading.Thread(target=pstryk.loop, args=(lambda: config.get("pstryk", "api_key", ""), db_connect),
                      daemon=True, name="pstryk").start()
     threading.Thread(target=efficiency_loop, daemon=True, name="efficiency").start()
+    if vallox.ENABLED:
+        threading.Thread(target=vallox.loop, args=(db_connect, db), daemon=True, name="vallox").start()
+    if meter.ENABLED:
+        threading.Thread(target=meter.loop, args=(db_connect, db), daemon=True, name="meter").start()
 
 
 def db_init():

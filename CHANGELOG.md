@@ -2,6 +2,48 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.15.0] - 2026-10-23
+
+### Dodano
+- **Rekuperacja (opcjonalnie): rekuperator Vallox seria MV** (MyVallox, lokalny websocket). Zakładka pojawia się
+  po wpisaniu adresu IP w Ustawieniach → Rekuperacja; bez tego aplikacja wygląda jak dotąd.
+  - Na żywo: temperatury (zewn., nawiew, wywiew, wyrzut), sprawność odzysku, profil, stan wymiennika, przepływ
+    (szacunek z obrotów i maks. przepływu z karty katalogowej), CO₂, wilgotność, filtr, nagrzewnica.
+  - Balans przepływów nawiew / wywiew z temperatur wymiennika; ręczna zmiana wentylatorów trybu Dom
+    (zakres 10–80 %, maks. ±10 % na raz) i **automat korekty** (1 % co godzinę, z zabezpieczeniem).
+  - Obejście wymiennika (bypass, częściowe, chłodzenie) ręcznie albo **automat komfortu** (letnie chłodzenie).
+  - Nastawa temperatury nawiewu we wszystkich profilach i **automat nastawy** (lato / zima / mróz).
+  - Wykresy dnia (CO₂, sprawność, wilgotność, temperatury, pobór mocy, moc odzyskana), energia odzyskana
+    w dniu i miesiącu; luki uzupełniane z wewnętrznego dziennika rekuperatora; historia zmian.
+  - Każda zmiana z innego urządzenia w sieci wymaga PIN-u; automaty działają też przy zamkniętej stronie.
+- **Miernik poboru prądu rekuperatora** (`meter.py`, opcjonalnie): gniazdka Shelly Gen1 i Gen2/Plus
+  (rozpoznawane automatycznie) – pobór teraz, zużycie i koszt dnia / miesiąca, wykrywanie pracy nagrzewnicy.
+  Inny miernik (np. Tuya, Tasmota) – opis i przykład w nagłówku `meter.py`. Bez miernika automat nastawy
+  w mrozie korzysta z sygnału nagrzewnicy z rekuperatora.
+
+## [1.14.0] - 2026-10-23
+
+### Dodano
+- **Zaniki sieci (praca wyspowa / off-grid):** rejestr 30009 instalacji (0 praca z siecią, 1 off-grid – zanik
+  sieci, 2 off-grid włączony ręcznie) czytany co 5 s razem z mocami.
+  - Podczas zaniku: czerwony pasek „Brak sieci – praca wyspowa” (od kiedy, ile trwa, SOC), czerwonawe tło strony,
+    w schemacie „Sieć: brak”.
+  - Historia zaników w `grid_events.json` (folder danych) i na stronie: „Ostatni zanik sieci” w karcie na żywo
+    oraz rozwijana lista; `GET /api/grid_events`, a `/api/live` ma pola `grid_mode`, `offgrid`, `offgrid_since`,
+    `last_outage`.
+  - Wykrywanie działa, gdy komputer z aplikacją i router mają w tym czasie zasilanie (np. z obwodów rezerwowych).
+- `.gitignore`: `grid_events.json` i `access_sessions.json` (przy uruchomieniu ze źródeł nie trafią do repozytorium).
+
+### Poprawiono
+- Aplikacja Android: **czarny ekran** po chwilowym braku połączenia (np. restart aplikacji na komputerze, telefon
+  poza Wi-Fi). Wcześniej po błędzie okno zostawało puste, a Android potrafił je takim przywrócić. Teraz:
+  - strona błędu z przyciskami „Ponów” i „Zmień adres” oraz automatycznym ponawianiem co 10 s,
+  - po powrocie do aplikacji (po błędzie albo po ponad 10 min w tle) dashboard ładuje się od nowa,
+  - awaria procesu strony (np. brak pamięci) tworzy nowe okno zamiast czarnego ekranu,
+  - zmiana trybu ciemnego / rozmiaru czcionki nie przeładowuje okna,
+  - strona zawsze pobierana z komputera (bez starej kopii w pamięci telefonu).
+- README: nowe zrzuty ekranu.
+
 ## [1.13.0] - 2026-10-23
 
 ### Dodano

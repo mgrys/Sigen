@@ -4,7 +4,8 @@ import os
 from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
-hidden = collect_submodules("uvicorn") + collect_submodules("pymodbus.client") + ["app"]
+hidden = (collect_submodules("uvicorn") + collect_submodules("pymodbus.client") + collect_submodules("vallox_websocket_api")
+          + collect_submodules("websockets") + ["app", "vallox", "meter"])
 
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
