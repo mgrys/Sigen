@@ -27,7 +27,7 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox: 096 / 110 / 145 / 245 MV i inne)** – zakładka Rekuperacja po wpisaniu IP i wyborze modelu w Ustawieniach:
   temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą, obejście wymiennika
   z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem, wykresy dnia i energia odzyskana.
-  Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus); inny miernik, np. Tuya – patrz `meter.py`.
+  Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus); inny miernik, np. Tuya – patrz `meter.py`. Szczegóły i automaty: [Rekuperacja](#rekuperacja--vallox-seria-mv-opcjonalnie).
 - **Zaniki sieci (off-grid):** czerwony pasek i tło strony, gdy dom pracuje bez sieci, oraz historia zaników
   (od kiedy, jak długo).
 - **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.
@@ -41,6 +41,132 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Wszystkie odczyty falownika** (61 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
 - Wszystkie ustawienia na stronie, w zakładce **Ustawienia**.
+
+## Rekuperacja – Vallox seria MV (opcjonalnie)
+
+Zakładka **Rekuperacja** pojawia się po wpisaniu adresu IP rekuperatora w Ustawieniach → Rekuperacja i ponownym
+uruchomieniu aplikacji. Bez adresu aplikacja wygląda i działa jak wcześniej.
+
+### Wymagania
+
+Rekuperator Vallox serii MV z MyVallox (096, 110, 145, 245 MV i podobne) w tej samej sieci domowej –
+aplikacja łączy się z nim lokalnie (websocket, port 80, bez hasła i bez chmury). Najlepiej ustaw mu stały adres w routerze.
+
+### Ustawienia
+
+`[rekuperacja]` w `config.ini` albo zakładka Ustawienia:
+
+| ustawienie | znaczenie |
+|---|---|
+| `vallox_ip` | adres rekuperatora; puste = bez zakładki |
+| `model` | `096`, `110`, `145`, `245` albo `inny` – maks. przepływ modelu do szacowania m³/h |
+| `przeplyw_max_m3h`, `przeplyw_max_wywiew_m3h` | tylko dla `inny`: maks. przepływ nawiewu i wywiewu z karty katalogowej |
+| `obroty_max` | obroty wentylatorów przy 100 %; puste = automatycznie (patrz niżej) |
+| `miernik`, `miernik_ip` | gniazdko z pomiarem poboru rekuperatora (`shelly`) – opcjonalnie |
+| `nagrzewnica_w` | pobór [W], od którego kafel pokazuje „prawdopodobnie grzałka” (domyślnie 150) |
+
+### Co pokazuje
+
+- temperatury: zewnętrzna, nawiew, wywiew, wyrzut, nawiew za wymiennikiem; sprawność odzysku ciepła (nawiew / wywiew),
+- profil, stan wymiennika (odzysk ciepła / chłodu, bypass, odszranianie), wentylacja %, CO₂, wilgotność, filtr, nagrzewnica,
+- przepływ m³/h i moc odzyskana, energia odzyskana w dniu i miesiącu,
+- wykresy dnia (CO₂, sprawność, wilgotność, temperatury, pobór, moc odzyskana) – luki, gdy aplikacja nie działała,
+  uzupełniane z wewnętrznego dziennika rekuperatora (co 10 min, ok. 7 tygodni wstecz),
+- historia wszystkich zmian (ręcznych i automatów).
+
+![Rekuperacja – na żywo](docs/screens/11_rek_na_zywo.png)
+
+![Rekuperacja – wykresy dnia](docs/screens/15_rek_wykresy.png)
+
+### Przepływ to szacunek
+
+Seria MV nie mierzy przepływu – aplikacja liczy go z obrotów:
+maks. przepływ modelu (dane Vallox przy 100 Pa, osobno nawiew i wywiew) × obroty ÷ obroty przy 100 %.
+Obroty przy 100 % aplikacja zapamięta sama, gdy rekuperator popracuje na ≥ 98 % (np. **Boost 100 % przez 2–3 min**);
+do tego czasu przyjmuje 3300 obr/min (110 MV). Rzeczywisty przepływ zależy od oporów kanałów w domu – najdokładniejszy
+jest pomiar instalatora z protokołu regulacji.
+
+### Sterowanie ręczne
+
+Tylko po potwierdzeniu na stronie albo przez włączony automat; z innego urządzenia w sieci wymaga PIN-u.
+Każda zmiana jest weryfikowana odczytem i trafia do historii:
+
+- **wentylatory trybu Dom** (nawiew / wywiew osobno, zakres 10–80 %, maks. ±10 % jednym zapisem),
+- **obejście wymiennika**: bypass, częściowe obejście, chłodzenie,
+- **nastawa temperatury nawiewu** (ta sama w profilach W domu, Poza domem i Boost, 15–25 °C).
+
+### Automaty
+
+Wykonuje je aplikacja (także przy zamkniętej stronie), każdy włącza się osobno w zakładce Rekuperacja.
+Gdy automat jest włączony, odpowiednie przełączniki na stronie są tylko do podglądu; każda jego zmiana trafia do historii
+z opisem powodu, a ostatni komunikat („czekam”, „wstrzymany – bypass” itp.) widać przy automacie.
+
+#### 1. Korekta przepływów (balans nawiew / wywiew)
+
+Cel: równe przepływy nawiewu i wywiewu – bez nad- i podciśnienia w domu. Przy zrównoważonych przepływach powietrze
+nawiewane ogrzewa się na wymienniku o tyle samo, o ile schładza się wywiewane: **ΔT dom (wywiew − nawiew za wymiennikiem)
+≈ ΔT zewnątrz (wyrzut − czerpnia)**. Różnica > 0 = przewaga nawiewu, < 0 = przewaga wywiewu.
+
+- pomiar: średnia różnica z ostatnich 30 min (odczyt co 60 s, min. 15 odczytów), liczona dopiero 10 min po każdej zmianie,
+- korekta: co godzinę **jedna zmiana o 1 %** podstawowego ustawienia wentylatora trybu Dom, na przemian wywiew i nawiew
+  (przewaga nawiewu → wywiew +1 % albo nawiew −1 %, i odwrotnie), w zakresie 10–80 %,
+- cel osiągnięty, gdy różnica mieści się w **±0,5 °C** – wtedy bez zmian,
+- działa tylko w profilu **Dom**, przy **odzysku ciepła** i różnicy **wywiew − zewnątrz ≥ 8 °C** (latem pomiar jest
+  niewiarygodny); bypass i odszranianie wstrzymują automat, a po ich zakończeniu odczekuje 30 min, aż wymiennik się ustabilizuje,
+- zabezpieczenie: gdy po 3 kolejnych korektach w tym samym kierunku różnica zamiast maleć rośnie – automat sam się wyłącza
+  i opisuje powód (do sprawdzenia ręcznie, np. zatkany filtr albo czerpnia).
+- Gdy automat jest wyłączony, strona pokazuje **propozycję** zmiany do zapisania jednym kliknięciem.
+
+![Balans przepływów i automat korekty](docs/screens/12_rek_balans.png)
+
+#### 2. Komfort – letnie chłodzenie (obejście wymiennika)
+
+Cel: latem nie dogrzewać domu ciepłem z wywiewu, a w chłodne noce chłodzić dom powietrzem z zewnątrz.
+
+- **włącza** obejście wymiennika, częściowe obejście i chłodzenie, gdy wywiew (temperatura w domu) **> komfort + 0,3 °C**
+  i na zewnątrz **≥ próg + 0,5 °C**,
+- **wyłącza** wszystkie trzy (powrót do odzysku ciepła), gdy wywiew **≤ komfort − 0,3 °C** albo na zewnątrz **< próg**,
+- pomiędzy progami (histereza) nic nie zmienia; średnie temperatur z 10 min, zmiana **najwyżej co 30 min**,
+- ustawienia: temperatura komfortu (domyślnie **22 °C**, zakres 18–28) i próg temperatury zewnętrznej (domyślnie **5 °C**,
+  zakres −10…20) – poniżej progu obejście nie ma sensu (wychłodziłoby dom).
+
+![Obejście wymiennika i automat komfortu](docs/screens/13_rek_bypass.png)
+
+#### 3. Nastawa temperatury nawiewu (lato / zima / mróz)
+
+Nastawa to temperatura, do której rekuperator dąży z powietrzem nawiewanym (ta sama w profilach W domu, Poza domem i Boost):
+niska chętniej otwiera bypass i chłodzi, wysoka trzyma odzysk ciepła. Automat przestawia ją wg pory roku i temperatur:
+
+| warunek (średnie z 30 min) | nastawa |
+|---|---|
+| lato (domyślnie maj–wrzesień) i wywiew ≥ **22 °C** | **17 °C** – chłodzenie, bypass w nocy |
+| wywiew ≤ **21 °C** (każda pora roku) | **22 °C** – odzysk ciepła |
+| między progami | bez zmian (histereza) |
+| **mróz**: na zewnątrz ≤ **1 °C** (koniec mrozu przy ≥ 3 °C) i pracuje nagrzewnica | **−1 °C co godzinę**, najniżej **15 °C** |
+| koniec mrozu | powrót do nastawy 22 °C |
+
+- w mrozie rekuperator dogrzewa nawiew nagrzewnicą elektryczną – obniżenie nastawy ogranicza jej pracę i zużycie prądu,
+- pracę nagrzewnicy rozpoznaje z miernika prądu: średni pobór **≥ 150 W przez ≥ 5 min** bez przerwy (krótkie piki
+  kontrolne Vallox są pomijane); bez miernika – z sygnału nagrzewnicy z rekuperatora,
+- zmiana najwyżej co 30 min (w mrozie co godzinę); wszystkie progi (miesiące lata, temperatury, nastawy, pobór i czas
+  nagrzewnicy, minimum w mrozie) do zmiany na stronie.
+
+![Nastawa temperatury nawiewu i jej automat](docs/screens/14_rek_nawiew.png)
+
+### W przygotowaniu: zewnętrzne czujniki CO₂ SONOFF AirGuard (SAWF-08P)
+
+Planowana jest integracja z czujnikami CO₂ SONOFF SAWF-08P (NDIR, Wi-Fi) rozstawionymi w pokojach: gdy stężenie CO₂
+w którymkolwiek pomieszczeniu przekroczy próg (np. 900 ppm), wentylacja zostanie zwiększona, a po spadku – przywrócona.
+To uzupełni czujniki CO₂ samego rekuperatora, który mierzy powietrze wywiewane z całego domu, a nie w konkretnym pokoju.
+**Ta funkcja jeszcze nie działa** – obecnie aplikacja korzysta tylko z czujników CO₂ podłączonych do Valloxa.
+
+### Pobór prądu rekuperatora (opcjonalnie)
+
+Gniazdko Shelly z pomiarem – Gen1 (np. Plug S) i Gen2/Plus/Pro,
+rozpoznawane automatycznie. Daje pobór teraz, zużycie i koszt dnia / miesiąca oraz wykrywanie pracy nagrzewnicy
+(krótkie piki kontrolne Vallox są pomijane). Bez miernika automat nastawy w mrozie korzysta z sygnału nagrzewnicy
+z rekuperatora. **Inny miernik** (Tuya, Tasmota, Home Assistant…) – w nagłówku [`meter.py`](meter.py) jest opis
+i przykład dla Tuya: wystarczy jedna funkcja zwracająca moc [W] (i opcjonalnie licznik energii [Wh]).
 
 ## Zrzuty ekranu
 
@@ -148,121 +274,7 @@ Wszystko jest w `config.ini`. Plik tworzy się sam przy pierwszym starcie, a prz
 | `[stringi]` | nazwy stringów PV1–PV4 na wykresie produkcji (puste = nieużywany) |
 | `[ceny]` | operator, taryfa, marża sprzedawcy, akcyza, VAT, podstawa ceny (RCE/SDAC) |
 | `[serwer]` | port strony, dostęp z sieci domowej lub tylko z tego komputera |
-| `[rekuperacja]` | opcjonalnie: IP rekuperatora Vallox, model, miernik poboru prądu (patrz niżej) |
-
-## Rekuperacja – Vallox seria MV (opcjonalnie)
-
-Zakładka **Rekuperacja** pojawia się po wpisaniu adresu IP rekuperatora w Ustawieniach → Rekuperacja i ponownym
-uruchomieniu aplikacji. Bez adresu aplikacja wygląda i działa jak wcześniej.
-
-**Wymagania:** rekuperator Vallox serii MV z MyVallox (096, 110, 145, 245 MV i podobne) w tej samej sieci domowej –
-aplikacja łączy się z nim lokalnie (websocket, port 80, bez hasła i bez chmury). Najlepiej ustaw mu stały adres w routerze.
-
-**Ustawienia** (`[rekuperacja]` w `config.ini` albo zakładka Ustawienia):
-
-| ustawienie | znaczenie |
-|---|---|
-| `vallox_ip` | adres rekuperatora; puste = bez zakładki |
-| `model` | `096`, `110`, `145`, `245` albo `inny` – maks. przepływ modelu do szacowania m³/h |
-| `przeplyw_max_m3h`, `przeplyw_max_wywiew_m3h` | tylko dla `inny`: maks. przepływ nawiewu i wywiewu z karty katalogowej |
-| `obroty_max` | obroty wentylatorów przy 100 %; puste = automatycznie (patrz niżej) |
-| `miernik`, `miernik_ip` | gniazdko z pomiarem poboru rekuperatora (`shelly`) – opcjonalnie |
-| `nagrzewnica_w` | pobór [W], od którego kafel pokazuje „prawdopodobnie grzałka” (domyślnie 150) |
-
-**Co pokazuje:**
-
-- temperatury: zewnętrzna, nawiew, wywiew, wyrzut, nawiew za wymiennikiem; sprawność odzysku ciepła (nawiew / wywiew),
-- profil, stan wymiennika (odzysk ciepła / chłodu, bypass, odszranianie), wentylacja %, CO₂, wilgotność, filtr, nagrzewnica,
-- przepływ m³/h i moc odzyskana, energia odzyskana w dniu i miesiącu,
-- wykresy dnia (CO₂, sprawność, wilgotność, temperatury, pobór, moc odzyskana) – luki, gdy aplikacja nie działała,
-  uzupełniane z wewnętrznego dziennika rekuperatora (co 10 min, ok. 7 tygodni wstecz),
-- historia wszystkich zmian (ręcznych i automatów).
-
-![Rekuperacja – na żywo](docs/screens/11_rek_na_zywo.png)
-
-![Rekuperacja – wykresy dnia](docs/screens/15_rek_wykresy.png)
-
-**Przepływ to szacunek.** Seria MV nie mierzy przepływu – aplikacja liczy go z obrotów:
-maks. przepływ modelu (dane Vallox przy 100 Pa, osobno nawiew i wywiew) × obroty ÷ obroty przy 100 %.
-Obroty przy 100 % aplikacja zapamięta sama, gdy rekuperator popracuje na ≥ 98 % (np. **Boost 100 % przez 2–3 min**);
-do tego czasu przyjmuje 3300 obr/min (110 MV). Rzeczywisty przepływ zależy od oporów kanałów w domu – najdokładniejszy
-jest pomiar instalatora z protokołu regulacji.
-
-**Sterowanie** – tylko po potwierdzeniu na stronie albo przez włączony automat; z innego urządzenia w sieci wymaga PIN-u.
-Każda zmiana jest weryfikowana odczytem i trafia do historii:
-
-- **wentylatory trybu Dom** (nawiew / wywiew osobno, zakres 10–80 %, maks. ±10 % jednym zapisem),
-- **obejście wymiennika**: bypass, częściowe obejście, chłodzenie,
-- **nastawa temperatury nawiewu** (ta sama w profilach W domu, Poza domem i Boost, 15–25 °C).
-
-**Automaty.** Wykonuje je aplikacja (także przy zamkniętej stronie), każdy włącza się osobno w zakładce Rekuperacja.
-Gdy automat jest włączony, odpowiednie przełączniki na stronie są tylko do podglądu; każda jego zmiana trafia do historii
-z opisem powodu, a ostatni komunikat („czekam”, „wstrzymany – bypass” itp.) widać przy automacie.
-
-*1. Korekta przepływów (balans nawiew / wywiew)*
-
-Cel: równe przepływy nawiewu i wywiewu – bez nad- i podciśnienia w domu. Przy zrównoważonych przepływach powietrze
-nawiewane ogrzewa się na wymienniku o tyle samo, o ile schładza się wywiewane: **ΔT dom (wywiew − nawiew za wymiennikiem)
-≈ ΔT zewnątrz (wyrzut − czerpnia)**. Różnica > 0 = przewaga nawiewu, < 0 = przewaga wywiewu.
-
-- pomiar: średnia różnica z ostatnich 30 min (odczyt co 60 s, min. 15 odczytów), liczona dopiero 10 min po każdej zmianie,
-- korekta: co godzinę **jedna zmiana o 1 %** podstawowego ustawienia wentylatora trybu Dom, na przemian wywiew i nawiew
-  (przewaga nawiewu → wywiew +1 % albo nawiew −1 %, i odwrotnie), w zakresie 10–80 %,
-- cel osiągnięty, gdy różnica mieści się w **±0,5 °C** – wtedy bez zmian,
-- działa tylko w profilu **Dom**, przy **odzysku ciepła** i różnicy **wywiew − zewnątrz ≥ 8 °C** (latem pomiar jest
-  niewiarygodny); bypass i odszranianie wstrzymują automat, a po ich zakończeniu odczekuje 30 min, aż wymiennik się ustabilizuje,
-- zabezpieczenie: gdy po 3 kolejnych korektach w tym samym kierunku różnica zamiast maleć rośnie – automat sam się wyłącza
-  i opisuje powód (do sprawdzenia ręcznie, np. zatkany filtr albo czerpnia).
-- Gdy automat jest wyłączony, strona pokazuje **propozycję** zmiany do zapisania jednym kliknięciem.
-
-![Balans przepływów i automat korekty](docs/screens/12_rek_balans.png)
-
-*2. Komfort – letnie chłodzenie (obejście wymiennika)*
-
-Cel: latem nie dogrzewać domu ciepłem z wywiewu, a w chłodne noce chłodzić dom powietrzem z zewnątrz.
-
-- **włącza** obejście wymiennika, częściowe obejście i chłodzenie, gdy wywiew (temperatura w domu) **> komfort + 0,3 °C**
-  i na zewnątrz **≥ próg + 0,5 °C**,
-- **wyłącza** wszystkie trzy (powrót do odzysku ciepła), gdy wywiew **≤ komfort − 0,3 °C** albo na zewnątrz **< próg**,
-- pomiędzy progami (histereza) nic nie zmienia; średnie temperatur z 10 min, zmiana **najwyżej co 30 min**,
-- ustawienia: temperatura komfortu (domyślnie **22 °C**, zakres 18–28) i próg temperatury zewnętrznej (domyślnie **5 °C**,
-  zakres −10…20) – poniżej progu obejście nie ma sensu (wychłodziłoby dom).
-
-![Obejście wymiennika i automat komfortu](docs/screens/13_rek_bypass.png)
-
-*3. Nastawa temperatury nawiewu (lato / zima / mróz)*
-
-Nastawa to temperatura, do której rekuperator dąży z powietrzem nawiewanym (ta sama w profilach W domu, Poza domem i Boost):
-niska chętniej otwiera bypass i chłodzi, wysoka trzyma odzysk ciepła. Automat przestawia ją wg pory roku i temperatur:
-
-| warunek (średnie z 30 min) | nastawa |
-|---|---|
-| lato (domyślnie maj–wrzesień) i wywiew ≥ **22 °C** | **17 °C** – chłodzenie, bypass w nocy |
-| wywiew ≤ **21 °C** (każda pora roku) | **22 °C** – odzysk ciepła |
-| między progami | bez zmian (histereza) |
-| **mróz**: na zewnątrz ≤ **1 °C** (koniec mrozu przy ≥ 3 °C) i pracuje nagrzewnica | **−1 °C co godzinę**, najniżej **15 °C** |
-| koniec mrozu | powrót do nastawy 22 °C |
-
-- w mrozie rekuperator dogrzewa nawiew nagrzewnicą elektryczną – obniżenie nastawy ogranicza jej pracę i zużycie prądu,
-- pracę nagrzewnicy rozpoznaje z miernika prądu: średni pobór **≥ 150 W przez ≥ 5 min** bez przerwy (krótkie piki
-  kontrolne Vallox są pomijane); bez miernika – z sygnału nagrzewnicy z rekuperatora,
-- zmiana najwyżej co 30 min (w mrozie co godzinę); wszystkie progi (miesiące lata, temperatury, nastawy, pobór i czas
-  nagrzewnicy, minimum w mrozie) do zmiany na stronie.
-
-![Nastawa temperatury nawiewu i jej automat](docs/screens/14_rek_nawiew.png)
-
-*W przygotowaniu: zewnętrzne czujniki CO₂ (SONOFF AirGuard CO₂, SAWF-08P)*
-
-Planowana jest integracja z czujnikami CO₂ SONOFF SAWF-08P (NDIR, Wi-Fi) rozstawionymi w pokojach: gdy stężenie CO₂
-w którymkolwiek pomieszczeniu przekroczy próg (np. 900 ppm), wentylacja zostanie zwiększona, a po spadku – przywrócona.
-To uzupełni czujniki CO₂ samego rekuperatora, który mierzy powietrze wywiewane z całego domu, a nie w konkretnym pokoju.
-**Ta funkcja jeszcze nie działa** – obecnie aplikacja korzysta tylko z czujników CO₂ podłączonych do Valloxa.
-
-**Pobór prądu rekuperatora (opcjonalnie):** gniazdko Shelly z pomiarem – Gen1 (np. Plug S) i Gen2/Plus/Pro,
-rozpoznawane automatycznie. Daje pobór teraz, zużycie i koszt dnia / miesiąca oraz wykrywanie pracy nagrzewnicy
-(krótkie piki kontrolne Vallox są pomijane). Bez miernika automat nastawy w mrozie korzysta z sygnału nagrzewnicy
-z rekuperatora. **Inny miernik** (Tuya, Tasmota, Home Assistant…) – w nagłówku [`meter.py`](meter.py) jest opis
-i przykład dla Tuya: wystarczy jedna funkcja zwracająca moc [W] (i opcjonalnie licznik energii [Wh]).
+| `[rekuperacja]` | opcjonalnie: IP rekuperatora Vallox, model, miernik poboru prądu – patrz [Rekuperacja](#rekuperacja--vallox-seria-mv-opcjonalnie) |
 
 ## Budowanie wersji dla Windows
 
