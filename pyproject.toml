@@ -1,5 +1,5 @@
 [project]
-name = "sigen-1-15-0"
+name = "sigen-pv-monitor"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sigen-1-15-0 = "sigen_1_15_0:main"
+sigen-pv-monitor = "sigen_pv_monitor:main"
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]

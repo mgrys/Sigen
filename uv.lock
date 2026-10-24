@@ -962,7 +962,7 @@ wheels = [
 ]
 
 [[package]]
-name = "sigen-1-15-0"
+name = "sigen-pv-monitor"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
