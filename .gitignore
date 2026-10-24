@@ -19,3 +19,9 @@ grid_events.json
 access_sessions.json
 tools/.tuya_session.json
 tools/.tuya_login_qr.png
+vallox_*.json
+.env
+.env.*
+*.keystore
+*.jks
+secrets*

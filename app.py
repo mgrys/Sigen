@@ -30,7 +30,7 @@ import meter
 import smartlife
 import vallox
 
-__version__ = "1.16.1"
+__version__ = "1.17.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
