@@ -74,9 +74,7 @@ Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [S
   - Każda zmiana z innego urządzenia w sieci wymaga PIN-u; automaty działają też przy zamkniętej stronie.
 - **Miernik poboru prądu rekuperatora** (`meter.py`, opcjonalnie): gniazdka Shelly Gen1 i Gen2/Plus
   (rozpoznawane automatycznie) – pobór teraz, zużycie i koszt dnia / miesiąca, wykrywanie pracy nagrzewnicy.
-  **Gniazdko SmartLife/Tuya:** User Code z aplikacji, skan QR w Ustawieniach, wybór gniazdka z konta; token w bazie,
-  odczyt co 60 s, bez adresu IP i bez zmiany stanu przekaźnika.
-  Inny miernik (np. Tasmota) – opis i przykład w nagłówku `meter.py`. Bez miernika automat nastawy
+  Inny miernik (np. Tuya, Tasmota) – opis i przykład w nagłówku `meter.py`. Bez miernika automat nastawy
   w mrozie korzysta z sygnału nagrzewnicy z rekuperatora.
 
 ## [1.14.0] - 2026-10-23
