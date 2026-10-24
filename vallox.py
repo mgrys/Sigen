@@ -504,8 +504,9 @@ def bal_paused(v=None):
         with _lock:
             v = dict(latest)
     cs = v.get("cell_state")
-    if cs is not None and cs != 0:
-        return f"wymiennik: {CELL_STATE.get(cs, cs)}"
+    if cs is not None:
+        # rzeczywisty stan wymiennika; przelaczniki bypassu to tylko zezwolenie, nie dowod ze bypass jest otwarty
+        return None if cs == 0 else f"wymiennik: {CELL_STATE.get(cs, cs)}"
     if v.get("bypass_locked") == 0 or v.get("partial_bypass") == 1:
         return "włączone obejście wymiennika (bypass)"
     return None

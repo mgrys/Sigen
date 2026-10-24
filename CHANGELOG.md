@@ -2,6 +2,28 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.17.0] - 2026-10-24
+
+### Dodano
+- **Integracja SmartLife (Tuya)** jako źródło miernika poboru prądu rekuperatora (`smartlife.py`) – ta sama droga
+  co integracja Tuya w Home Assistant, bez adresu IP gniazdka i bez konta deweloperskiego na iot.tuya.com:
+  - logowanie: User Code z aplikacji SmartLife (Ja → zębatka → Konto i bezpieczeństwo) i skan kodu QR w Ustawieniach,
+  - wybór gniazdka z listy urządzeń konta; token zapisany w bazie (tabela `smartlife_session`) i odświeżany w miejscu,
+    klucz lokalny urządzenia nie jest zapisywany,
+  - odczyt co 60 s (moc chwilowa, licznik energii); tylko odczyt – żadnych komend na gniazdko, stan przekaźnika bez zmian,
+  - endpointy `/api/smartlife`, `/api/smartlife/connect`, `/api/smartlife/device` oraz sekcja w Ustawieniach,
+  - skrypt diagnostyczny `tools/tuya_smartlife_probe.py` (QR, lista urządzeń, odczyt mocy / prądu / napięcia / energii).
+- Projekt `uv` (`pyproject.toml`, `uv.lock`, pakiet `sigen-pv-monitor`), nowe zależności: `tuya-device-sharing-sdk`, `qrcode`.
+
+### Poprawiono
+- Rekuperacja, automat korekty przepływów: wstrzymywał się z komunikatem „włączone obejście wymiennika (bypass)”,
+  gdy tylko przełącznik obejścia był zezwolony, mimo że wymiennik pracował w trybie „Odzysk ciepła”. Teraz o wstrzymaniu
+  decyduje rzeczywisty stan wymiennika (bypass, odszranianie, odzysk chłodu); przełączniki służą tylko jako zapas,
+  gdy rekuperator nie podaje stanu.
+
+### Inne
+- `.gitignore`: dodane pliki stanu automatów rekuperatora, klucze i pliki środowiskowe.
+
 ## [1.16.1] - 2026-10-24
 
 ### Poprawiono

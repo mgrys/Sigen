@@ -1,7 +1,9 @@
 """
 Baza danych SQLite (wbudowana w Pythona, bez instalacji). Plik w folderze danych (config.DATA_DIR).
 """
+import json
 import sqlite3
+import time
 
 import config
 
@@ -58,6 +60,9 @@ SCHEMA = [
     'CREATE TABLE IF NOT EXISTS vallox_log (ts INTEGER, param TEXT, old_value REAL, new_value REAL, '
     'source TEXT, ok INTEGER, msg TEXT, PRIMARY KEY (ts, param))',
     'CREATE TABLE IF NOT EXISTS meter_samples (ts INTEGER PRIMARY KEY, power REAL, total_wh REAL, energy_wh REAL)',
+    # jedno konto SmartLife: token odswiezany w miejscu, wybrane gniazdko rekuperatora
+    'CREATE TABLE IF NOT EXISTS smartlife_session (id INTEGER PRIMARY KEY CHECK (id = 1), '
+    'user_code TEXT, terminal_id TEXT, endpoint TEXT, token_json TEXT, device_id TEXT, device_name TEXT, updated INTEGER)',
 ]
 
 
@@ -227,3 +232,51 @@ def load_meter(con, start, end):
 def meter_energy(con, start, end):
     r = con.execute("SELECT SUM(energy_wh) FROM meter_samples WHERE ts >= ? AND ts < ?", (start, end)).fetchone()
     return (r[0] or 0.0) if r else 0.0
+
+
+# --- konto SmartLife (smartlife.py); token nie wychodzi do config.ini ------------
+def _smartlife_row(row):
+    if not row:
+        return None
+    token = None
+    if row[3]:
+        try:
+            token = json.loads(row[3])
+        except json.JSONDecodeError:
+            token = None
+    return {"user_code": row[0] or "", "terminal_id": row[1] or "", "endpoint": row[2] or "",
+            "token_info": token, "device_id": row[4] or "", "device_name": row[5] or "", "updated": row[6]}
+
+
+def smartlife_load(con):
+    row = con.execute("SELECT user_code, terminal_id, endpoint, token_json, device_id, device_name, updated "
+                      "FROM smartlife_session WHERE id = 1").fetchone()
+    return _smartlife_row(row)
+
+
+def smartlife_save_auth(con, user_code, terminal_id, endpoint, token_info):
+    """Nowy token po skanie QR. Wybrane gniazdko zostaje."""
+    prev = smartlife_load(con) or {}
+    con.execute(
+        "INSERT INTO smartlife_session (id, user_code, terminal_id, endpoint, token_json, device_id, device_name, updated) "
+        "VALUES (1, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET user_code = excluded.user_code, terminal_id = excluded.terminal_id, "
+        "endpoint = excluded.endpoint, token_json = excluded.token_json, updated = excluded.updated",
+        (user_code, terminal_id, endpoint, json.dumps(token_info), prev.get("device_id") or "",
+         prev.get("device_name") or "", int(time.time())))
+    con.commit()
+
+
+def smartlife_save_token(con, token_info):
+    """Odswiezenie access tokenu przez SDK, bez ruszania gniazdka."""
+    cur = con.execute("UPDATE smartlife_session SET token_json = ?, updated = ? WHERE id = 1",
+                      (json.dumps(token_info), int(time.time())))
+    con.commit()
+    return cur.rowcount
+
+
+def smartlife_save_device(con, device_id, device_name):
+    cur = con.execute("UPDATE smartlife_session SET device_id = ?, device_name = ?, updated = ? WHERE id = 1",
+                      (device_id, device_name, int(time.time())))
+    con.commit()
+    return cur.rowcount

@@ -203,6 +203,7 @@ th:first-child, td:first-child { text-align: left; }
 .cfg-row { display: flex; gap: 6px; } .cfg-row input { flex: 1; min-width: 0; }
 .cfg-hit { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
 .cfg-planes { width: 100%; } .cfg-planes input { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+#sl-qr svg { width: 220px; height: auto; background: #fff; padding: 8px; border-radius: 8px; }
 #pinbox { position: fixed; inset: 0; background: #0008; display: flex; align-items: center; justify-content: center; z-index: 50; }
 #pinbox[hidden] { display: none; }
 #pinbox form { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: min(320px, 90vw); display: grid; gap: 10px; }
@@ -728,15 +729,26 @@ th:first-child, td:first-child { text-align: left; }
         <label>Maks. przepływ nawiewu [m³/h] – tylko dla „inny”<input data-k="rekuperacja.przeplyw_max_m3h" type="number" placeholder="z karty katalogowej"></label>
         <label>Maks. przepływ wywiewu [m³/h] – tylko dla „inny”<input data-k="rekuperacja.przeplyw_max_wywiew_m3h" type="number" placeholder="puste = jak nawiew"></label>
         <label>Obroty wentylatora przy 100 % [obr/min]<input data-k="rekuperacja.obroty_max" type="number" placeholder="puste = automatycznie"></label>
-        <label>Miernik poboru prądu rekuperatora<select data-k="rekuperacja.miernik"><option value="">brak</option>
-          <option value="shelly">gniazdko Shelly (Gen1 / Plus)</option></select></label>
-        <label>Adres IP miernika<input data-k="rekuperacja.miernik_ip" placeholder="np. 192.168.1.50"></label>
+        <label>Miernik poboru prądu rekuperatora<select data-k="rekuperacja.miernik" id="cfg-meter"><option value="">brak</option>
+          <option value="shelly">gniazdko Shelly (Gen1 / Plus)</option>
+          <option value="smartlife">gniazdko SmartLife</option></select></label>
+        <div id="cfg-meter-ip">
+          <label>Adres IP miernika<input data-k="rekuperacja.miernik_ip" placeholder="np. 192.168.1.50"></label>
+        </div>
+        <div id="cfg-smartlife" hidden>
+          <p class="status" id="sl-msg" style="margin-top:6px"></p>
+          <label>User Code SmartLife<input id="sl-code" type="password" autocomplete="off" placeholder="puste = zapisany kod"></label>
+          <button class="fs-btn" id="sl-connect" type="button">Połącz konto</button>
+          <div id="sl-qr"></div>
+          <label>Gniazdko<select id="sl-device"><option value="">— wybierz po połączeniu —</option></select></label>
+        </div>
         <p class="status" style="margin-top:6px">Przepływ (m³/h) i moc odzyskana są szacowane z obrotów wentylatorów: maks. przepływ
           modelu (nawiew / wywiew, karta Vallox przy 100 Pa) × obroty ÷ obroty przy 100 %. Obroty przy 100 % aplikacja zapamięta sama,
           gdy rekuperator raz popracuje na 100 % (np. Boost 100 % przez 2–3 min); do tego czasu przyjmuje 3300 obr/min.</p>
         <p class="status" style="margin-top:6px">Rekuperator musi być w tej samej sieci (MyVallox, port 80). Sterowanie wentylatorami,
-          obejściem i nastawą nawiewu – tylko po potwierdzeniu albo przez włączony automat. Inny miernik niż Shelly (np. Tuya) –
-          opis w pliku meter.py.</p>
+          obejściem i nastawą nawiewu – tylko po potwierdzeniu albo przez włączony automat. SmartLife: User Code
+          (Ja → zębatka → Konto i bezpieczeństwo), potem skan QR. Adres IP nie jest potrzebny. Token zostaje w bazie.
+          Odczyt co minutę rusza po „Zapisz i uruchom ponownie”.</p>
       </fieldset>
       <fieldset><legend>Strona</legend>
         <label>Port strony<input data-k="serwer.port" type="number"></label>
@@ -1933,7 +1945,89 @@ async function loadConfig() {
     const v = await (await fetch('/api/version')).json();
     $('cfg-info').textContent = `Wersja ${v.version} · folder danych: ${v.data_dir} · ${v.db}`;
   } catch (e) {}
+  syncMeterFields();
+  slLoad();
 }
+function syncMeterFields() {
+  const kind = $('cfg-meter').value;
+  $('cfg-meter-ip').hidden = kind === 'smartlife';
+  $('cfg-smartlife').hidden = kind !== 'smartlife';
+}
+$('cfg-meter').onchange = syncMeterFields;
+let slPoll, slFilling = false;
+function slPlugs(plugs, selected) {
+  const sel = $('sl-device');
+  slFilling = true;
+  sel.replaceChildren();
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = plugs && plugs.length ? '— wybierz gniazdko —' : '— wybierz po połączeniu —';
+  sel.appendChild(blank);
+  for (const p of plugs || []) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    const pwr = p.power_w == null ? '' : ` · ${Math.round(p.power_w)} W`;
+    o.textContent = `${p.name}${p.online ? pwr || ' · online' : ' · offline'}`;
+    sel.appendChild(o);
+  }
+  if (selected) sel.value = selected;
+  slFilling = false;
+}
+function slShow(d) {
+  const msg = $('sl-msg');
+  const qr = $('sl-qr');
+  if (d.phase === 'waiting') msg.textContent = 'Zeskanuj kod QR w SmartLife (ikona skanu w prawym górnym rogu).';
+  else if (d.phase === 'loading') msg.textContent = 'Zalogowano. Pobieram gniazdka z konta…';
+  else if (d.phase === 'error') msg.textContent = d.error || 'nie udało się połączyć';
+  else if (d.connected) msg.textContent = 'Konto podłączone' + (d.device_name ? ` · gniazdko: ${d.device_name}` : '. Wybierz gniazdko.');
+  else msg.textContent = 'Wpisz User Code i połącz konto. Potem zeskanuj kod QR.';
+  const svg = d.phase === 'waiting' && typeof d.qr_svg === 'string' && d.qr_svg.startsWith('<svg') ? d.qr_svg : '';
+  if (qr.dataset.svg !== svg) { qr.dataset.svg = svg; qr.innerHTML = svg; }
+  const plugs = d.plugs && d.plugs.length ? d.plugs
+    : (d.device_id ? [{ id: d.device_id, name: d.device_name || d.device_id, online: true, power_w: null }] : []);
+  if (d.phase === 'ok' || d.phase === 'idle' || d.phase === 'error' || (d.device_id && !(d.plugs && d.plugs.length)))
+    slPlugs(plugs, d.device_id);
+}
+async function slLoad() {
+  let d;
+  try { d = await (await fetch('/api/smartlife/connect')).json(); } catch (e) { return; }
+  slShow(d);
+  if (d.phase === 'waiting' || d.phase === 'loading') slWatch();
+}
+function slWatch() {
+  clearInterval(slPoll);
+  slPoll = setInterval(async () => {
+    let d;
+    try { d = await (await fetch('/api/smartlife/connect')).json(); } catch (e) { return; }
+    slShow(d);
+    if (d.phase !== 'waiting' && d.phase !== 'loading') clearInterval(slPoll);
+  }, 2000);
+}
+$('sl-connect').onclick = async () => {
+  const msg = $('sl-msg');
+  msg.textContent = 'Łączę z SmartLife…';
+  let r, d;
+  try {
+    r = await fetch('/api/smartlife/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_code: $('sl-code').value.trim() }) });
+    d = await r.json();
+  } catch (e) { msg.textContent = 'brak połączenia z aplikacją'; return; }
+  if (!r.ok) { msg.textContent = d.error || 'nie udało się połączyć'; return; }
+  slShow(d);
+  slWatch();
+};
+$('sl-device').onchange = async () => {
+  if (slFilling || !$('sl-device').value) return;
+  const msg = $('sl-msg');
+  let r, d;
+  try {
+    r = await fetch('/api/smartlife/device', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: $('sl-device').value }) });
+    d = await r.json();
+  } catch (e) { msg.textContent = 'brak połączenia z aplikacją'; return; }
+  if (!r.ok) { msg.textContent = d.error || 'nie zapisano gniazdka'; return; }
+  msg.textContent = `Zapisano gniazdko ${d.device_name}. Odczyt co minutę ruszy po „Zapisz i uruchom ponownie”.`;
+};
 function collectConfig() {
   const out = {};
   document.querySelectorAll('#tab-set [data-k]').forEach(el => {

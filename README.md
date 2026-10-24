@@ -27,7 +27,7 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox: 096 / 110 / 145 / 245 MV i inne)** – zakładka Rekuperacja po wpisaniu IP i wyborze modelu w Ustawieniach:
   temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą, obejście wymiennika
   z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem, wykresy dnia i energia odzyskana.
-  Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus); inny miernik, np. Tuya – patrz `meter.py`. Szczegóły i automaty: [Rekuperacja](#rekuperacja--vallox-seria-mv-opcjonalnie).
+  Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus) albo gniazdka SmartLife/Tuya (User Code + skan QR w Ustawieniach, bez adresu IP i bez konta deweloperskiego); inny miernik – patrz `meter.py`. Szczegóły i automaty: [Rekuperacja](#rekuperacja--vallox-seria-mv-opcjonalnie).
 - **Zaniki sieci (off-grid):** czerwony pasek i tło strony, gdy dom pracuje bez sieci, oraz historia zaników
   (od kiedy, jak długo).
 - **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.

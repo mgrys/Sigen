@@ -5,23 +5,15 @@ Do czego: zuzycie i koszt pradu rekuperatora, wykrywanie pracy nagrzewnicy (kafl
 automat nastawy nawiewu w mrozie). Bez miernika zakladka Rekuperacja dziala, tylko bez tych informacji.
 
 Ustawienia ([rekuperacja] w config.ini albo na stronie):
-  miernik    = shelly   (puste = brak miernika)
-  miernik_ip = adres IP gniazdka
+  miernik    = shelly | smartlife   (puste = brak miernika)
+  miernik_ip = adres IP gniazdka Shelly; dla SmartLife puste
 
-Obslugiwane: Shelly Gen1 (Plug S, 1PM: GET /status) i Shelly Gen2/Plus/Pro (GET /rpc/Switch.GetStatus?id=0) -
+Shelly Gen1 (Plug S, 1PM: GET /status) i Shelly Gen2/Plus/Pro (GET /rpc/Switch.GetStatus?id=0) -
 rodzaj rozpoznawany automatycznie.
 
-INNY MIERNIK (np. gniazdko Tuya, Tasmota, Home Assistant): dopisz funkcje read_<nazwa>(host) zwracajaca
-    {"power": moc chwilowa [W], "total_wh": licznik energii narastajaco [Wh] albo None}
-i dodaj ja do READERS. Licznik moze sie zerowac (np. po restarcie gniazdka) - przyrost liczony jest odpornie.
-Gdy miernik nie ma licznika energii (total_wh = None), energia liczona jest z mocy x czas.
-Przyklad dla Tuya (biblioteka tinytuya, klucz lokalny z `python -m tinytuya wizard`):
-    def read_tuya(host):
-        import tinytuya
-        d = tinytuya.OutletDevice(DEVICE_ID, host, LOCAL_KEY); d.set_version(3.3)
-        dps = d.status()["dps"]            # zwykle: "19" moc [0,1 W], "17" energia dodana [0,01 kWh]
-        return {"power": dps.get("19", 0) / 10, "total_wh": None}
-    READERS["tuya"] = read_tuya
+SmartLife: konto i wybrane gniazdko w tabeli smartlife_session (smartlife.py). Bez adresu IP.
+Odczyt z chmury, nic nie jest wlaczane. Licznik energii moze sie zerowac - przyrost jest odporny.
+Gdy licznika nie ma (total_wh = None), energia liczona jest z mocy x czas.
 """
 import json
 import threading
@@ -62,8 +54,13 @@ def read_shelly(host):
     return {"power": m.get("power"), "total_wh": None if tot is None else tot / 60.0, "temp": st.get("temperature")}
 
 
-READERS = {"shelly": read_shelly}
-ENABLED = bool(KIND and HOST and KIND in READERS)
+def read_smartlife(_host):
+    import smartlife
+    return smartlife.read_selected()
+
+
+READERS = {"shelly": read_shelly, "smartlife": read_smartlife}
+ENABLED = KIND == "smartlife" or bool(KIND and HOST and KIND in READERS)
 latest = {"ok": False, "error": "Uruchamianie..." if ENABLED else "brak miernika (Ustawienia → Rekuperacja)"}
 
 
@@ -122,5 +119,12 @@ def loop(db_connect, db_mod):
 def status():
     with _lock:
         d = dict(latest)
-    d.update(host=HOST, name=NAME, kind=KIND or None, enabled=ENABLED)
+    name = NAME
+    if KIND == "smartlife":
+        try:
+            import smartlife
+            name = smartlife.account_status().get("device_name") or NAME
+        except Exception:  # noqa: BLE001
+            pass
+    d.update(host=HOST, name=name, kind=KIND or None, enabled=ENABLED)
     return d
