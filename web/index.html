@@ -627,6 +627,7 @@ th:first-child, td:first-child { text-align: left; }
         <div class="bp-row"><span>– nagrzewnica: pobór ≥ <input class="bp-num" id="sp-spike" type="number" step="10"> W przez ≥ <input class="bp-num" id="sp-smin" type="number" step="1"> min → −1 °C co godzinę, min.</span><span><input class="bp-num" id="sp-min" type="number" step="1"> °C</span></div>
         <div class="row" style="margin-top:8px"><button class="fs-btn" id="sp-save">Zapisz progi</button></div>
         <div id="sp-autost" style="font-size:13px;margin-top:8px"></div>
+        <div id="sp-changes" style="font-size:13px;margin-top:10px"></div>
         <p style="font-size:12px;color:var(--muted);margin:6px 0 0">Średnie temperatur z 30 min, histereza między progami wywiewu, zmiana najwyżej co 30 min
           (w mrozie co godzinę). Praca nagrzewnicy z miernika poboru prądu (Ustawienia → Rekuperacja): średni pobór w każdej minucie (z licznika energii) przez podany czas bez przerwy –
           krótkie piki kontrolne Vallox są pomijane.</p>
@@ -1697,6 +1698,16 @@ function renderSupply(d) {
   $('sp-autost').innerHTML = !A.enabled ? '' : `Średnio z 30 min: wywiew <b>${A.avg_t_ext ?? '–'} °C</b>, zewnątrz <b>${A.avg_t_out ?? '–'} °C</b>` +
     (A.frost ? ' · <b style="color:var(--s-fc)">tryb mrozowy</b>' : '') +
     `<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
+  const ch = A.changes || [];
+  $('sp-changes').innerHTML = !ch.length ? (A.enabled ? '<span style="color:var(--muted)">Ostatnie zmiany automatu: jeszcze brak.</span>' : '') :
+    '<b>Ostatnie zmiany automatu</b>' + ch.map(c => {
+      const t = new Date(c.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">` +
+        `<span style="color:var(--muted)">${t}</span> · <b>${c.old} → ${c.new} °C</b>` +
+        (c.ok ? '' : ` <span style="color:var(--err)">nieudane: ${esc(c.error || '')}</span>`) +
+        `<br><span style="color:var(--text-2)">${esc(c.why || '')}` +
+        (c.t_out != null ? ` (zewn. ${c.t_out} °C, wywiew ${c.t_ext} °C)` : '') + '</span></div>';
+    }).join('');
 }
 async function spPost(url, body) {
   const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))

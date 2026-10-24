@@ -143,8 +143,9 @@ niska chętniej otwiera bypass i chłodzi, wysoka trzyma odzysk ciepła. Automat
 | warunek (średnie z 30 min) | nastawa |
 |---|---|
 | lato (domyślnie maj–wrzesień) i wywiew ≥ **22 °C** | **17 °C** – chłodzenie, bypass w nocy |
-| wywiew ≤ **21 °C** (każda pora roku) | **22 °C** – odzysk ciepła |
-| między progami | bez zmian (histereza) |
+| lato i wywiew ≤ **21 °C** | **22 °C** – odzysk ciepła |
+| lato, wywiew między progami | bez zmian (histereza) |
+| poza latem (bez mrozu) | zawsze **22 °C** – odzysk ciepła |
 | **mróz**: na zewnątrz ≤ **1 °C** (koniec mrozu przy ≥ 3 °C) i pracuje nagrzewnica | **−1 °C co godzinę**, najniżej **15 °C** |
 | koniec mrozu | powrót do nastawy 22 °C |
 
@@ -152,7 +153,9 @@ niska chętniej otwiera bypass i chłodzi, wysoka trzyma odzysk ciepła. Automat
 - pracę nagrzewnicy rozpoznaje z miernika prądu: średni pobór **≥ 150 W przez ≥ 5 min** bez przerwy (krótkie piki
   kontrolne Vallox są pomijane); bez miernika – z sygnału nagrzewnicy z rekuperatora,
 - zmiana najwyżej co 30 min (w mrozie co godzinę); wszystkie progi (miesiące lata, temperatury, nastawy, pobór i czas
-  nagrzewnicy, minimum w mrozie) do zmiany na stronie.
+  nagrzewnicy, minimum w mrozie) do zmiany na stronie,
+- **Ostatnie zmiany automatu** – lista 10 ostatnich zmian nastawy: data i godzina, zmiana (np. 17 → 22 °C), powód
+  oraz temperatura zewnętrzna i wywiewu w chwili decyzji; nieudany zapis do rekuperatora pokazany z błędem.
 
 ![Nastawa temperatury nawiewu i jej automat](docs/screens/14_rek_nawiew.png)
 

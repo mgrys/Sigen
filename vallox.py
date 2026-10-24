@@ -730,6 +730,7 @@ SP_DEFAULTS = {"enabled": False, "summer_months": [5, 6, 7, 8, 9],
                "last_change": 0, "last_check": 0, "frost": False, "last_msg": ""}
 SP_MIN_INTERVAL = 1800           # s - min. odstep zmian poza trybem mrozowym
 SP_WINDOW = 1800                 # s - srednie temperatur z 30 min
+SP_CHANGES_KEEP = 10             # ostatnie zmiany automatu (data, z -> na, powod) w pliku stanu automatu
 
 
 def _sp_load():
@@ -865,6 +866,7 @@ def _heater_run(db_connect, db_mod, threshold, seconds=3600):
 
 def supply_tick(db_connect, db_mod):
     """Lato (maj-wrzesien) i wywiew >= 22 -> 17 °C (chlodzenie / bypass w nocy); wywiew <= 21 -> 22 °C (odzysk).
+    Poza miesiacami letnimi zawsze nastawa normalna (wczesniej nastawa letnia zostawala, gdy wywiew byl w histerezie).
     Mroz (zewn. <= 1 °C): przy skokach poboru mocy (nagrzewnica / odszranianie) nastawa -1 °C co godzine, do 15 °C."""
     a = _sp_load()
     now = time.time()
@@ -901,8 +903,11 @@ def supply_tick(db_connect, db_mod):
                    f"maks. {pmax or 0:.0f} W) – bez zmian")
     else:
         month = dt.date.today().month
-        if month in a["summer_months"] and t_ext >= a["ext_hot"]:
+        summer = month in a["summer_months"]
+        if summer and t_ext >= a["ext_hot"]:
             want, why = int(a["summer_target"]), f"lato, wywiew {t_ext:.1f} °C ≥ {a['ext_hot']:g} – chłodzenie / bypass"
+        elif not summer:                       # poza miesiacami letnimi zawsze nastawa normalna (odzysk ciepla)
+            want, why = int(a["normal_target"]), f"poza sezonem letnim (wywiew {t_ext:.1f} °C) – odzysk ciepła"
         elif t_ext <= a["ext_cold"]:
             want, why = int(a["normal_target"]), f"wywiew {t_ext:.1f} °C ≤ {a['ext_cold']:g} – odzysk ciepła"
         elif a["frost"]:                       # koniec mrozu, wywiew w histerezie - wroc do nastawy normalnej
@@ -916,7 +921,12 @@ def supply_tick(db_connect, db_mod):
         _sp_save(last_check=now, frost=frost, last_msg=why + (f" (nastawa {cur} °C)" if want == cur else ""))
         return
     r = set_supply_target(want, "automat", db_connect, db_mod)
+    ch = {"ts": int(now), "old": cur, "new": want, "why": why, "ok": bool(r.get("ok")),
+          "t_ext": round(t_ext, 1), "t_out": round(t_out, 1)}
+    if not r.get("ok"):
+        ch["error"] = r.get("error")
     _sp_save(last_check=now, frost=frost, last_change=now if r.get("ok") else a["last_change"],
+             changes=([ch] + list(a.get("changes") or []))[:SP_CHANGES_KEEP],
              last_msg=(f"{cur} → {want} °C: " + why) if r.get("ok") else f"zapis nieudany – {r.get('error')}")
 
 

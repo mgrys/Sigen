@@ -2,6 +2,16 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.16.1] - 2026-10-24
+
+### Poprawiono
+- Automat temperatury nawiewu: poza miesiącami letnimi zawsze ustawia nastawę normalną (22 °C). Wcześniej nastawa
+  letnia 17 °C mogła zostać na jesień i zimę, gdy temperatura wywiewu była w histerezie 21–22 °C – automat nic nie zmieniał.
+
+### Dodano
+- Automat temperatury nawiewu: lista **Ostatnie zmiany automatu** (10 ostatnich) – data i godzina, zmiana nastawy,
+  powód oraz temperatura zewnętrzna i wywiewu w chwili decyzji; nieudane zapisy z treścią błędu.
+
 ## [1.16.0] - 2026-10-24
 
 ### Dodano
