@@ -489,6 +489,7 @@ th:first-child, td:first-child { text-align: left; }
       <path id="v-l-out" class="line" d="M55 192 L345 192" stroke="var(--s-pv)"/>
       <image href="/static/recuperator.svg" x="146" y="102" width="108" height="104" preserveAspectRatio="xMidYMid meet">
         <title>Rekuperator Vallox</title></image>
+      <text class="sub" x="200" y="226" id="v-model" style="font-weight:600"></text>
       <text class="lbl" x="325" y="100">Powietrze zewn.</text><text class="val" x="325" y="134" id="v-tout">–</text>
       <text class="lbl" x="75" y="100">Nawiew</text><text class="val" x="75" y="134" id="v-tsup">–</text>
       <text class="lbl" x="75" y="180">Wywiew</text><text class="val" x="75" y="214" id="v-text">–</text>
@@ -717,6 +718,7 @@ th:first-child, td:first-child { text-align: left; }
       <fieldset><legend>Rekuperacja (opcjonalnie)</legend>
         <label>Adres IP rekuperatora Vallox (seria MV)<input data-k="rekuperacja.vallox_ip" placeholder="puste = bez zakładki Rekuperacja"></label>
         <label>Model rekuperatora<select data-k="rekuperacja.model">
+          <option value="auto">automatycznie – odczyt z rekuperatora</option>
           <option value="096">Vallox 096 MV (maks. 292 / 310 m³/h)</option>
           <option value="110">Vallox 110 MV (maks. 385 / 400 m³/h)</option>
           <option value="145">Vallox 145 MV (maks. 511 / 576 m³/h)</option>
@@ -1760,7 +1762,7 @@ const fmtT = v => v == null ? '–' : v.toFixed(1) + ' °C';
 async function loadVallox() {
   let d;
   try { d = await (await fetch('/api/vallox/live')).json(); } catch (e) { return; }
-  if (d.model) $('vname').textContent = d.model.name;
+  if (d.model) { $('vname').textContent = d.model.name || 'Rekuperator Vallox'; $('v-model').textContent = d.model.name ? d.model.name + (d.model.detected ? ' · wykryty' : '') : ''; }
   $('vstatus').textContent = d.ok ? '· ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') : '· błąd: ' + d.error;
   lastVallox = d; renderBalance(d); renderBypass(d); renderSupply(d);
   $('v-tout').textContent = fmtT(d.t_out); $('v-tsup').textContent = fmtT(d.t_sup);
@@ -1774,6 +1776,7 @@ async function loadVallox() {
   $('v-kv').innerHTML =
     row('Profil', d.profile_txt) + row('Stan wymiennika', d.cell_state_txt) + row('Wentylacja', d.fan_pct != null ? d.fan_pct + ' %' : null) +
     row('Przepływ nawiew / wywiew', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext} m³/h (${d.rpm_sup} / ${d.rpm_ext} obr/min)` : null) +
+    (d.model ? row('Model', `${esc(d.model.name || '–')}${d.model.source ? '<br><span class="status" style="display:inline;font-weight:400">' + esc(d.model.source) + '</span>' : ''}`) : '') +
     (d.model ? row('Szacunek przepływu', `maks. ${d.model.flow_max.sup} / ${d.model.flow_max.ext} m³/h przy ${d.model.rpm_max.sup} obr/min (${d.model.rpm_source})`) : '') +
     row('Moc odzyskana', d.p_rec_w != null ? Math.round(d.p_rec_w) + ' W' : null) +
     row('Nawiew za wymiennikiem', fmtT(d.t_sup_cell)) +

@@ -2,6 +2,19 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.16.0] - 2026-10-24
+
+### Dodano
+- Rekuperacja: **automatyczne rozpoznanie modelu Vallox** z rekuperatora (A_CYC_MACHINE_MODEL) – wystarczy wpisać adres IP.
+  Na tej podstawie dobierany jest maks. przepływ (096 / 110 / 145 / 245 MV, także odpowiedniki DV… Adroit);
+  dla modelu spoza listy – przepływ do wpisania w Ustawieniach. Ustawienie `model = auto` (domyślne dla nowych instalacji);
+  ręczny wybór modelu dalej możliwy.
+- Wykryty model na grafice rekuperatora i w nagłówku karty; wiersz „Model” ze źródłem (odczytany / wybrany / wpisany).
+
+### Dokumentacja
+- README: osobna sekcja Rekuperacja (wymagania, ustawienia, szacunek przepływu, sterowanie, szczegółowo automaty,
+  planowane czujniki CO₂ SONOFF SAWF-08P, miernik poboru) ze zrzutami ekranu.
+
 ## [1.15.1] - 2026-10-23
 
 ### Poprawiono

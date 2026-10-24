@@ -39,14 +39,47 @@ MODELS = {
     "145": ("Vallox 145 MV", 511, 576),
     "245": ("Vallox 245 MV", 889, 976),
 }
-MODEL = config.get("rekuperacja", "model", "110") or "110"
-if MODEL in MODELS:
-    MODEL_NAME, _q_sup, _q_ext = MODELS[MODEL]
-else:                                           # "inny": maks. przeplyw wpisany recznie (obie strony)
-    _q = config.getf("rekuperacja", "przeplyw_max_m3h", 385) or 385
-    _qe = config.getf("rekuperacja", "przeplyw_max_wywiew_m3h", 0) or _q
-    MODEL_NAME, _q_sup, _q_ext = "Vallox (model spoza listy)", _q, _qe
-FLOW_MAX = {"sup": _q_sup, "ext": _q_ext}
+# model: "auto" (domyslnie) = odczyt A_CYC_MACHINE_MODEL z rekuperatora; "096" / "110" / "145" / "245" recznie;
+# "inny" = maks. przeplyw wpisany recznie. Modele z innym oznaczeniem tej samej jednostki (DV.. Adroit) -> ten sam przeplyw.
+MODEL_ALIASES = {"096 MV": "096", "96 MV": "096", "DV96": "096", "110 MV": "110", "DV110": "110",
+                 "145 MV": "145", "DV145": "145", "245 MV": "245", "DV245": "245"}
+MODEL = (config.get("rekuperacja", "model", "auto") or "auto").lower()
+_q = config.getf("rekuperacja", "przeplyw_max_m3h", 0) or None
+_qe = config.getf("rekuperacja", "przeplyw_max_wywiew_m3h", 0) or _q
+MODEL_INFO = {"key": None, "name": None, "detected": None, "source": None}
+FLOW_MAX = {"sup": 385, "ext": 400}
+
+
+def _apply_model(key, detected=None):
+    """Ustawia maks. przeplyw wg modelu: z listy, recznie wpisany albo (gdy nieznany) wartosci 110 MV."""
+    if key in MODELS:
+        name, qs, qe = MODELS[key]
+        src = "odczytany z rekuperatora" if detected else "wybrany w Ustawieniach"
+    elif _q:
+        name, qs, qe = detected or "Vallox (model spoza listy)", _q, _qe
+        src = "przepływ wpisany w Ustawieniach"
+    else:
+        name, qs, qe = detected or "Vallox", 385, 400
+        src = ("model spoza listy – przyjęto przepływ jak 110 MV; wpisz maks. przepływ w Ustawieniach"
+               if detected else "model nieznany – przyjęto 110 MV")
+    FLOW_MAX.update(sup=qs, ext=qe)
+    MODEL_INFO.update(key=key if key in MODELS else "inny", name=name, detected=detected, source=src)
+
+
+def detect_model(name):
+    """Nazwa z rekuperatora (np. "Vallox 145 MV") -> klucz MODELS albo None."""
+    n = (name or "").replace("Vallox ", "").strip()
+    for alias, key in MODEL_ALIASES.items():
+        if n == alias or n.startswith(alias + " ") or n.startswith(alias):
+            return key
+    return None
+
+
+if MODEL != "auto":
+    _apply_model(MODEL if MODEL in MODELS else None)
+else:
+    _apply_model(None)
+    MODEL_INFO["source"] = "czekam na odczyt modelu z rekuperatora (do tego czasu jak 110 MV)"
 RPM_MAX_DEFAULT = 3300
 RPM_MAX_CFG = config.getf("rekuperacja", "obroty_max", 0) or None
 CAL_FILE = config.DATA_DIR / "vallox_rpm_max.json"      # obroty przy >= 98 % zapamietane automatycznie
@@ -255,6 +288,15 @@ def read_once(host=HOST):
     extra = {k: m.get(v) for k, v in EXTRA.items()}
     raw = extra.pop("ms_temp_raw", None)
     extra["ms_temp"] = round(raw / 100 - 273.15, 1) if isinstance(raw, (int, float)) and raw > 20000 else None
+    if MODEL == "auto" and MODEL_INFO.get("detected") is None:
+        idx = m.get("A_CYC_MACHINE_MODEL")
+        try:
+            from vallox_websocket_api.vallox import DEVICE_MODEL
+            name = DEVICE_MODEL[idx] if isinstance(idx, int) and 0 <= idx < len(DEVICE_MODEL) else None
+        except Exception:  # noqa: BLE001 - starsza biblioteka bez listy modeli
+            name = None
+        if name:
+            _apply_model(detect_model(name), detected=name)
     return vals, extra
 
 
@@ -950,7 +992,8 @@ def status():
     d["p_rec_w"] = recovered_w(d.get("t_out"), d.get("t_sup_cell"), d["flow_sup"], d.get("cell_state"))
     d["flow_calibrated"] = bool(AIRFLOW_CAL.get("sup") or AIRFLOW_CAL.get("ext"))
     cal = _rpm_load()
-    d["model"] = {"key": MODEL, "name": MODEL_NAME, "flow_max": FLOW_MAX,
+    d["model"] = {"key": MODEL_INFO["key"], "setting": MODEL, "name": MODEL_INFO["name"], "detected": MODEL_INFO["detected"],
+                  "source": MODEL_INFO["source"], "flow_max": FLOW_MAX,
                   "rpm_max": {k: rpm_max(k) for k in ("sup", "ext")},
                   "rpm_source": "ustawienia" if RPM_MAX_CFG else ("zapamiętane przy 100 %" if cal.get("sup") else "domyślne 3300")}
     a = _auto_load()

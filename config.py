@@ -89,7 +89,7 @@ DEFAULTS = {
     },
     "rekuperacja": {                     # opcjonalnie: rekuperator Vallox seria MV (MyVallox) - zakladka Rekuperacja
         "vallox_ip": "",                 # adres IP rekuperatora; puste = bez zakladki Rekuperacja
-        "model": "110",                  # 096 | 110 | 145 | 245 | inny (maks. przeplyw modelu -> szacunek przeplywu m3/h)
+        "model": "auto",                 # auto (odczyt z rekuperatora) | 096 | 110 | 145 | 245 | inny -> szacunek przeplywu m3/h
         "przeplyw_max_m3h": "",          # tylko dla "inny": maks. przeplyw nawiewu z karty katalogowej [m3/h]
         "przeplyw_max_wywiew_m3h": "",   # tylko dla "inny": maks. przeplyw wywiewu (puste = jak nawiew)
         "obroty_max": "",                # obroty wentylatora przy 100 %; puste = automatycznie (Boost 100 %) / 3300

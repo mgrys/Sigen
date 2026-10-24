@@ -45,7 +45,9 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 ## Rekuperacja – Vallox seria MV (opcjonalnie)
 
 Zakładka **Rekuperacja** pojawia się po wpisaniu adresu IP rekuperatora w Ustawieniach → Rekuperacja i ponownym
-uruchomieniu aplikacji. Bez adresu aplikacja wygląda i działa jak wcześniej.
+uruchomieniu aplikacji. **Wystarczy sam adres IP** – model (np. Vallox 145 MV) aplikacja odczyta z rekuperatora i na jego
+podstawie dobierze parametry do szacowania przepływu; wykryty model widać na grafice rekuperatora. Bez adresu aplikacja
+wygląda i działa jak wcześniej.
 
 ### Wymagania
 
@@ -59,7 +61,7 @@ aplikacja łączy się z nim lokalnie (websocket, port 80, bez hasła i bez chmu
 | ustawienie | znaczenie |
 |---|---|
 | `vallox_ip` | adres rekuperatora; puste = bez zakładki |
-| `model` | `096`, `110`, `145`, `245` albo `inny` – maks. przepływ modelu do szacowania m³/h |
+| `model` | `auto` (domyślnie) – model odczytany z rekuperatora; ręcznie `096`, `110`, `145`, `245` albo `inny` – maks. przepływ modelu do szacowania m³/h |
 | `przeplyw_max_m3h`, `przeplyw_max_wywiew_m3h` | tylko dla `inny`: maks. przepływ nawiewu i wywiewu z karty katalogowej |
 | `obroty_max` | obroty wentylatorów przy 100 %; puste = automatycznie (patrz niżej) |
 | `miernik`, `miernik_ip` | gniazdko z pomiarem poboru rekuperatora (`shelly`) – opcjonalnie |
@@ -80,7 +82,8 @@ aplikacja łączy się z nim lokalnie (websocket, port 80, bez hasła i bez chmu
 
 ### Przepływ to szacunek
 
-Seria MV nie mierzy przepływu – aplikacja liczy go z obrotów:
+Seria MV nie mierzy przepływu – aplikacja liczy go z obrotów (model rozpoznany automatycznie; dla modeli spoza listy
+096 / 110 / 145 / 245 MV wpisz maks. przepływ z karty katalogowej):
 maks. przepływ modelu (dane Vallox przy 100 Pa, osobno nawiew i wywiew) × obroty ÷ obroty przy 100 %.
 Obroty przy 100 % aplikacja zapamięta sama, gdy rekuperator popracuje na ≥ 98 % (np. **Boost 100 % przez 2–3 min**);
 do tego czasu przyjmuje 3300 obr/min (110 MV). Rzeczywisty przepływ zależy od oporów kanałów w domu – najdokładniejszy
