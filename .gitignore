@@ -17,3 +17,5 @@ android/app/build/
 build.yml.nowy
 grid_events.json
 access_sessions.json
+tools/.tuya_session.json
+tools/.tuya_login_qr.png

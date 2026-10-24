@@ -93,8 +93,8 @@ DEFAULTS = {
         "przeplyw_max_m3h": "",          # tylko dla "inny": maks. przeplyw nawiewu z karty katalogowej [m3/h]
         "przeplyw_max_wywiew_m3h": "",   # tylko dla "inny": maks. przeplyw wywiewu (puste = jak nawiew)
         "obroty_max": "",                # obroty wentylatora przy 100 %; puste = automatycznie (Boost 100 %) / 3300
-        "miernik": "",                   # pobor pradu rekuperatora: shelly | puste (inne: dopisz w meter.py)
-        "miernik_ip": "",                # adres IP gniazdka z pomiarem
+        "miernik": "",                   # pobor pradu rekuperatora: shelly | smartlife | puste (inne: dopisz w meter.py)
+        "miernik_ip": "",                # adres IP gniazdka Shelly; SmartLife go nie uzywa
         "nagrzewnica_w": "150",          # pobor [W], od ktorego kafel pokazuje "prawdopodobnie grzalka"
     },
     "ceny": {

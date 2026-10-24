@@ -5,7 +5,8 @@ from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 hidden = (collect_submodules("uvicorn") + collect_submodules("pymodbus.client") + collect_submodules("vallox_websocket_api")
-          + collect_submodules("websockets") + ["app", "vallox", "meter"])
+          + collect_submodules("websockets") + collect_submodules("tuya_sharing") + collect_submodules("cryptography")
+          + ["app", "vallox", "meter", "smartlife", "qrcode", "qrcode.image.svg"])
 
 a = Analysis(
     [os.path.join(ROOT, "main.py")],

@@ -1,0 +1,22 @@
+[project]
+name = "sigen-1-15-0"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cryptography",
+    "fastapi>=0.110",
+    "pymodbus>=3.6,<4",
+    "qrcode",
+    "tuya-device-sharing-sdk==0.2.15",
+    "uvicorn>=0.29",
+    "vallox-websocket-api>=3.0",
+]
+
+[project.scripts]
+sigen-1-15-0 = "sigen_1_15_0:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
