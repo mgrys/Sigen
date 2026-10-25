@@ -27,9 +27,10 @@ import registers
 import access
 import gridwatch
 import meter
+import smartlife
 import vallox
 
-__version__ = "1.16.1"
+__version__ = "1.17.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 HOST = config.get("falownik", "host", "192.168.1.100")
@@ -435,6 +436,34 @@ def api_config_save(payload: dict = Body(...)):
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return {"ok": True}
+
+
+@app.get("/api/smartlife")
+def api_smartlife():
+    """Czy konto jest podlaczone i ktore gniazdko wybrane. Bez tokenu i User Code."""
+    return smartlife.account_status()
+
+
+@app.get("/api/smartlife/connect")
+def api_smartlife_connect_status():
+    return smartlife.connect_status()
+
+
+@app.post("/api/smartlife/connect")
+def api_smartlife_connect(payload: dict = Body(default={})):
+    """User Code z aplikacji SmartLife. Puste = zapisany kod. Potem skan QR ze stanu polaczenia."""
+    try:
+        return smartlife.start_connect((payload or {}).get("user_code"))
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+
+@app.post("/api/smartlife/device")
+def api_smartlife_device(payload: dict = Body(default={})):
+    try:
+        return smartlife.select_device((payload or {}).get("id"))
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.post("/api/discover")
