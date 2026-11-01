@@ -1,5 +1,6 @@
 """
-Wyszukiwanie falownika Sigenergy w sieci domowej (przycisk "Znajdz falownik" w Ustawieniach).
+Wyszukiwanie falownika Sigenergy (przycisk "Znajdz falownik") i rekuperatora Vallox MV ("Znajdz rekuperator")
+w sieci domowej.
 
 1. Ustala podsieci komputera (np. 192.168.0.x) - tylko adresy prywatne.
 2. Sprawdza rownolegle, ktore adresy maja otwarty port Modbus TCP (domyslnie 502).
@@ -96,3 +97,79 @@ def scan(port=502, networks=None):
     found = [probe(ip, port) for ip in hits]
     found.sort(key=lambda x: (not x["sigen"], [int(p) for p in x["ip"].split(".")]))
     return {"networks": [f"{n}.0/24" for n in nets], "port": port, "found": found, "scanned": len(targets)}
+
+
+# --- rekuperator Vallox (seria MV, MyVallox) ------------------------------------------------
+VALLOX_TIMEOUT = 8      # s na odczyt metryk przez websocket z jednego adresu
+VALLOX_WORKERS = 8
+
+
+def probe_vallox(ip):
+    """Proba odczytu modelu i numeru seryjnego z rekuperatora (websocket MyVallox, port 80) - tylko odczyt."""
+    import asyncio
+    import vallox
+    out = {"ip": ip, "vallox": False, "model": None, "serial": None, "error": None}
+    try:
+        m = asyncio.run(asyncio.wait_for(vallox._fetch(ip), VALLOX_TIMEOUT))
+        idx = m.get("A_CYC_MACHINE_MODEL")
+        try:
+            from vallox_websocket_api.vallox import DEVICE_MODEL
+            out["model"] = DEVICE_MODEL[idx] if isinstance(idx, int) and 0 <= idx < len(DEVICE_MODEL) else None
+        except Exception:  # noqa: BLE001
+            pass
+        out["serial"] = vallox.serial_of(m)
+        out["vallox"] = bool(m) and (idx is not None or out["serial"] is not None or "A_CYC_TEMP_OUTDOOR_AIR" in m)
+        out["model"] = out["model"] or ("Vallox (model nieznany)" if out["vallox"] else None)
+    except Exception as e:  # noqa: BLE001 - zwykle inne urzadzenie z portem 80 (router, drukarka)
+        out["error"] = type(e).__name__
+    return out
+
+
+def scan_vallox(networks=None):
+    """Skan podsieci /24: adresy z otwartym portem 80, potem proba odczytu Vallox. {"found": [...]} - tylko rekuperatory."""
+    own_nets, own_ips = local_networks()
+    nets = networks or own_nets
+    targets = [ip for ip in (f"{n}.{i}" for n in nets for i in range(1, 255)) if ip not in own_ips]
+    with ThreadPoolExecutor(WORKERS) as ex:
+        hits = [ip for ip, ok in zip(targets, ex.map(lambda ip: _open(ip, 80), targets)) if ok]
+    with ThreadPoolExecutor(VALLOX_WORKERS) as ex:
+        res = list(ex.map(probe_vallox, hits))
+    found = sorted((x for x in res if x["vallox"]), key=lambda x: [int(p) for p in x["ip"].split(".")])
+    return {"networks": [f"{n}.0/24" for n in nets], "found": found, "checked": len(hits), "scanned": len(targets)}
+
+
+# --- mierniki Shelly (gniazdka / przekazniki z pomiarem) ------------------------------------
+def probe_shelly(ip):
+    """GET /shelly (Gen1 i Gen2) + aktualny pobor - tylko odczyt. None, gdy to nie Shelly."""
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://{ip}/shelly", timeout=2) as r:
+            info = json.loads(r.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(info, dict) or not (info.get("type") or info.get("gen") or info.get("model")):
+        return None
+    out = {"kind": "shelly", "id": ip, "ip": ip, "name": info.get("name") or info.get("id") or info.get("type") or ip,
+           "model": info.get("model") or info.get("type") or "Shelly", "gen": info.get("gen") or 1, "power_w": None,
+           "online": True}
+    try:
+        import meter
+        v = meter.read_shelly(ip)
+        out["power_w"] = None if v.get("power") is None else round(float(v["power"]), 1)
+    except Exception as e:  # noqa: BLE001 - Shelly bez pomiaru (np. sam przekaznik)
+        out["error"] = type(e).__name__
+    return out
+
+
+def scan_shelly(networks=None):
+    """Skan podsieci /24 w poszukiwaniu urzadzen Shelly; {"found": [...]}."""
+    own_nets, own_ips = local_networks()
+    nets = networks or own_nets
+    targets = [ip for ip in (f"{n}.{i}" for n in nets for i in range(1, 255)) if ip not in own_ips]
+    with ThreadPoolExecutor(WORKERS) as ex:
+        hits = [ip for ip, ok in zip(targets, ex.map(lambda ip: _open(ip, 80), targets)) if ok]
+    with ThreadPoolExecutor(16) as ex:
+        found = [x for x in ex.map(probe_shelly, hits) if x]
+    found.sort(key=lambda x: [int(p) for p in x["ip"].split(".")])
+    return {"networks": [f"{n}.0/24" for n in nets], "found": found}

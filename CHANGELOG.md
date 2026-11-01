@@ -2,6 +2,48 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.18.0] - 2026-10-29
+
+### Dodano
+- Strategia osobista (symulacja): tryb **sprzedaż z magazynu** – rozładowanie do sieci w drogich godzinach (Remote EMS
+  tryb 5); **pułapy cenowe** na karcie strategii: „sprzedawaj z magazynu od X zł/kWh” (bez pułapu brak sprzedaży z
+  magazynu) i „ładuj z sieci do Y zł/kWh” (config.ini `[strategia] sprzedaz_z_magazynu_od`, `ladowanie_z_sieci_do`,
+  zmiana bez restartu). Tabela planu z ceną sprzedaży, w kaflach – ile kWh sprzedaż z magazynu.
+- Licznik operatora (Pstryk): Bilans dnia / miesiąca w kolorze wyniku (czerwony: koszt > sprzedaż, zielony: sprzedaż >
+  koszt, wyróżnione kafle), kafel **Tarcza Pstryk** (średni koszt energii w miesiącu, limit 0,61 zł/kWh, szacowany rabat),
+  w tabeli godzinowej osobno cena zakupu i cena sprzedaży + wiersz Razem.
+- Ustawienia → **„Co masz”**: instalacja PV Sigen i/lub rekuperator Vallox (`[moduly] pv`, `vallox` = tak / nie / auto).
+  **Tylko rekuperator:** aplikacja nie łączy się z falownikiem, nie pobiera prognoz PV i nie pokazuje komunikatów
+  o falowniku (brak połączenia, alarmy, zaniki sieci) – zakładka Instalacja PV jest ukryta, strona otwiera się na
+  zakładce Rekuperacja. **Tylko PV** – jak dotąd. Odznaczenie modułu wyłącza go; zebrane dane zostają w bazie.
+- Istniejące instalacje bez zmian („auto”): PV włączone, chyba że wpisano tylko adres rekuperatora (adres falownika
+  domyślny); rekuperator włączony, gdy wpisano jego adres IP.
+- Ustawienia → Rekuperacja: przycisk **„Znajdź rekuperator”** – wyszukuje Vallox MV w sieci domowej (urządzenia
+  z portem 80, potwierdzenie odczytem przez MyVallox), pokazuje model i numer seryjny; jeden znaleziony – adres wpisuje
+  się sam. Nie trzeba znać adresu IP rekuperatora.
+- Numer seryjny rekuperatora zapamiętywany automatycznie (`[rekuperacja] vallox_serial`). Gdy router zmieni adres IP
+  (DHCP), po 10 min bez połączenia aplikacja sama znajduje rekuperator po numerze seryjnym i poprawia adres w config.ini.
+- Ustawienia → Rekuperacja: przycisk **„Szukaj mierników”** – wspólna lista mierników poboru: urządzenia **Shelly**
+  znalezione w sieci domowej (nazwa, model, IP, pobór teraz) i gniazdka z podłączonego konta **SmartLife**; przy każdym
+  „To jest rekuperator” – rodzaj i adres / gniazdko ustawiają się same, bez wpisywania IP.
+
+- **Pradcast – prognoza cen** (opcjonalnie, klucz w Ustawieniach): strategia planuje do pojutrza; godziny bez
+  opublikowanych cen biorą prognozę rynku RDN przeliczoną na ceny zakupu i sprzedaży (dopasowanie z 7 dni, bez danych –
+  taryfa). Aplikacja zapamiętuje prognozy i pokazuje ich **trafność** (średni błąd D+1 / D+2) na karcie strategii.
+- Rekuperacja: **efektywność dnia** (ważona energią – z odszranianiem, jak „roczna efektywność” Vallox) obok sprawności
+  chwilowej, **minimalna temperatura wyrzutu**, czas wyrzutu poniżej 0 °C i odszraniania; tabela „Efektywność
+  sezonowa – dzień po dniu” (30 dni – rok) z sumą za okres.
+- „Szukaj mierników”: oznaczenie „pasuje” (pobór 8–200 W) i test **„Sprawdź, który to rekuperator”** – Boost na 2 min
+  (rekuperator sam wraca do profilu), wskazuje miernik, któremu wzrósł pobór (po potwierdzeniu).
+
+### Poprawiono
+- Strategia z Pstrykiem: cena sprzedaży = cena prosumencka Pstryka (depozyt pokrywa cały rachunek), a nie RCE z PSE.
+- Telefon / aplikacja Android: po powrocie do aplikacji po ponad 3 min (wcześniej 10 min) strona się przeładowuje,
+  a przy krótszej przerwie sama odświeża dane; czas odczytu w nagłówku na czerwono, gdy dane są starsze niż 2 min.
+  Strona przeglądarki odświeża się tak samo po powrocie na kartę.
+- `pyproject.toml`: Python od 3.11 (wcześniej 3.13), opis projektu; `uv run sigen-pv-monitor` uruchamia aplikację
+  (wcześniej szablon „Hello”).
+
 ## [1.17.0] - 2026-10-24
 
 ### Dodano

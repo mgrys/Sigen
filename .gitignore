@@ -25,3 +25,4 @@ vallox_*.json
 *.keystore
 *.jks
 secrets*
+pradcast_hist.json

@@ -1,9 +1,9 @@
 [project]
 name = "sigen-pv-monitor"
-version = "1.17.0"
-description = "Add your description here"
+version = "1.18.0"
+description = "Sigen PV Monitor - lokalny podglad instalacji PV Sigenergy (Modbus TCP), prognozy, ceny i opcjonalnie rekuperator Vallox"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "cryptography",
     "fastapi>=0.110",

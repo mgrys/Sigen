@@ -124,6 +124,15 @@ def connect_status():
     }
 
 
+def list_plugs():
+    """Gniazdka z pomiarem z podlaczonego konta SmartLife (do wspolnej listy miernikow); [] bez konta."""
+    session = _session()
+    if not session or not session.get("token_info"):
+        return []
+    with _cloud:
+        return _plugs_from(_manager(session))
+
+
 def account_status():
     s = connect_status()
     return {k: s[k] for k in ("connected", "device_id", "device_name", "phase", "error")}

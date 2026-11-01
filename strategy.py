@@ -4,7 +4,10 @@ Strategia osobista - SYMULACJA (nic nie jest wysylane do falownika).
 Plan godzinowy pracy magazynu od biezacej godziny do konca jutra, minimalizujacy koszt energii z sieci:
   - autokonsumpcja   - jak dzis: nadwyzka PV laduje magazyn, niedobor pokrywa magazyn (Remote EMS tryb 2),
   - standby          - magazyn czeka, dom bierze prad z sieci (tryb 1) - np. w tanich godzinach nocnych zima,
-  - ladowanie z sieci - doladowanie w najtanszych godzinach na drogie godziny (tryb 3).
+  - ladowanie z sieci - doladowanie w najtanszych godzinach na drogie godziny (tryb 3),
+  - sprzedaz z magazynu - rozladowanie do sieci w drogich godzinach (tryb 5: wymuszone rozladowanie, najpierw PV),
+    tylko gdy cena sprzedazy >= pulap ustawiony przez uzytkownika (SELL_FLOOR).
+Pulap zakupu (BUY_CAP): ladowanie z sieci tylko w godzinach z cena zakupu <= pulap.
 Dla kazdej godziny wybierany jest jeden z trybow (programowanie dynamiczne po stanie magazynu),
 z uwzglednieniem sprawnosci ladowania/rozladowania, prognozy PV, typowego zuzycia domu i cen godzinowych.
 Porownanie: ta sama prognoza i ceny przy samej autokonsumpcji (bez strategii).
@@ -18,7 +21,10 @@ MODES = {
     "auto": ("autokonsumpcja", 2),
     "standby": ("standby – dom z sieci", 1),
     "grid": ("ładowanie z sieci", 3),
+    "export": ("sprzedaż z magazynu", 5),
 }
+SELL_FLOOR = None   # zl/kWh - sprzedaz z magazynu tylko przy cenie sprzedazy >= pulap (None = bez sprzedazy z magazynu)
+BUY_CAP = None      # zl/kWh - ladowanie z sieci tylko przy cenie zakupu <= pulap (None = bez ograniczenia)
 
 
 def _auto_d(load, pv, stored, s_min, s_max, p_max, eta_c, eta_d):
@@ -85,9 +91,16 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
             opts = [(0, _auto_d(load, pv, s, s_min, s_max, p_max, eta_c, eta_d)), (1, 0.0)]
             room = max(0.0, (s_max - s) / eta_c)
             top = min(p_max, room)
-            if top > surplus + 0.05:
+            if top > surplus + 0.05 and (BUY_CAP is None or buy <= BUY_CAP):
                 for k in range(1, grid_levels + 1):
                     opts.append((2, surplus + (top - surplus) * k / grid_levels))
+            if SELL_FLOOR is not None and sell >= SELL_FLOOR:
+                avail = min(p_max, max(0.0, (s - s_min) * eta_d))     # maks. rozladowanie (dom + siec)
+                need = max(load - pv, 0.0)                              # tyle i tak zabralby dom
+                if avail > need + 0.05:
+                    ex_levels = max(1, grid_levels // 2)            # sprzedaz co ~1 kW (szybsze liczenie)
+                    for k in range(1, ex_levels + 1):
+                        opts.append((3, -(need + (avail - need) * k / ex_levels)))
             evals = []
             for mi, d in opts:
                 j = idx(_apply(s, d, eta_c, eta_d))
@@ -95,6 +108,8 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
                 c = _cost(grid, buy, sell, d)
                 if mi == 2:
                     c += TIE_EPS * (d - surplus)
+                elif mi == 3:
+                    c += TIE_EPS * (-d)
                 elif mi == 1:
                     c += TIE_EPS * 0.5
                 evals.append((mi, d, j, c))
@@ -121,8 +136,13 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
 def label(step, h):
     """Opis kroku dla uzytkownika."""
     surplus = max(h["pv"] - h["load"], 0.0)
+    if step["mode"] == "export":
+        out = max(0.0, -step["d"] - max(h["load"] - h["pv"], 0.0))
+        return f"sprzedaż z magazynu {out:.1f} kWh"
     if step["mode"] == "grid" and step["d"] - surplus >= 0.05:
         return f"ładowanie z sieci {max(step['d'] - surplus, 0):.1f} kWh"
+    if step["mode"] == "grid" and step["d"] - surplus > 0.005:
+        return "ładowanie z sieci < 0,1 kWh"
     if step["mode"] == "standby":
         if h["pv"] > h["load"] + 0.05:
             return "standby – PV na sprzedaż"

@@ -149,7 +149,7 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .tile.c-blue { border-color: color-mix(in srgb, var(--s-load) 55%, var(--border)); background: color-mix(in srgb, var(--s-load) 7%, transparent); }
 .tile.c-blue .v { color: var(--s-load); }
 .stm { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
-.stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); }
+.stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); } .stm.export { color: var(--s-sell); font-weight: 600; }
 .pvsplit { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
 .pvmon { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
 .pvmon .chart { height: 260px; }
@@ -177,6 +177,10 @@ tr.ps-buy td { background: color-mix(in srgb, var(--s-buy) 10%, transparent); }
 tr.ps-sell td { background: color-mix(in srgb, var(--s-sell) 12%, transparent); }
 tr.ps-buy td:nth-child(4) { color: var(--s-buy); font-weight: 600; }
 tr.ps-sell td:nth-child(5) { color: var(--s-sell); font-weight: 600; }
+.tile.ps-bal { border-width: 2px; box-shadow: 0 0 0 1px currentColor inset; }
+.tile.ps-bal.c-red { background: color-mix(in srgb, var(--s-buy) 16%, transparent); color: var(--s-buy); }
+.tile.ps-bal.c-green { background: color-mix(in srgb, var(--s-sell) 18%, transparent); color: var(--s-sell); }
+.tile.ps-bal .v { font-size: 1.25em; font-weight: 700; }
 .fc-pick { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-2); margin: 0 0 6px; }
 .fc-pick label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .fc-pick i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
@@ -341,20 +345,28 @@ th:first-child, td:first-child { text-align: left; }
       <span class="status" id="ststatus"></span>
     </div>
     <div class="tiles" id="sttiles"></div>
+    <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
+      <span>Pułapy: sprzedawaj z magazynu od <input class="bp-num" id="st-floor" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
+      <span>ładuj z sieci do <input class="bp-num" id="st-cap" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
+      <span><button class="fs-btn" id="st-save" type="button">Zapisz pułapy</button> <span class="status" id="st-msg"></span></span>
+    </div>
     <div class="chart"><canvas id="cSt"></canvas></div>
     <div class="empty" id="stempty" hidden></div>
     <details>
       <summary>Plan godzinowy</summary>
-      <div style="overflow-x:auto"><table><thead><tr><th>Godz.</th><th>Cena zł/kWh</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
+      <div style="overflow-x:auto"><table><thead><tr><th>Godz.</th><th>Cena zakupu</th><th>Cena sprzedaży</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
         <th>Z sieci kWh</th><th>SOC plan</th><th>SOC bez strategii</th><th>Koszt plan / bez</th></tr></thead><tbody id="stbody"></tbody></table></div>
     </details>
     <details>
       <summary>Jak to działa</summary>
       <p class="status" style="display:block;margin:6px 0 0">Okno: dziś od 00:00 do jutra 24:00 – minione godziny pokazują rzeczywiste odczyty, a dla każdej kolejnej godziny wybierany jest tryb magazynu, przy którym łączny koszt energii z sieci jest najmniejszy:
         <b>autokonsumpcja</b> (jak teraz), <b>standby</b> (magazyn czeka, dom bierze prąd z sieci – np. tania noc zimą, gdy energię z magazynu warto zachować na drogi szczyt)
-        albo <b>ładowanie z sieci</b> w najtańszych godzinach. Uwzględniane są: prognoza PV, typowe zużycie domu w danej godzinie (średnia z 14 dni), ceny godzinowe,
+        albo <b>ładowanie z sieci</b> w najtańszych godzinach, albo <b>sprzedaż z magazynu</b> do sieci w drogich godzinach – tylko gdy cena sprzedaży
+        jest co najmniej równa Twojemu pułapowi („sprzedawaj z magazynu od”). Pułap „ładuj z sieci do” ogranicza ładowanie z sieci do godzin z ceną zakupu nie wyższą niż pułap.
+        Z Pstrykiem cena sprzedaży to cena prosumencka Pstryka (depozyt pokrywa cały rachunek – także dystrybucję). Uwzględniane są: prognoza PV, typowe zużycie domu w danej godzinie (średnia z 14 dni), ceny godzinowe,
         sprawność ładowania i rozładowania, granice SOC z falownika, koszt zużycia baterii za każdą kWh oddaną z magazynu i cena sprzedaży (RCE × współczynnik).
-        Gdy na jutro nie ma jeszcze cen, przyjmowane są ceny z dziś, a cena sprzedaży jest liczona ostrożniej (× 0,9). Słupki: zakup w dół, sprzedaż w górę (zł na godzinę). Latem, gdy PV i tak zapełni magazyn, plan zwykle zostaje przy autokonsumpcji.
+        Z kluczem Pradcast (Ustawienia) plan sięga do pojutrza: godziny bez opublikowanych cen biorą prognozę Pradcast (rynek RDN),
+        przeliczoną na ceny zakupu i sprzedaży dopasowaniem do ostatnich 7 dni. Bez Pradcast – gdy na jutro nie ma jeszcze cen, przyjmowane są ceny z dziś, a cena sprzedaży jest liczona ostrożniej (× 0,9). Słupki: zakup w dół, sprzedaż w górę (zł na godzinę). Latem, gdy PV i tak zapełni magazyn, plan zwykle zostaje przy autokonsumpcji.
         Energia zostawiona w magazynie na koniec okresu jest wyceniana ostrożnie (po cenie najtańszych godzin). Porównanie „bez strategii” to ta sama prognoza i ceny przy samej autokonsumpcji.
         <b>To tylko symulacja – nic nie jest wysyłane do falownika.</b></p>
     </details>
@@ -398,7 +410,7 @@ th:first-child, td:first-child { text-align: left; }
     </details>
     <details>
       <summary>Tabela godzinowa z licznika operatora</summary>
-      <table><thead><tr><th>Godz.</th><th>Pobór kWh</th><th>Oddanie kWh</th><th>Koszt zł</th><th>Sprzedaż zł</th><th>Cena zł/kWh</th></tr></thead>
+      <table><thead><tr><th>Godz.</th><th>Pobór kWh</th><th>Oddanie kWh</th><th>Koszt zł</th><th>Sprzedaż zł</th><th>Cena zakupu zł/kWh</th><th>Cena sprzedaży zł/kWh</th></tr></thead>
       <tbody id="pshours"></tbody></table>
     </details>
     <p class="status" style="margin-top:10px">Dane z licznika zdalnego odczytu operatora przez API Pstryka – to te wartości trafiają na rachunek.
@@ -655,8 +667,17 @@ th:first-child, td:first-child { text-align: left; }
     <div class="chart"><canvas id="cVtw"></canvas></div>
     <div class="empty" id="vempty" hidden>Brak danych z rekuperatora dla tego dnia.</div>
     <div class="muted" id="vlognote" hidden style="font-size:.85em;margin:4px 0 8px"></div>
-    <p class="status" style="margin-top:10px">Sprawność liczona z temperatur: nawiew = (za wymiennikiem − zewn.) ÷ (wywiew − zewn.),
-      wywiew = (wywiew − wyrzut) ÷ (wywiew − zewn.). Przy różnicy temperatur &lt; 3 °C nie jest liczona. Odczyt co 60 s, wykres – średnie 5-minutowe.</p>
+    <details id="veffbox" style="margin-top:10px"><summary>Efektywność sezonowa – dzień po dniu</summary>
+      <div class="daynav" style="margin-top:6px"><span class="status" id="veffsum"></span>
+        <select id="veffdays" class="fs-btn"><option value="30" selected>30 dni</option><option value="90">90 dni</option>
+          <option value="182">pół roku</option><option value="365">rok</option></select></div>
+      <div class="tscroll"><table><thead><tr><th>Dzień</th><th>Efektywność</th><th>Temp. zewn. śr. / min</th><th>Wyrzut min</th>
+        <th>Wyrzut &lt; 0 °C</th><th>Odszranianie</th><th>Godz. z danymi</th></tr></thead><tbody id="veffrows"></tbody></table></div></details>
+    <p class="status" style="margin-top:10px">Sprawność <b>chwilowa</b> liczona z temperatur: nawiew = (za wymiennikiem − zewn.) ÷ (wywiew − zewn.),
+      wywiew = (wywiew − wyrzut) ÷ (wywiew − zewn.). Przy różnicy temperatur &lt; 3 °C nie jest liczona. Odczyt co 60 s, wykres – średnie 5-minutowe.
+      <b>Efektywność</b> (dzień / okres) = odzyskane ciepło ÷ ciepło możliwe do odzyskania, ważone przepływem i czasem – obejmuje odszranianie
+      i pracę przy mrozie, więc zimą jest niższa od sprawności chwilowej (jak „roczna efektywność” w danych Vallox). Bypass i odzysk chłodu pominięte.
+      Temperatura wyrzutu spadająca poniżej 0 °C zapowiada odszranianie wymiennika.</p>
   </section>
   </div>
 
@@ -666,6 +687,13 @@ th:first-child, td:first-child { text-align: left; }
     <p class="status" style="margin-bottom:12px">Zmiany zaczynają działać po ponownym uruchomieniu aplikacji (przycisk na dole).
       Aplikacja tylko odczytuje dane z falownika – niczego w nim nie zmienia.</p>
     <div class="cfg-grid">
+      <fieldset><legend>Co masz</legend>
+        <label class="fs-auto" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" data-mod="pv"> Instalacja PV Sigen (falownik, magazyn)</label>
+        <label class="fs-auto" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" data-mod="vallox"> Rekuperator Vallox (seria MV)</label>
+        <p class="status" style="margin-top:6px">Zaznacz jedno albo oba. Bez instalacji PV aplikacja nie łączy się z falownikiem
+          i nie pokazuje komunikatów o nim – otwiera się od razu na zakładce Rekuperacja (wpisz adres IP rekuperatora poniżej).</p>
+        <div id="cfg-mod-msg" class="status" style="display:block"></div>
+      </fieldset>
       <fieldset><legend>Falownik (Modbus TCP)</legend>
         <label>Adres IP falownika<span class="cfg-row"><input data-k="falownik.host" id="cfg-host" placeholder="192.168.1.100">
           <button class="fs-btn" id="cfg-find" type="button">Znajdź falownik</button></span></label>
@@ -711,6 +739,11 @@ th:first-child, td:first-child { text-align: left; }
         <label>forecast.solar<select data-k="prognoza.forecast_solar"><option value="tak">włączone</option><option value="nie">wyłączone</option></select></label>
         <label>Korekta (np. open_meteo=1.05)<input data-k="prognoza.korekta"></label>
       </fieldset>
+      <fieldset><legend>Pradcast – prognoza cen (opcjonalnie)</legend>
+        <label>Klucz API Pradcast<input data-k="pradcast.api_key" type="password" autocomplete="off" placeholder="puste = bez prognozy cen"></label>
+        <p class="status" style="margin-top:6px">Darmowy, anonimowy klucz z <a href="https://pradcast.pl/dokumentacja-api" target="_blank" rel="noopener">pradcast.pl</a>
+          (użytek domowy). Strategia planuje wtedy do pojutrza, a na karcie strategii widać trafność prognoz. Klucz zostaje w config.ini.</p>
+      </fieldset>
       <fieldset><legend>Pstryk (opcjonalnie)</legend>
         <label>Klucz API Pstryka<input data-k="pstryk.api_key" type="password" autocomplete="off" placeholder="puste = bez Pstryka"></label>
         <p class="status" style="margin-top:6px">Tylko dla klientów Pstryka: aplikacja Pstryk → Integracje → wygeneruj klucz.
@@ -718,7 +751,9 @@ th:first-child, td:first-child { text-align: left; }
           Klucz zostaje w pliku config.ini na tym komputerze.</p>
       </fieldset>
       <fieldset><legend>Rekuperacja (opcjonalnie)</legend>
-        <label>Adres IP rekuperatora Vallox (seria MV)<input data-k="rekuperacja.vallox_ip" placeholder="puste = bez zakładki Rekuperacja"></label>
+        <label>Adres IP rekuperatora Vallox (seria MV)<span class="cfg-row"><input data-k="rekuperacja.vallox_ip" id="cfg-vip" placeholder="puste = bez zakładki Rekuperacja">
+          <button class="fs-btn" id="cfg-vfind" type="button">Znajdź rekuperator</button></span></label>
+        <div id="cfg-vfound" style="font-size:13px"></div>
         <label>Model rekuperatora<select data-k="rekuperacja.model">
           <option value="auto">automatycznie – odczyt z rekuperatora</option>
           <option value="096">Vallox 096 MV (maks. 292 / 310 m³/h)</option>
@@ -732,6 +767,9 @@ th:first-child, td:first-child { text-align: left; }
         <label>Miernik poboru prądu rekuperatora<select data-k="rekuperacja.miernik" id="cfg-meter"><option value="">brak</option>
           <option value="shelly">gniazdko Shelly (Gen1 / Plus)</option>
           <option value="smartlife">gniazdko SmartLife</option></select></label>
+        <div class="cfg-row" style="margin:4px 0"><button class="fs-btn" id="cfg-mfind" type="button">Szukaj mierników</button>
+          <span class="status">Shelly w sieci domowej + gniazdka z konta SmartLife (gdy podłączone)</span></div>
+        <div id="cfg-mfound" style="font-size:13px"></div>
         <div id="cfg-meter-ip">
           <label>Adres IP miernika<input data-k="rekuperacja.miernik_ip" placeholder="np. 192.168.1.50"></label>
         </div>
@@ -883,10 +921,24 @@ async function loadOutages() {
       `<td>${esc(r.modes?.[e.mode] || e.mode)}${e.source && e.source !== 'falownik' ? ' · ' + esc(e.source) : ''}</td></tr>`).join('') + '</tbody></table>'
     : 'Brak zapisanych zaników – zapis od wersji 1.14.0 (rejestr trybu pracy falownika co 5 s).';
 }
+// swiezosc danych: znacznik czasu odczytu czerwony, gdy starszy niz 2 min (np. telefon wybudzony po dluzszej przerwie)
+let liveTs = 0;
+setInterval(() => {
+  if (liveTs && Date.now() / 1000 - liveTs > 120) { $('dot').className = 'dot err'; $('status').style.color = 'var(--err, #e34948)'; }
+}, 15000);
+// powrot na strone (telefon, aplikacja Android, karta przegladarki) po > 3 min - pelne odswiezenie danych
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (hiddenAt && Date.now() - hiddenAt > 180000) location.reload();
+  else if (typeof refreshLive === 'function' && (typeof MODS === 'undefined' || MODS.pv)) refreshLive();
+});
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 async function refreshLive() {
   try {
-    const d = await (await fetch('/api/live')).json();
-    $('dot').className = 'dot ' + (d.ok ? 'ok' : 'err');
+    const d = await (await fetch('/api/live', { cache: 'no-store' })).json();
+    if (d.ts) { liveTs = d.ts; $('status').style.color = Date.now() / 1000 - d.ts > 120 ? 'var(--err, #e34948)' : ''; }
+    $('dot').className = 'dot ' + (d.ok && (!d.ts || Date.now() / 1000 - d.ts <= 120) ? 'ok' : 'err');
     $('status').textContent = d.ok
       ? 'na żywo · ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL')
       : 'błąd: ' + d.error + (/polaczenia|connect/i.test(d.error || '') ? ' – sprawdź adres IP falownika w zakładce Ustawienia' : '');
@@ -1219,6 +1271,20 @@ async function loadPvMonthly() {
 
 // ---- Pstryk (opcjonalnie - tylko z kluczem API) ----
 const zl2 = v => v == null ? null : v.toFixed(2);
+// Tarcza Pstryk: sredni miesieczny koszt samej energii (brutto) nie wyzszy niz limit - rabat na fakturze
+const TARCZA = 0.61;
+const tarczaTile = M => {
+  if (!M.imp || M.energy_net == null) return '';
+  const avg = (M.energy_net + (M.excise || 0)) * 1.23 / M.imp, rabat = Math.max(0, avg - TARCZA) * M.imp;
+  return ctile(rabat > 0.005 ? 'c-green' : 'c-blue', 'Tarcza Pstryk', '≈' + rabat.toFixed(2), 'zł',
+    `średni koszt energii ≈ ${avg.toFixed(2)} zł/kWh · limit ${TARCZA.toFixed(2)} zł/kWh` +
+    (rabat > 0.005 ? ' – rabat na fakturze' : ' – poniżej limitu, bez rabatu'));
+};
+// bilans = koszt - sprzedaz: dodatni (koszt > sprzedaz) czerwony, ujemny (sprzedaz > koszt) zielony
+const balTile = (t, b) => b == null ? ctile('c-blue', t, null, 'zł') :
+  ctile('ps-bal ' + (b > 0.005 ? 'c-red' : b < -0.005 ? 'c-green' : 'c-blue'), t,
+    (b < -0.005 ? '+' : b > 0.005 ? '−' : '') + Math.abs(b).toFixed(2), 'zł',
+    b > 0.005 ? 'koszt większy od sprzedaży – do zapłaty' : b < -0.005 ? 'sprzedaż większa od kosztu – nadwyżka' : 'koszt = sprzedaż');
 async function loadPstryk(date) {
   let d;
   try { d = await (await fetch('/api/pstryk?date=' + date)).json(); } catch (e) { return; }
@@ -1237,12 +1303,12 @@ async function loadPstryk(date) {
     ctile('c-green', 'Oddanie (licznik)', D.exp.toFixed(3), 'kWh', diff(D.exp, S.exp)) +
     ctile('c-red', 'Koszt dnia', zl2(D.cost), 'zł', `w tym stałe ok. ${zl2(D.fixed_gross)} zł${upto}`) +
     ctile('c-green', 'Sprzedaż energii', zl2(D.sold), 'zł') +
-    ctile('c-blue', 'Bilans dnia', zl2(D.balance), 'zł', 'koszt − sprzedaż');
+    balTile('Bilans dnia', D.balance);
   $('psmtitle').textContent = `Miesiąc: ${M.label}` + (M.days ? ` (${M.days} ${M.days === 1 ? 'dzień' : 'dni'} z danymi)` : '');
   $('psmonth').innerHTML = !M.hours ? '<div class="empty">Brak danych w tym miesiącu.</div>' :
     ctile('c-red', 'Koszt miesiąca', zl2(M.cost), 'zł', `w tym stałe ok. ${zl2(M.fixed_gross)} zł`) +
     ctile('c-red', 'Pobór', M.imp.toFixed(2), 'kWh') + ctile('c-green', 'Oddanie', M.exp.toFixed(2), 'kWh') +
-    ctile('c-green', 'Sprzedaż', zl2(M.sold), 'zł') + ctile('c-blue', 'Bilans', zl2(M.balance), 'zł', 'koszt − sprzedaż');
+    ctile('c-green', 'Sprzedaż', zl2(M.sold), 'zł') + balTile('Bilans miesiąca', M.balance) + tarczaTile(M);
   const rows = [['Energia (netto)', 'energy_net'], ['Dystrybucja zmienna (netto)', 'dist_var'], ['Dystrybucja stała (netto)', 'dist_fix'],
     ['Opłata handlowa (netto)', 'service'], ['Opłata mocowa (netto)', 'power_fee'], ['Akcyza', 'excise'], ['VAT', 'vat']];
   $('pscost').innerHTML = rows.map(([n, k]) => `<tr><td>${n}</td><td>${zl2(D[k]) ?? '–'}</td><td>${zl2(M[k]) ?? '–'}</td></tr>`).join('') +
@@ -1251,12 +1317,24 @@ async function loadPstryk(date) {
   const f = (v, n) => v == null ? '–' : v.toFixed(n);
   const rowCls = h => h.cost == null && h.sold == null ? '' : (h.cost || 0) > (h.sold || 0) ? ' class="ps-buy"' : (h.sold || 0) > (h.cost || 0) ? ' class="ps-sell"' : '';
   $('pshours').innerHTML = d.hours.map(h => `<tr${rowCls(h)}><td>${new Date(h.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td>` +
-    `<td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td></tr>`).join('');
+    `<td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td><td>${f(h.price_pros, 3)}</td></tr>`).join('') +
+    (D.hours ? `<tr><td><b>Razem</b></td><td><b>${f(D.imp, 3)}</b></td><td><b>${f(D.exp, 3)}</b></td><td><b>${f(D.cost, 2)}</b></td><td><b>${f(D.sold, 2)}</b></td>` +
+      `<td>${D.imp ? 'śr. ' + f(D.cost / D.imp, 3) : ''}</td><td>${D.exp ? 'śr. ' + f(D.sold / D.exp, 3) : ''}</td></tr>` : '');
 }
 
 
 // ---- strategia osobista (symulacja) ----
 let cSt;
+$('st-save').onclick = async () => {
+  let r;
+  try {
+    r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sell_floor: $('st-floor').value, buy_cap: $('st-cap').value }) })).json();
+  } catch (e) { r = { ok: false, error: String(e) }; }
+  $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
+  $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
+  if (r.ok) loadStrategy();
+};
 async function loadStrategy() {
   let d;
   try { d = await (await fetch('/api/strategy')).json(); } catch (e) { return; }
@@ -1264,17 +1342,25 @@ async function loadStrategy() {
   if (!d.ok) { em.hidden = false; em.textContent = 'Symulacja niedostępna: ' + (d.error || ''); $('sttiles').innerHTML = ''; $('ststatus').textContent = ''; return; }
   em.hidden = true;
   const P = d.params, T = d.totals, n = d.now, x = d.next;
-  $('ststatus').textContent = `przeliczono ${new Date(d.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ceny: ${d.price_source} · tylko symulacja`;
+  const pe = d.pradcast?.eval || {};
+  const peTxt = Object.entries(pe).map(([h, v]) => `${h} ±${v.mae.toFixed(2)} zł${v.mape != null ? ' (' + v.mape + ' %)' : ''}, ${v.days} dni`).join(' · ');
+  $('ststatus').textContent = `przeliczono ${new Date(d.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ceny: ${d.price_source} · tylko symulacja` +
+    (peTxt ? ` · trafność Pradcast: ${peTxt}` : d.pradcast ? ' · trafność Pradcast: zbieram dane' : '');
   const col = v => v >= 0.005 ? 'c-green' : v <= -0.005 ? 'c-red' : 'c-blue';
   const sav = (lbl, t) => !t ? '' : ctile(col(t.saving_total), lbl, t.saving_total.toFixed(2), 'zł',
     `plan ${t.plan.toFixed(2)} zł · bez strategii ${t.base.toFixed(2)} zł` + (t.grid_charge ? ` · z sieci do magazynu ${t.grid_charge.toFixed(1)} kWh` : '') +
+    (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFixed(1)} kWh` : '') +
     (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFixed(2)} zł` : ''));
   $('sttiles').innerHTML =
     tile('Teraz wg planu', esc(n.label), '', `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)`) +
     tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? esc(x.label) : 'bez zmian do końca jutra') +
-    sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) +
-    ctile('c-blue', 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
-      `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · sprzedaż = RCE × ${P.sell_factor}`);
+    sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
+    ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
+      `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · ` + (P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
+      (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFixed(2)} zł` : ''));
+  const ae = document.activeElement?.id;
+  if (ae !== 'st-floor') $('st-floor').value = P.sell_floor ?? '';
+  if (ae !== 'st-cap') $('st-cap').value = P.buy_cap ?? '';
   const H = d.hours, labels = H.map(h => `${h.day} ${h.t}`);
   const money = h => h.buy == null ? 0 : h.grid > 0 ? -h.grid * h.buy : -h.grid * h.sell;   // bez kosztu zuzycia baterii
   const sets = [
@@ -1299,10 +1385,12 @@ async function loadStrategy() {
   cSt.options.scales.y2.min = -mx; cSt.options.scales.y2.max = mx;   // zero na srodku: zakup w dol, sprzedaz w gore
   cSt.$h = H; cSt.$nowIdx = d.now_index || null; cSt.update();
   const f = (v, k) => v == null ? '–' : v.toFixed(k);
-  $('stbody').innerHTML = H.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? '*' : ''}</td><td>${f(h.load, 2)}</td><td>${f(h.pv, 2)}</td>` +
+  $('stbody').innerHTML = H.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? (h.fc ? '†' : '*') : ''}</td>` +
+    `<td${P.sell_floor != null && h.sell >= P.sell_floor ? ' style="color:var(--s-sell);font-weight:600"' : ''}>${f(h.sell, 3)}</td><td>${f(h.load, 2)}</td><td>${f(h.pv, 2)}</td>` +
     `<td><span class="stm ${h.mode}">${esc(h.label)}</span></td><td>${f(Math.max(h.grid, 0), 2)}</td><td>${h.soc == null ? '–' : f(h.soc, 0) + ' %'}</td><td>${h.base_soc == null ? '–' : f(h.base_soc, 0) + ' %'}</td>` +
     `<td>${f(h.cost, 2)} / ${f(h.base_cost, 2)}</td></tr>`).join('') +
-    (H.some(h => h.est) ? '<tr><td colspan="9" class="status">* brak cen na jutro – przyjęto ceny z dziś z tej samej godziny</td></tr>' : '');
+    (H.some(h => h.est && !h.fc) ? '<tr><td colspan="10" class="status">* brak cen na jutro – przyjęto ceny z dziś z tej samej godziny</td></tr>' : '') +
+    (H.some(h => h.fc) ? `<tr><td colspan="10" class="status">† prognoza cen Pradcast (rynek RDN) przeliczona na ceny zakupu i sprzedaży – ${esc(d.pradcast?.model || '')}; sprzedaż liczona ostrożniej (× 0,9)</td></tr>` : '');
 }
 
 // ---- ceny energii ----
@@ -1541,6 +1629,19 @@ function showTab(name) {
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
+async function loadVEff() {
+  let r;
+  try { r = await (await fetch('/api/vallox/eff?days=' + $('veffdays').value)).json(); } catch (e) { return; }
+  const T = r.total || {};
+  $('veffsum').textContent = `okres: efektywność ${T.eff_energy ?? '–'} % · wyrzut min ${T.exh_min ?? '–'} °C · ` +
+    `poniżej 0 °C ${T.exh_lt0_min || 0} min · odszranianie ${T.defrost_min || 0} min`;
+  $('veffrows').innerHTML = (r.days || []).map(x => `<tr><td>${new Date(x.date + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit' })}</td>` +
+    `<td><b>${x.eff_energy ?? '–'}</b>${x.eff_energy != null ? ' %' : ''}</td><td>${x.t_out_avg ?? '–'} / ${x.t_out_min ?? '–'}</td><td>${x.exh_min ?? '–'}</td>` +
+    `<td>${x.exh_lt0_min ? x.exh_lt0_min + ' min' : '–'}</td><td>${x.defrost_min ? x.defrost_min + ' min' : '–'}</td><td>${x.hours}</td></tr>`).join('') ||
+    '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
+}
+$('veffbox').addEventListener('toggle', () => { if ($('veffbox').open) loadVEff(); });
+$('veffdays').onchange = loadVEff;
 // ---- balans przeplywow ----
 let balAvg = null, lastVallox = null;
 function balance(o) {
@@ -1848,7 +1949,10 @@ async function loadValloxDay(date) {
     + 'przepływ i moc odzyskana szacowane z prędkości wentylacji.';
   $('vtiles').innerHTML =
     tile('Temp. zewn. min / max', m.t_out_min != null ? `${m.t_out_min} / ${m.t_out_max}` : null, '°C') +
-    tile('Śr. sprawność nawiew', m.eff_sup_avg, '%') + tile('Śr. sprawność wywiew', m.eff_ext_avg, '%') +
+    tile('Śr. sprawność nawiew', m.eff_sup_avg, '%', 'chwilowa (temperaturowa)') + tile('Śr. sprawność wywiew', m.eff_ext_avg, '%', 'chwilowa') +
+    ctile('c-green', 'Efektywność dnia', m.eff_energy, '%', 'ważona energią – z odszranianiem i przerwami') +
+    tile('Wyrzut min.', m.exh_min, '°C', (m.exh_lt0_min ? `poniżej 0 °C: ${m.exh_lt0_min} min` : 'nie spadł poniżej 0 °C') +
+      (m.defrost_min ? ` · odszranianie ${m.defrost_min} min` : '')) +
     ctile('c-green', 'Energia odzyskana', m.rec_kwh, 'kWh', `w miesiącu ${m.rec_month_kwh ?? '–'} kWh` +
       (m.flow_sup_avg != null ? ` · śr. przepływ ~${Math.round(m.flow_sup_avg)} m³/h` : '')) +
     tile('CO₂ ' + (d.co2_names?.co2_s0 || ''), m.co2_s0_avg != null ? Math.round(m.co2_s0_avg) : null, 'ppm',
@@ -1944,16 +2048,91 @@ async function loadConfig() {
   try {
     const v = await (await fetch('/api/version')).json();
     $('cfg-info').textContent = `Wersja ${v.version} · folder danych: ${v.data_dir} · ${v.db}`;
+    const m = v.modules || { pv: v.pv !== false, vallox: !!v.vallox };
+    document.querySelectorAll('#tab-set [data-mod]').forEach(el => { el.checked = !!m[el.dataset.mod]; });
+    modHint();
   } catch (e) {}
   syncMeterFields();
   slLoad();
 }
+function modHint() {
+  const pv = document.querySelector('[data-mod="pv"]').checked, vx = document.querySelector('[data-mod="vallox"]').checked;
+  const ip = (document.querySelector('[data-k="rekuperacja.vallox_ip"]')?.value || '').trim();
+  $('cfg-mod-msg').textContent = !pv && !vx ? 'Zaznacz co najmniej jeden moduł.'
+    : vx && !ip ? 'Wpisz adres IP rekuperatora w sekcji Rekuperacja.' : '';
+}
+document.querySelectorAll('#tab-set [data-mod]').forEach(el => el.addEventListener('change', modHint));
+document.querySelector('[data-k="rekuperacja.vallox_ip"]')?.addEventListener('input', modHint);
 function syncMeterFields() {
   const kind = $('cfg-meter').value;
   $('cfg-meter-ip').hidden = kind === 'smartlife';
   $('cfg-smartlife').hidden = kind !== 'smartlife';
 }
 $('cfg-meter').onchange = syncMeterFields;
+$('cfg-mfind').onclick = async () => {
+  const box = $('cfg-mfound'), btn = $('cfg-mfind');
+  btn.disabled = true; box.style.color = 'var(--text-2)';
+  box.textContent = 'Szukam mierników (Shelly w sieci, gniazdka SmartLife)… to potrwa kilkanaście sekund.';
+  let r;
+  try { r = await (await fetch('/api/discover_meters', { method: 'POST' })).json(); }
+  catch (e) { r = { ok: false, error: 'brak połączenia z aplikacją' }; }
+  btn.disabled = false;
+  if (!r.ok) { box.style.color = 'var(--eff-bad)'; box.textContent = '✗ ' + (r.error || 'błąd'); return; }
+  const kindTxt = { shelly: 'Shelly', smartlife: 'SmartLife' };
+  const note = !r.smartlife_connected ? ' SmartLife: konto niepodłączone (wybierz „gniazdko SmartLife” poniżej i połącz).' :
+    r.smartlife_error ? ' SmartLife: ' + esc(r.smartlife_error) : '';
+  if (!r.found.length) { box.innerHTML = `Nie znaleziono mierników w sieci ${(r.networks || []).join(', ')}.` + note; return; }
+  const isCur = x => r.current && r.current.kind === x.kind && r.current.id === x.id;
+  box.innerHTML = r.found.map((x, i) => `<div class="cfg-hit"><span><b>${esc(x.name)}</b> · ${kindTxt[x.kind]}` +
+    (x.kind === 'shelly' ? ` · ${esc(x.model)} · ${x.ip}` : '') +
+    (x.online === false ? ' · offline' : x.power_w != null ? ` · <b>${Math.round(x.power_w)} W</b>` : ' · bez pomiaru') +
+    (isCur(x) ? ' · <i>obecny</i>' : '') +
+    `</span><button class="fs-btn${isCur(x) ? '' : ' primary'}" type="button" data-i="${i}">To jest rekuperator</button></div>`).join('') +
+    `<div class="status" style="display:block;margin-top:4px">Rekuperator pobiera zwykle kilkadziesiąt W bez przerwy – „pasuje” przy poborze 8–200 W.${note}</div>` +
+    (MODS.vallox ? `<div class="cfg-row" style="margin-top:6px"><button class="fs-btn" id="cfg-mtest" type="button">Sprawdź, który to rekuperator (Boost 2 min)</button>` +
+      `<span class="status" id="cfg-mtest-msg"></span></div>` : '');
+  box.querySelectorAll('.cfg-hit').forEach((el, i) => {
+    const x = r.found[i];
+    if (x && x.power_w != null && x.power_w >= 8 && x.power_w <= 200 && !isCur(x))
+      el.querySelector('span').insertAdjacentHTML('beforeend', ' · <span style="color:var(--eff-good)">pasuje</span>');
+  });
+  const tb = $('cfg-mtest');
+  if (tb) tb.onclick = async () => {
+    if (!confirm('Rekuperator przejdzie na Boost na 2 minuty (potem sam wróci do poprzedniego profilu), a aplikacja sprawdzi, któremu miernikowi wzrósł pobór. Kontynuować?')) return;
+    const cands = r.found.filter(x => x.online !== false).map(x => ({ kind: x.kind, id: x.id }));
+    const m = $('cfg-mtest-msg'); tb.disabled = true; m.textContent = 'Boost włączony – czekam ok. 1,5 min…';
+    let q;
+    try { q = await (await fetch('/api/meter_test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidates: cands, confirm: true }) })).json(); }
+    catch (e) { q = { ok: false, error: 'brak połączenia z aplikacją' }; }
+    if (!q.ok) { m.textContent = '✗ ' + (q.error || 'błąd'); tb.disabled = false; return; }
+    const poll = setInterval(async () => {
+      let t; try { t = await (await fetch('/api/meter_test')).json(); } catch (e) { return; }
+      if (t.phase === 'error') { clearInterval(poll); tb.disabled = false; m.textContent = '✗ ' + (t.error || 'błąd'); return; }
+      if (t.phase !== 'done') return;
+      clearInterval(poll); tb.disabled = false;
+      const key = x => x.kind + ':' + x.id;
+      const res = Object.fromEntries((t.result || []).map(x => [key(x), x]));
+      box.querySelectorAll('.cfg-hit').forEach((el, i) => {
+        const x = r.found[i], z = x && res[key(x)];
+        if (z && z.delta != null) el.querySelector('span').insertAdjacentHTML('beforeend',
+          ` · Boost: ${z.delta >= 0 ? '+' : ''}${Math.round(z.delta)} W` + (t.best && key(t.best) === key(x) ? ' <b style="color:var(--eff-good)">← to rekuperator</b>' : ''));
+      });
+      m.textContent = t.best ? 'Gotowe – wybierz miernik oznaczony „to rekuperator”.' : 'Żaden miernik nie pokazał wyraźnego wzrostu poboru (≥ 10 W).';
+    }, 5000);
+  };
+  box.querySelectorAll('button[data-i]').forEach(b => b.onclick = async () => {
+    const x = r.found[+b.dataset.i];
+    $('cfg-meter').value = x.kind;
+    if (x.kind === 'shelly') document.querySelector('[data-k="rekuperacja.miernik_ip"]').value = x.ip;
+    syncMeterFields();
+    if (x.kind === 'smartlife') {
+      try { await fetch('/api/smartlife/device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: x.id }) }); } catch (e) {}
+      slLoad();
+    }
+    box.style.color = 'var(--eff-good)';
+    box.innerHTML = `✓ Miernik rekuperatora: ${esc(x.name)} (${kindTxt[x.kind]}) – kliknij „Zapisz i uruchom ponownie”.`;
+  });
+};
 let slPoll, slFilling = false;
 function slPlugs(plugs, selected) {
   const sel = $('sl-device');
@@ -2034,6 +2213,8 @@ function collectConfig() {
     const [s, k] = el.dataset.k.split('.');
     (out[s] ??= {})[k] = el.value.trim();
   });
+  out.moduly = {};
+  document.querySelectorAll('#tab-set [data-mod]').forEach(el => { out.moduly[el.dataset.mod] = el.checked ? 'tak' : 'nie'; });
   out.polacie = {};
   [...$('cfg-planes').rows].forEach((tr, i) => {
     const f = [...tr.querySelectorAll('input')].map(x => x.value.trim().replace(',', '.'));
@@ -2079,6 +2260,35 @@ $('cfg-find').onclick = async () => {
     box.innerHTML = `✓ Wpisano ${b.dataset.ip} – kliknij „Zapisz i uruchom ponownie”.`; box.style.color = 'var(--eff-good)';
   });
 };
+$('cfg-vfind').onclick = async () => {
+  const box = $('cfg-vfound'), btn = $('cfg-vfind');
+  btn.disabled = true; box.style.color = 'var(--text-2)';
+  box.textContent = 'Szukam rekuperatora Vallox w sieci domowej… to potrwa kilkanaście–kilkadziesiąt sekund.';
+  let r;
+  try { r = await (await fetch('/api/discover_vallox', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json(); }
+  catch (e) { r = { ok: false, error: 'brak połączenia z aplikacją' }; }
+  btn.disabled = false;
+  if (!r.ok) { box.style.color = 'var(--eff-bad)'; box.textContent = '✗ ' + r.error; return; }
+  const nets = (r.networks || []).join(', ') || 'brak';
+  const use = ip => {
+    $('cfg-vip').value = ip;
+    const vx = document.querySelector('[data-mod="vallox"]'); if (vx) vx.checked = true;
+    box.style.color = 'var(--eff-good)';
+    box.innerHTML = `✓ Wpisano ${ip} – kliknij „Zapisz i uruchom ponownie”. Numer seryjny aplikacja zapamięta sama, ` +
+      'więc po zmianie adresu przez router znajdzie rekuperator ponownie.';
+    modHint();
+  };
+  if (!r.found.length) {
+    box.innerHTML = `Nie znaleziono rekuperatora Vallox w sieci ${nets} (sprawdzono ${r.checked} urządzeń z otwartym portem 80). ` +
+      'Sprawdź, czy rekuperator jest podłączony do sieci (MyVallox) i czy komputer jest w tej samej sieci.';
+    return;
+  }
+  if (r.found.length === 1 && !$('cfg-vip').value.trim()) { use(r.found[0].ip); return; }
+  box.innerHTML = `Sieć ${nets}:` + r.found.map(x => `<div class="cfg-hit"><span><b>${x.ip}</b> · ${esc(x.model || 'Vallox')}` +
+    (x.serial ? ` · nr ${x.serial}` : '') + (x.ip === r.current ? ' · <i>obecny</i>' : '') +
+    `</span><button class="fs-btn primary" type="button" data-ip="${x.ip}">Użyj</button></div>`).join('');
+  box.querySelectorAll('button').forEach(b => b.onclick = () => use(b.dataset.ip));
+};
 $('cfg-addplane').onclick = () => planeRow('');
 $('cfg-save').onclick = () => saveConfig(false);
 $('cfg-restart').onclick = () => saveConfig(true);
@@ -2116,23 +2326,30 @@ $('fb-gh').onclick = () => {
 };
 
 $('outages').addEventListener('toggle', () => { if ($('outages').open) loadOutages(); });
-refreshLive(); loadDay(current); loadForecast(); loadRegs(); loadSettings(); loadBatTemps(); loadPrices(); loadStrategy(); loadPvStrings(); loadPvMonthly();
-if (location.hash === '#ustawienia') showTab('set');
-// zakladka Rekuperacja tylko z wpisanym adresem rekuperatora (Ustawienia -> Rekuperacja)
-fetch('/api/version').then(r => r.json()).then(v => {
-  $('tabbtn-rek').hidden = !v.vallox;
-  if (v.vallox && location.hash === '#rekuperacja') showTab('rek');
-}).catch(() => {});
-setInterval(loadPvStrings, 60000);
-setInterval(loadPvMonthly, 600000);
-setInterval(loadPrices, 300000);
-setInterval(loadStrategy, 300000);
-setInterval(loadRegs, 60000);
-setInterval(loadSettings, 60000);
-setInterval(loadBatTemps, 120000);
-setInterval(loadForecast, 300000);
-setInterval(refreshLive, 5000);
-setInterval(() => { if (current === todayStr()) loadDay(current); }, 60000);
+// moduly (Ustawienia -> "Co masz"): instalacja PV Sigen i/lub rekuperator Vallox
+let MODS = { pv: true, vallox: false };
+function startPv() {
+  refreshLive(); loadDay(current); loadForecast(); loadRegs(); loadSettings(); loadBatTemps(); loadPrices(); loadStrategy(); loadPvStrings(); loadPvMonthly();
+  setInterval(loadPvStrings, 60000);
+  setInterval(loadPvMonthly, 600000);
+  setInterval(loadPrices, 300000);
+  setInterval(loadStrategy, 300000);
+  setInterval(loadRegs, 60000);
+  setInterval(loadSettings, 60000);
+  setInterval(loadBatTemps, 120000);
+  setInterval(loadForecast, 300000);
+  setInterval(refreshLive, 5000);
+  setInterval(() => { if (current === todayStr()) loadDay(current); }, 60000);
+}
+fetch('/api/version').then(r => r.json()).catch(() => ({ pv: true, vallox: false })).then(v => {
+  MODS = { pv: v.pv !== false, vallox: !!v.vallox };
+  $('tabbtn-pv').hidden = !MODS.pv;
+  $('tabbtn-rek').hidden = !MODS.vallox;            // zakladka Rekuperacja tylko z wpisanym adresem rekuperatora
+  if (MODS.pv) startPv();
+  else { $('dot').className = 'dot ok'; $('status').textContent = MODS.vallox ? 'rekuperator Vallox' : 'wybierz moduły w Ustawieniach'; }
+  if (location.hash === '#ustawienia' || (!MODS.pv && !MODS.vallox)) showTab('set');
+  else if (MODS.vallox && (location.hash === '#rekuperacja' || !MODS.pv)) showTab('rek');
+});
 </script>
 </body>
 </html>

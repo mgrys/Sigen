@@ -21,6 +21,7 @@ import db
 import discover
 import forecast
 import prices
+import pradcast
 import pstryk
 import strategy
 import registers
@@ -30,9 +31,10 @@ import meter
 import smartlife
 import vallox
 
-__version__ = "1.17.0"
+__version__ = "1.18.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
+PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
 HOST = config.get("falownik", "host", "192.168.1.100")
 PORT = config.geti("falownik", "port", 502)
 PLANT_ID = registers.PLANT     # adres "plant" - dane calej instalacji
@@ -420,7 +422,8 @@ def static_file(name: str):
 @app.get("/api/version")
 def version():
     return {"version": __version__, "db": db.describe(), "data_dir": str(config.DATA_DIR), "title": config.APP_TITLE,
-            "service": config.SERVICE, "vallox": vallox.ENABLED}
+            "service": config.SERVICE, "vallox": vallox.ENABLED, "pv": PV_ENABLED,
+            "modules": {"pv": PV_ENABLED, "vallox": config.module_vallox(), "vallox_ip": bool(vallox.HOST)}}
 
 
 @app.get("/api/config")
@@ -488,6 +491,113 @@ def api_discover(payload: dict = Body(default={})):
     r = discover.scan(port, nets)
     r["ok"] = True
     return r
+
+
+@app.post("/api/discover_vallox")
+def api_discover_vallox(payload: dict = Body(default={})):
+    """Szukanie rekuperatora Vallox MV w sieci domowej: {"network": "192.168.0"} (opcjonalnie)."""
+    import ipaddress
+    nets = None
+    net = str((payload or {}).get("network") or "").strip().rstrip(".")
+    if net:
+        try:
+            if net.count(".") != 2 or not ipaddress.ip_address(net + ".1").is_private:
+                raise ValueError
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "podaj prywatną sieć w formacie 192.168.0"}, status_code=400)
+        nets = [net]
+    try:
+        r = discover.scan_vallox(nets)
+    except ImportError:
+        return JSONResponse({"ok": False, "error": "brak biblioteki vallox-websocket-api"}, status_code=400)
+    r["ok"] = True
+    r["current"] = vallox.HOST or None
+    return r
+
+
+@app.post("/api/discover_meters")
+def api_discover_meters():
+    """Wspolna lista miernikow poboru: Shelly w sieci domowej + gniazdka z podlaczonego konta SmartLife."""
+    r = discover.scan_shelly()
+    sl, sl_err = [], None
+    try:
+        sl = [dict(p, kind="smartlife") for p in smartlife.list_plugs()]
+    except Exception as e:  # noqa: BLE001
+        sl_err = str(e)
+    cur = {"kind": meter.KIND or None, "id": meter.HOST if meter.KIND == "shelly" else
+           (smartlife.account_status().get("device_id") if meter.KIND == "smartlife" else None)}
+    return {"ok": True, "networks": r["networks"], "found": r["found"] + sl, "smartlife_error": sl_err,
+            "smartlife_connected": smartlife.account_status().get("connected"), "current": cur}
+
+
+METER_TEST = {"phase": "idle"}     # test "ktory miernik to rekuperator": Boost 2 min i porownanie poboru
+_meter_test_lock = threading.Lock()
+
+
+def _meter_powers(cands):
+    """{(rodzaj, id): pobor W} dla kandydatow [{"kind": "shelly"|"smartlife", "id": ...}]."""
+    out = {}
+    sl = None
+    for c in cands:
+        k = (c.get("kind"), str(c.get("id")))
+        try:
+            if k[0] == "shelly":
+                v = meter.read_shelly(k[1])
+                out[k] = None if v.get("power") is None else float(v["power"])
+            elif k[0] == "smartlife":
+                if sl is None:
+                    sl = {p["id"]: p.get("power_w") for p in smartlife.list_plugs()}
+                out[k] = sl.get(k[1])
+        except Exception:  # noqa: BLE001
+            out[k] = None
+    return out
+
+
+def _meter_test_run(cands):
+    try:
+        base = _meter_powers(cands)
+        METER_TEST.update(phase="boost", base={f"{k[0]}:{k[1]}": v for k, v in base.items()})
+        r = vallox.boost(2)
+        if not r.get("ok"):
+            METER_TEST.update(phase="error", error=r.get("error"))
+            return
+        time.sleep(75)                    # wentylatory rozkrecaja sie ok. 30-60 s
+        after = _meter_powers(cands)
+        res = []
+        for k, b in base.items():
+            a = after.get(k)
+            res.append({"kind": k[0], "id": k[1], "before": b, "after": a,
+                        "delta": None if a is None or b is None else round(a - b, 1)})
+        res.sort(key=lambda x: -(x["delta"] or -1e9))
+        best = res[0] if res and (res[0]["delta"] or 0) >= 10 else None
+        METER_TEST.update(phase="done", result=res, best=best, ts=int(time.time()))
+    except Exception as e:  # noqa: BLE001
+        METER_TEST.update(phase="error", error=str(e))
+
+
+@app.post("/api/meter_test")
+def api_meter_test(payload: dict = Body(...)):
+    """Test na zadanie: Boost 2 min (rekuperator sam wraca do profilu) i ktory miernik pokazal wzrost poboru.
+    {"candidates": [{"kind", "id"}], "confirm": true}."""
+    if not payload.get("confirm"):
+        return JSONResponse({"ok": False, "error": "brak potwierdzenia"}, status_code=400)
+    if not vallox.ENABLED:
+        return JSONResponse({"ok": False, "error": "najpierw ustaw rekuperator (adres IP) i uruchom ponownie"}, status_code=400)
+    cands = [c for c in (payload.get("candidates") or []) if isinstance(c, dict) and c.get("kind") in ("shelly", "smartlife")]
+    if not cands:
+        return JSONResponse({"ok": False, "error": "brak mierników do sprawdzenia – najpierw „Szukaj mierników”"}, status_code=400)
+    with _meter_test_lock:
+        if METER_TEST.get("phase") in ("start", "boost"):
+            return JSONResponse({"ok": False, "error": "test już trwa"}, status_code=400)
+        METER_TEST.clear()
+        METER_TEST.update(phase="start", started=int(time.time()))
+    threading.Thread(target=_meter_test_run, args=(cands[:20],), daemon=True).start()
+    return {"ok": True}
+
+
+@app.get("/api/meter_test")
+def api_meter_test_status():
+    return METER_TEST
 
 
 @app.post("/api/shutdown")
@@ -985,6 +1095,20 @@ STRAT = {"cap_kwh": config.getf("strategia", "pojemnosc_kwh", 0) or None,
          "wear": config.getf("strategia", "koszt_zuzycia_zl_kwh", 0.10)}
 EST_SELL = 0.9   # gdy brak cen na jutro (przyjete z dzis), cena sprzedazy liczona ostrozniej
 _strat_cache = {"ts": 0, "data": None}
+LIMIT_KEYS = {"sell_floor": "sprzedaz_z_magazynu_od", "buy_cap": "ladowanie_z_sieci_do"}
+
+
+def strat_limits():
+    """Pulapy cenowe strategii z config.ini [strategia] (czytane na biezaco - zmiana bez restartu); puste = brak."""
+    cp = config.load()
+    out = {}
+    for k, key in LIMIT_KEYS.items():
+        v = cp.get("strategia", key, fallback="").strip().replace(",", ".")
+        try:
+            out[k] = float(v) if v else None
+        except ValueError:
+            out[k] = None
+    return out
 
 
 def _interp(pts, m):
@@ -1033,11 +1157,71 @@ def _hourly_prices(con, day):
     src = "PSE"
     if pstryk.enabled():
         s, e = day_range(day)
-        ps = {r["ts"]: r["price_gross"] for r in pstryk.load(con, s, e) if r.get("price_gross") is not None}
-        if ps:
+        rows = [r for r in pstryk.load(con, s, e) if r.get("price_gross") is not None]
+        if rows:
             src = "Pstryk"
-            out = {h: (b, out.get(h, (None, 0.0))[1]) for h, b in ps.items()}
+            # sprzedaz: cena prosumencka Pstryka (depozyt Pstryka pokrywa caly rachunek), bez niej - z PSE
+            out = {r["ts"]: (r["price_gross"], r["price_pros"] if r.get("price_pros") is not None
+                             else out.get(r["ts"], (None, 0.0))[1]) for r in rows}
     return out, src
+
+
+def _price_model(con, days=7):
+    """Przeliczenie ceny rynkowej RDN [zl/kWh] na cene zakupu i sprzedazy (jak w danych z Pstryka / PSE+taryfa):
+    regresja liniowa z ostatnich dni (para: cena rynkowa z PSE w godzinie <-> cena zakupu / sprzedazy tej godziny).
+    Zwraca funkcje m -> (zakup, sprzedaz)."""
+    xs, buys, sells = [], [], []
+    today = dt.date.today()
+    for k in range(1, days + 1):
+        d = today - dt.timedelta(days=k)
+        try:
+            pts, _t = prices.series(con, d.isoformat())
+        except Exception:  # noqa: BLE001
+            continue
+        mk = {}
+        for p in pts:
+            base = p.get("csdac") if prices.ZAKUP_BAZA == "csdac" else p.get("rce")
+            if base is not None:
+                mk.setdefault(p["ts"] // 3600 * 3600, []).append(base / 1000)
+        hp, _src = _hourly_prices(con, d)
+        for h, (b, sl) in hp.items():
+            if h in mk and b is not None and sl is not None:
+                xs.append(sum(mk[h]) / len(mk[h]))
+                buys.append(b)
+                sells.append(sl)
+
+    def fit(ys):
+        n = len(xs)
+        mx, my = sum(xs) / n, sum(ys) / n
+        vx = sum((x - mx) ** 2 for x in xs)
+        a = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / vx if vx > 1e-9 else 1.0
+        return a, my - a * mx
+    if len(xs) >= 24:
+        (ab, bb), (as_, bs) = fit(buys), fit(sells)
+        return lambda m: (ab * m + bb, max(0.0, as_ * m + bs)), f"dopasowanie z {len(xs)} h"
+    tariff = prices.load_tariff()
+
+    def via_tariff(m, ts=None):
+        z = prices.zone_for(tariff, dt.datetime.fromtimestamp(ts) if ts else dt.datetime.now())
+        pp = prices.price_parts(tariff, m * 1000, m * 1000, z)
+        return pp["buy"], pp["sell"]
+    return via_tariff, "taryfa"
+
+
+def _market_actual(con):
+    """Funkcja: data ISO -> {godzina: cena rynkowa zl/kWh} z PSE (do oceny trafnosci prognoz Pradcast)."""
+    def f(iso):
+        try:
+            pts, _t = prices.series(con, iso)
+        except Exception:  # noqa: BLE001
+            return {}
+        by = {}
+        for p in pts:
+            v = p.get("csdac") if p.get("csdac") is not None else p.get("rce")
+            if v is not None:
+                by.setdefault(time.localtime(p["ts"]).tm_hour, []).append(v / 1000)
+        return {h: sum(v) / len(v) for h, v in by.items()}
+    return f
 
 
 def compute_strategy():
@@ -1055,7 +1239,9 @@ def compute_strategy():
     smin = float(sv.get("soc_discharge_cut") or 10) / 100 * cap
     smax = float(sv.get("soc_charge_cut") or 100) / 100 * cap
     today = dt.date.today()
-    days = [today, today + dt.timedelta(days=1)]
+    use_pc = pradcast.enabled()
+    days = [today + dt.timedelta(days=k) for k in range(3 if use_pc else 2)]   # z Pradcast - do pojutrza
+    DAY_TXT = {0: "dziś", 1: "jutro", 2: "pojutrze"}
     con = db_connect()
     try:
         prof, nprof = _load_profile(con, now)
@@ -1066,21 +1252,45 @@ def compute_strategy():
             pr.update(p)
             if p:
                 srcs.add(src)
+        fc = {}                     # prognoza cen Pradcast: ts godziny -> (zakup, sprzedaz)
+        pc_info = None
+        if use_pc:
+            model, model_src = _price_model(con)
+            for d in days[1:]:
+                r = pradcast.day(d)
+                if not r or not r["hours"]:
+                    continue
+                pc_info = {"model": model_src, "horizon": r.get("horizon"), "source": r.get("source")}
+                for hr, v in r["hours"].items():
+                    ts = int(time.mktime(dt.datetime(d.year, d.month, d.day, hr).timetuple()))
+                    try:
+                        fc[ts] = model(v["price_kwh"], ts) if model_src == "taryfa" else model(v["price_kwh"])
+                    except Exception:  # noqa: BLE001
+                        pass
+            if fc:
+                srcs.add("Pradcast (prognoza)")
+            try:
+                pc_eval = pradcast.evaluate(_market_actual(con))
+            except Exception:  # noqa: BLE001
+                pc_eval = None
+            pc_info = dict(pc_info or {}, eval=pc_eval)
     finally:
         con.close()
     h0 = int(now) // 3600 * 3600
-    end = day_range(days[1])[1]
+    end = day_range(days[-1])[1]
     hours = []
     for ts in range(h0, end, 3600):
         lt = time.localtime(ts)
         d = dt.date(lt.tm_year, lt.tm_mon, lt.tm_mday)
         frac = (ts + 3600 - now) / 3600 if ts == h0 else 1.0
         est = ts not in pr
-        buy, sell = pr.get(ts) or pr.get(ts - 86400) or (None, None)   # brak cen na jutro -> ceny z dzis
+        # brak cen rzeczywistych: prognoza Pradcast, a bez niej - ceny z dzis z tej samej godziny
+        buy, sell = pr.get(ts) or fc.get(ts) or pr.get(ts - 86400) or (None, None)
         if buy is None:
             continue
         sell = (sell or 0.0) * STRAT["sell_factor"] * (EST_SELL if est else 1.0)   # szacowana cena - ostrozniej
-        hours.append({"ts": ts, "day": "dziś" if d == today else "jutro", "t": time.strftime("%H:00", lt),
+        hours.append({"ts": ts, "day": DAY_TXT.get((d - today).days, d.isoformat()), "t": time.strftime("%H:00", lt),
+                      "fc": est and ts in fc,
                       "load": prof[lt.tm_hour] * frac, "pv": pv.get(d, [0] * 24)[lt.tm_hour] * frac,
                       "buy": buy, "sell": sell, "est": est})
     if not hours:
@@ -1090,6 +1300,8 @@ def compute_strategy():
     terminal = sum(last[:6]) / max(1, len(last[:6]))
     args = (smin, smax, STRAT["p_max_kw"], STRAT["eta_c"], STRAT["eta_d"])
     strategy.WEAR = STRAT["wear"]
+    lim = strat_limits()
+    strategy.SELL_FLOOR, strategy.BUY_CAP = lim["sell_floor"], lim["buy_cap"]
     pl = strategy.plan(hours, st0, *args, terminal_price=terminal)
     bl = strategy.baseline(hours, st0, *args)
     out, tot = [], {}
@@ -1099,17 +1311,20 @@ def compute_strategy():
                     "grid": round(p["grid"], 3), "soc": round(100 * p["stored"] / cap, 1), "cost": round(p["cost"], 3),
                     "base_grid": round(b["grid"], 3), "base_soc": round(100 * b["stored"] / cap, 1),
                     "base_cost": round(b["cost"], 3)})
-        t = tot.setdefault(h["day"], {"plan": 0.0, "base": 0.0, "grid_charge": 0.0})
+        t = tot.setdefault(h["day"], {"plan": 0.0, "base": 0.0, "grid_charge": 0.0, "bat_export": 0.0})
         t["plan"] += p["cost"]
         t["base"] += b["cost"]
         if p["mode"] == "grid":
             t["grid_charge"] += max(p["d"] - max(h["pv"] - h["load"], 0), 0)
+        if p["mode"] == "export":
+            t["bat_export"] += max(-p["d"] - max(h["load"] - h["pv"], 0), 0)
     for t in tot.values():
         t["saving"] = round(t["base"] - t["plan"], 2)
         t["plan"], t["base"], t["grid_charge"] = round(t["plan"], 2), round(t["base"], 2), round(t["grid_charge"], 2)
+        t["bat_export"] = round(t["bat_export"], 2)
     # koncowy stan magazynu inaczej w planie i bez strategii - roznica wyceniona jak w planie
     end_diff = round((pl[-1]["stored"] - bl[-1]["stored"]) * STRAT["eta_d"] * terminal, 2)
-    tot["jutro" if "jutro" in tot else "dziś"]["end_diff"] = end_diff
+    tot[list(tot)[-1]]["end_diff"] = end_diff
     for t in tot.values():
         t["saving_total"] = round(t["saving"] + t.get("end_diff", 0.0), 2)
     total_saving = round(sum(t["saving_total"] for t in tot.values()), 2)
@@ -1145,12 +1360,33 @@ def compute_strategy():
     data = {"ok": True, "ts": int(now), "hours": out, "totals": tot, "end_value_diff": end_diff,
             "total_saving": total_saving,
             "now": cur, "next": nxt, "now_index": len(past), "price_source": " + ".join(sorted(srcs)) or "–",
+            "pradcast": pc_info, "pradcast_status": pradcast.status() if use_pc else None,
             "params": {"cap_kwh": round(cap, 2), "soc_min": round(100 * smin / cap), "soc_max": round(100 * smax / cap),
                        "p_max_kw": STRAT["p_max_kw"], "eta_c": STRAT["eta_c"], "eta_d": STRAT["eta_d"],
                        "sell_factor": STRAT["sell_factor"], "wear": STRAT["wear"], "terminal_price": round(terminal, 3),
-                       "profile_hours": nprof, "soc_now": soc}}
+                       "profile_hours": nprof, "soc_now": soc, "sell_floor": lim["sell_floor"], "buy_cap": lim["buy_cap"]}}
     _strat_cache.update(ts=now, data=data)
     return data
+
+
+@app.post("/api/strategy/limits")
+def api_strategy_limits(payload: dict = Body(...)):
+    """Pulapy cenowe strategii: {"sell_floor": 2.5, "buy_cap": 0.8} (puste = brak) - zapis w config.ini [strategia]."""
+    vals = {}
+    for k, key in LIMIT_KEYS.items():
+        v = payload.get(k)
+        if v in (None, ""):
+            vals[key] = ""
+            continue
+        try:
+            v = float(str(v).replace(",", "."))
+            assert 0 <= v <= 20
+        except (TypeError, ValueError, AssertionError):
+            return JSONResponse({"ok": False, "error": "pułap 0–20 zł/kWh"}, status_code=400)
+        vals[key] = f"{v:g}"
+    config.update({"strategia": vals})
+    _strat_cache.update(ts=0, data=None)
+    return {"ok": True, "limits": strat_limits()}
 
 
 @app.get("/api/strategy")
@@ -1383,6 +1619,76 @@ def _rec_energy(rows, cols):
     return e
 
 
+EFF_MIN_DT = 3.0     # °C - roznica wywiew - zewnatrz, od ktorej liczymy efektywnosc (jak sprawnosc chwilowa)
+
+
+def _eff_stats(rows, cols):
+    """Efektywnosc odzysku wazona energia (odpowiednik "rocznej efektywnosci") i temperatura wyrzutu za okres.
+
+    efektywnosc = Σ q·(t_nawiew_za_wym − t_zewn)·dt / Σ q·(t_wywiew − t_zewn)·dt  - gdy wywiew − zewn ≥ 3 °C,
+    w trybie odzysku ciepla i odszraniania (bypass / odzysk chlodu - celowo bez odzysku - pomijane). Odszranianie
+    i nagrzewnica obnizaja wynik - to roznica miedzy sprawnoscia chwilowa a efektywnoscia sezonowa."""
+    num = den = 0.0
+    defrost = exh_lt0 = n = 0.0
+    exh_min = None
+    prev = None
+    for r in rows:
+        x = dict(zip(cols, r))
+        if prev is not None:
+            dt_s = x["ts"] - prev["ts"]
+            if 0 < dt_s <= 900:
+                p = prev
+                q = vallox.airflow(p["rpm_sup"], "sup")
+                if (None not in (q, p["t_out"], p["t_ext"]) and p["t_ext"] - p["t_out"] >= EFF_MIN_DT
+                        and p.get("cell_state") not in (1, 2)):
+                    avail = q * (p["t_ext"] - p["t_out"]) * dt_s
+                    got = q * ((p["t_sup_cell"] if p["t_sup_cell"] is not None else p["t_out"]) - p["t_out"]) * dt_s
+                    num += max(0.0, got)
+                    den += avail
+                if p.get("cell_state") == 3:
+                    defrost += dt_s
+                if p.get("t_exh") is not None and p["t_exh"] < 0:
+                    exh_lt0 += dt_s
+                n += dt_s
+        if x.get("t_exh") is not None:
+            exh_min = x["t_exh"] if exh_min is None else min(exh_min, x["t_exh"])
+        prev = x
+    return {"eff_energy": round(100 * num / den, 1) if den > 0 else None, "exh_min": exh_min,
+            "exh_lt0_min": round(exh_lt0 / 60), "defrost_min": round(defrost / 60), "hours": round(n / 3600, 1),
+            "_num": num, "_den": den}
+
+
+@app.get("/api/vallox/eff")
+def api_vallox_eff(days: int = 30):
+    """Efektywnosc odzysku dzien po dniu (wazona energia) + za caly okres, min. temperatura wyrzutu, odszranianie."""
+    days = max(1, min(int(days), 366))
+    cols = ["ts"] + [c.strip() for c in db.VALLOX_COLS.split(",")]
+    today = dt.date.today()
+    out, tn, td = [], 0.0, 0.0
+    tot = {"defrost_min": 0, "exh_lt0_min": 0, "exh_min": None}
+    con = db_connect()
+    try:
+        for k in range(days):
+            day = today - dt.timedelta(days=k)
+            s0, e0 = day_range(day)
+            rows = db.load_vallox(con, s0, e0)
+            if not rows:
+                continue
+            st = _eff_stats(rows, cols)
+            tv = [r[cols.index("t_out")] for r in rows if r[cols.index("t_out")] is not None]
+            tn, td = tn + st.pop("_num"), td + st.pop("_den")
+            tot["defrost_min"] += st["defrost_min"]
+            tot["exh_lt0_min"] += st["exh_lt0_min"]
+            if st["exh_min"] is not None:
+                tot["exh_min"] = st["exh_min"] if tot["exh_min"] is None else min(tot["exh_min"], st["exh_min"])
+            out.append({"date": day.isoformat(), **st, "t_out_avg": round(sum(tv) / len(tv), 1) if tv else None,
+                        "t_out_min": round(min(tv), 1) if tv else None})
+    finally:
+        con.close()
+    tot["eff_energy"] = round(100 * tn / td, 1) if td > 0 else None
+    return {"days": out, "total": tot}
+
+
 def vallox_rec_month(d):
     """Energia odzyskana od poczatku miesiaca do dnia d wlacznie [kWh]."""
     cols = ["ts"] + [c.strip() for c in db.VALLOX_COLS.split(",")]
@@ -1451,6 +1757,8 @@ def api_vallox_day(date: str | None = None):
         "eff_ext_avg": stat("eff_ext", lambda v: sum(v) / len(v)),
     }
     summary["rec_kwh"] = round(_rec_energy(rows, cols), 2)
+    est = _eff_stats(rows, cols)
+    summary.update({k: est[k] for k in ("eff_energy", "exh_min", "exh_lt0_min", "defrost_min")})
     summary["rec_month_kwh"] = vallox_rec_month(d)
     summary["flow_sup_avg"] = stat("flow_sup", lambda v: sum(v) / len(v))
     summary["flow_ext_avg"] = stat("flow_ext", lambda v: sum(v) / len(v))
@@ -1467,12 +1775,13 @@ def counters():
 
 def start_background():
     db_init()
-    threading.Thread(target=poll_loop, daemon=True, name="modbus").start()
-    threading.Thread(target=forecast.loop, args=(db_connect,), daemon=True, name="forecast").start()
+    if PV_ENABLED:      # bez instalacji PV (tylko rekuperator) - bez odczytu falownika, prognoz i komunikatow o falowniku
+        threading.Thread(target=poll_loop, daemon=True, name="modbus").start()
+        threading.Thread(target=forecast.loop, args=(db_connect,), daemon=True, name="forecast").start()
+        threading.Thread(target=efficiency_loop, daemon=True, name="efficiency").start()
     threading.Thread(target=prices.loop, args=(db_connect,), daemon=True, name="prices").start()
     threading.Thread(target=pstryk.loop, args=(lambda: config.get("pstryk", "api_key", ""), db_connect),
                      daemon=True, name="pstryk").start()
-    threading.Thread(target=efficiency_loop, daemon=True, name="efficiency").start()
     if vallox.ENABLED:
         threading.Thread(target=vallox.loop, args=(db_connect, db), daemon=True, name="vallox").start()
     if meter.ENABLED:

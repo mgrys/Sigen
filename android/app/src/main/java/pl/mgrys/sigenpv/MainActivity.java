@@ -36,11 +36,12 @@ import android.widget.TextView;
  * "Adres serwera" w stopce dashboardu albo na stronie bledu polaczenia.
  *
  * Brak polaczenia (np. restart aplikacji na komputerze) -> strona bledu z przyciskami i ponawianiem co 10 s,
- * nigdy pusty (czarny) ekran. Po powrocie do aplikacji po dluzszej przerwie dashboard jest odswiezany.
+ * nigdy pusty (czarny) ekran. Po powrocie do aplikacji po ponad 3 min w tle dashboard jest przeladowywany
+ * (wczesniej 10 min - telefon pokazywal stare dane), a przy krotszej przerwie strona sama odswieza dane.
  */
 public class MainActivity extends Activity {
     private static final String PREFS = "sigen", KEY_URL = "url";
-    private static final long RETRY_MS = 10_000, STALE_MS = 10 * 60_000;
+    private static final long RETRY_MS = 10_000, STALE_MS = 3 * 60_000;   // po > 3 min w tle - przeladowanie
     private FrameLayout root;
     private WebView web;
     private SharedPreferences prefs;

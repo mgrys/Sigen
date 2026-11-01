@@ -19,7 +19,7 @@ import config
 
 # ---------------- KONFIGURACJA ----------------
 HOST = config.get("rekuperacja", "vallox_ip")
-ENABLED = bool(HOST)
+ENABLED = bool(HOST) and config.module_vallox()   # Ustawienia -> "Co masz": rekuperator
 INTERVAL = 60          # s
 MIN_DT_EFF = 3.0       # °C - ponizej tej roznicy wywiew-zewnatrz sprawnosc nie jest liczona
 # zapis ustawien wentylatorow (tryb Dom)
@@ -217,8 +217,9 @@ async def _fetch_log(host):
     return await r if inspect.isawaitable(r) else r
 
 
-def read_log(host=HOST):
+def read_log(host=None):
     """{ts: {kolumna: wartosc}} z dziennika rekuperatora (czas lokalny jednostki)."""
+    host = host or HOST
     out = {}
     for page in asyncio.run(_fetch_log(host)):
         for p in page:
@@ -243,9 +244,10 @@ def _fit(pairs):
     return a, (sy - a * sx) / n
 
 
-def backfill(db_connect, db_mod, host=HOST):
+def backfill(db_connect, db_mod, host=None):
     """Uzupelnia luki w vallox_samples odczytami z dziennika rekuperatora (src='log').
     Obroty wentylatorow odtwarzane z predkosci wentylacji (%) regresja z wlasnych odczytow."""
+    host = host or HOST
     log = read_log(host)
     if not log:
         return 0
@@ -280,7 +282,8 @@ def backfill(db_connect, db_mod, host=HOST):
     return len(rows)
 
 
-def read_once(host=HOST):
+def read_once(host=None):
+    host = host or HOST
     m = asyncio.run(_fetch(host))
     vals = {k: m.get(v) for k, v in METRICS.items()}
     vals["profile"] = _profile(m)
@@ -288,6 +291,7 @@ def read_once(host=HOST):
     extra = {k: m.get(v) for k, v in EXTRA.items()}
     raw = extra.pop("ms_temp_raw", None)
     extra["ms_temp"] = round(raw / 100 - 273.15, 1) if isinstance(raw, (int, float)) and raw > 20000 else None
+    _note_serial(m)
     if MODEL == "auto" and MODEL_INFO.get("detected") is None:
         idx = m.get("A_CYC_MACHINE_MODEL")
         try:
@@ -300,12 +304,56 @@ def read_once(host=HOST):
     return vals, extra
 
 
+# --- numer seryjny i ponowne odnalezienie rekuperatora po zmianie adresu IP (DHCP) ------------------
+SERIAL = config.get("rekuperacja", "vallox_serial")
+REFIND_AFTER = 600        # s bez polaczenia, po ktorych szukamy rekuperatora w sieci (po numerze seryjnym)
+REFIND_EVERY = 3600       # s miedzy kolejnymi probami
+REFIND = {}               # wynik ostatniego szukania (podglad w status())
+
+
+def serial_of(m):
+    """Numer seryjny z metryk (A_CYC_SERIAL_NUMBER_MSW/LSW) albo None."""
+    hi, lo = m.get("A_CYC_SERIAL_NUMBER_MSW"), m.get("A_CYC_SERIAL_NUMBER_LSW")
+    if isinstance(hi, int) and isinstance(lo, int) and (hi or lo):
+        return str((hi << 16) | (lo & 0xFFFF))
+    return None
+
+
+def _note_serial(m):
+    """Zapamietanie numeru seryjnego w config.ini (raz) - do odnalezienia rekuperatora po zmianie IP."""
+    global SERIAL
+    sn = serial_of(m)
+    if sn and sn != SERIAL:
+        SERIAL = sn
+        try:
+            config.update({"rekuperacja": {"vallox_serial": sn}})
+        except Exception as e:  # noqa: BLE001
+            print(f"Vallox: zapis numeru seryjnego: {e}")
+
+
+def _refind():
+    """Szukanie rekuperatora o zapamietanym numerze seryjnym; przy innym IP - zmiana adresu w config.ini."""
+    global HOST
+    import discover
+    r = discover.scan_vallox()
+    hit = next((x for x in r["found"] if SERIAL and x.get("serial") == SERIAL), None)
+    REFIND.update(ts=int(time.time()), found=len(r["found"]), new_ip=None)
+    if hit and hit["ip"] != HOST:
+        print(f"Vallox: rekuperator {SERIAL} zmienil adres {HOST} -> {hit['ip']}")
+        REFIND["new_ip"] = hit["ip"]
+        HOST = hit["ip"]
+        config.update({"rekuperacja": {"vallox_ip": hit["ip"]}})
+        return True
+    return False
+
+
 def loop(db_connect, db_mod):
     global _bal_resume
     if not ENABLED:
         return
     con = None
     last_backfill = 0
+    fail_since, last_refind = None, 0
     while True:
         t0 = time.time()
         if t0 - last_backfill > BACKFILL_EVERY:
@@ -319,6 +367,7 @@ def loop(db_connect, db_mod):
                     BACKFILL.update(ts=int(time.time()), error=f"{type(e).__name__}: {e}")
         try:
             vals, extra = read_once()
+            fail_since = None
             learn_rpm_max(vals)
             ts = int(t0)
             with _lock:
@@ -364,7 +413,42 @@ def loop(db_connect, db_mod):
         except Exception as e:  # noqa: BLE001 - brak polaczenia z rekuperatorem
             with _lock:
                 latest.update(ok=False, error=f"{type(e).__name__}: {e}")
+            fail_since = fail_since or t0
+            if SERIAL and t0 - fail_since >= REFIND_AFTER and t0 - last_refind >= REFIND_EVERY:
+                last_refind = t0
+                try:
+                    if _refind():
+                        continue                # od razu odczyt pod nowym adresem
+                except Exception as e2:  # noqa: BLE001
+                    REFIND.update(ts=int(time.time()), error=str(e2))
         time.sleep(max(5, INTERVAL - (time.time() - t0)))
+
+
+def boost(minutes=2):
+    """Profil Boost na podana liczbe minut - rekuperator sam wraca potem do poprzedniego profilu (timer w jednostce).
+    Uzywane tylko przez test "ktory miernik to rekuperator" w Ustawieniach, po potwierdzeniu uzytkownika."""
+    global _last_write
+    if not FAN_WRITE_ENABLED:
+        return {"ok": False, "error": "zapis wyłączony (vallox.py: FAN_WRITE_ENABLED)"}
+    with _lock:
+        ok_now, prof = latest.get("ok"), latest.get("profile")
+    if not ok_now:
+        return {"ok": False, "error": "brak aktualnego odczytu z rekuperatora"}
+    if prof in (3, 4, 5):
+        return {"ok": False, "error": "rekuperator jest teraz w profilu czasowym (Boost / Kominek / Extra) – spróbuj później"}
+
+    async def _go():
+        from vallox_websocket_api import Profile, Vallox
+        r = Vallox(HOST).set_profile(Profile.BOOST, duration=int(minutes))
+        if inspect.isawaitable(r):
+            await r
+    with _write_lock:
+        _last_write = time.time()
+        try:
+            asyncio.run(_go())
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return {"ok": True}
 
 
 def set_fans(values, source, db_connect=None, db_mod=None):

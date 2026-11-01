@@ -40,12 +40,17 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Sprawność falownika** w przedziałach mocy (dzień, 7/30 dni, cała historia).
 - **Wszystkie odczyty falownika** (61 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
-- Wszystkie ustawienia na stronie, w zakładce **Ustawienia**.
+- Wszystkie ustawienia na stronie, w zakładce **Ustawienia**. Na górze **„Co masz”**: instalacja PV Sigen, rekuperator
+  Vallox albo oba – z samym rekuperatorem aplikacja nie łączy się z falownikiem, nie pokazuje komunikatów o nim
+  i otwiera się od razu na zakładce Rekuperacja.
 
 ## Rekuperacja – Vallox seria MV (opcjonalnie)
 
 Zakładka **Rekuperacja** pojawia się po wpisaniu adresu IP rekuperatora w Ustawieniach → Rekuperacja i ponownym
-uruchomieniu aplikacji. **Wystarczy sam adres IP** – model (np. Vallox 145 MV) aplikacja odczyta z rekuperatora i na jego
+uruchomieniu aplikacji. Adresu nie trzeba znać: przycisk **„Znajdź rekuperator”** wyszuka Vallox w sieci domowej, a po
+zmianie adresu przez router aplikacja sama odnajdzie rekuperator po numerze seryjnym. Miernik poboru prądu (Shelly albo
+SmartLife) wybierzesz z listy po kliknięciu **„Szukaj mierników”** – przy właściwym kliknij „To jest rekuperator”
+(nie wiesz który? „Sprawdź, który to rekuperator” – krótki Boost pokaże miernik, któremu wzrósł pobór). **Wystarczy sam adres IP** – model (np. Vallox 145 MV) aplikacja odczyta z rekuperatora i na jego
 podstawie dobierze parametry do szacowania przepływu; wykryty model widać na grafice rekuperatora. Bez adresu aplikacja
 wygląda i działa jak wcześniej.
 

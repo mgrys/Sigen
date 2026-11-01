@@ -37,6 +37,10 @@ CONFIG_FILE = DATA_DIR / "config.ini"
 
 # Wartosci domyslne - nadpisywane przez config.ini (ustawienia mozna zmienic tez na stronie, zakladka "Ustawienia")
 DEFAULTS = {
+    "moduly": {                          # co ma uzytkownik: instalacja PV Sigen i/lub rekuperator Vallox
+        "pv": "auto",                    # tak | nie | auto (auto = tak, chyba ze wpisano tylko rekuperator)
+        "vallox": "auto",                # tak | nie | auto (auto = tak, gdy wpisano adres IP rekuperatora)
+    },
     "falownik": {
         "host": "192.168.1.100",     # adres IP falownika (Modbus TCP musi byc wlaczony w mySigen)
         "port": "502",
@@ -81,14 +85,21 @@ DEFAULTS = {
         "moc_ladowania_kw": "5",         # maks. moc ladowania/rozladowania magazynu
         "sprawnosc_ladowania": "0.95",
         "sprawnosc_rozladowania": "0.95",
-        "wartosc_sprzedazy": "1.0",      # wartosc sprzedanej kWh = RCE x wspolczynnik (np. 0.8, gdy depozyt nie pokrywa calego rachunku)
+        "wartosc_sprzedazy": "1.0",      # wartosc sprzedanej kWh = cena sprzedazy x wspolczynnik (z Pstrykiem: cena prosumencka;
+                                         # depozyt Pstryka pokrywa caly rachunek, takze dystrybucje - zostaw 1.0)
         "koszt_zuzycia_zl_kwh": "0.10",  # zuzycie baterii: zl za kWh oddana z magazynu (0 = pomijaj)
+        "sprzedaz_z_magazynu_od": "",    # pulap [zl/kWh]: sprzedaz z magazynu do sieci przy cenie sprzedazy >= pulap; puste = bez
+        "ladowanie_z_sieci_do": "",      # pulap [zl/kWh]: ladowanie z sieci tylko przy cenie zakupu <= pulap; puste = bez limitu
     },
     "pstryk": {
         "api_key": "",                   # klucz API Pstryka (aplikacja Pstryk -> Integracje); puste = bez Pstryka
     },
+    "pradcast": {
+        "api_key": "",                   # klucz API Pradcast (pradcast.pl) - prognoza cen na 1-3 dni; puste = bez prognozy
+    },
     "rekuperacja": {                     # opcjonalnie: rekuperator Vallox seria MV (MyVallox) - zakladka Rekuperacja
         "vallox_ip": "",                 # adres IP rekuperatora; puste = bez zakladki Rekuperacja
+        "vallox_serial": "",             # numer seryjny (zapisywany automatycznie) - odnalezienie po zmianie adresu IP
         "model": "auto",                 # auto (odczyt z rekuperatora) | 096 | 110 | 145 | 245 | inny -> szacunek przeplywu m3/h
         "przeplyw_max_m3h": "",          # tylko dla "inny": maks. przeplyw nawiewu z karty katalogowej [m3/h]
         "przeplyw_max_wywiew_m3h": "",   # tylko dla "inny": maks. przeplyw wywiewu (puste = jak nawiew)
@@ -165,6 +176,31 @@ def getb(sec, key, default=False):
     return get(sec, key, "tak" if default else "nie").lower() in ("1", "tak", "yes", "true", "on")
 
 
+def _module(key):
+    v = get("moduly", key, "auto").lower()
+    if v in ("1", "tak", "yes", "true", "on"):
+        return True
+    if v in ("0", "nie", "no", "false", "off"):
+        return False
+    return None
+
+
+def module_vallox():
+    """Rekuperator Vallox: wg ustawienia, a przy "auto" - gdy wpisano adres IP rekuperatora."""
+    m = _module("vallox")
+    return bool(get("rekuperacja", "vallox_ip")) if m is None else m
+
+
+def module_pv():
+    """Instalacja PV Sigen: wg ustawienia, a przy "auto" - tak, chyba ze skonfigurowano tylko rekuperator
+    (adres IP falownika nie zmieniony z domyslnego i wpisany adres rekuperatora)."""
+    m = _module("pv")
+    if m is not None:
+        return m
+    only_vallox = bool(get("rekuperacja", "vallox_ip")) and get("falownik", "host") == DEFAULTS["falownik"]["host"]
+    return not only_vallox
+
+
 def planes():
     """Polacie do prognozy: [{nazwa, kwp, azymut, nachylenie}]."""
     out = []
@@ -211,7 +247,7 @@ SECRET = "********"     # tak strona widzi zapisany klucz API (prawdziwy klucz n
 def as_dict():
     d = {s: dict(CFG.items(s)) for s in CFG.sections()}
     cur = load()        # sekrety wg aktualnego pliku (np. PIN zapisany przed restartem)
-    for sec, k in (("pstryk", "api_key"), ("serwer", "pin")):
+    for sec, k in (("pstryk", "api_key"), ("pradcast", "api_key"), ("serwer", "pin")):
         if sec in d:
             d[sec][k] = SECRET if cur.get(sec, k, fallback="").strip() else ""
     return d
@@ -228,7 +264,7 @@ def update(data):
             cp.add_section(sec)
         for k, v in vals.items():
             k = str(k).strip()
-            if (sec, k) in (("pstryk", "api_key"), ("serwer", "pin")) and str(v).strip() == SECRET:
+            if (sec, k) in (("pstryk", "api_key"), ("pradcast", "api_key"), ("serwer", "pin")) and str(v).strip() == SECRET:
                 continue        # bez zmiany zapisanego klucza
             if not k or any(c in k for c in "[]=;#\n\r"):
                 continue
