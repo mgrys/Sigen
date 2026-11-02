@@ -2,6 +2,11 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.19.1] - 2026-11-02
+
+### Poprawiono
+- Budowanie w GitHub Actions (test pyflakes): nieużywany import w `inverter_ctl.py` – wydanie 1.19.0 nie powstało.
+
 ## [1.19.0] - 2026-11-02
 
 ### Dodano
