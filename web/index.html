@@ -105,6 +105,13 @@ svg.flow { width: 100%; height: auto; display: block; }
 .fs-auto { font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .fs-auto input { width: 18px; height: 18px; }
 .soc-big { font-size: 44px; font-weight: 700; line-height: 1; }
+.st-now { margin-top: 14px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2, transparent); }
+.st-now-h { font-size: 13px; color: var(--text-2); display: flex; justify-content: space-between; gap: 8px; }
+.st-now-big { font-size: clamp(24px, 3.4vw, 34px); font-weight: 700; line-height: 1.15; margin: 6px 0 4px; }
+.st-now-sub { font-size: 13px; color: var(--text-2); }
+.st-now-next { font-size: 14px; margin-top: 8px; }
+.st-now.m-sell .st-now-big { color: var(--s-sell); } .st-now.m-buy .st-now-big { color: var(--s-buy); }
+.st-now.m-stby .st-now-big { color: var(--muted); } .st-now.m-auto .st-now-big { color: var(--s-bat); }
 .bar { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; margin: 10px 0 16px; }
 .bar > div { height: 100%; background: var(--s-bat); border-radius: 5px; transition: width .5s; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 14px; }
@@ -198,6 +205,7 @@ summary { cursor: pointer; color: var(--text-2); }
 table { border-collapse: collapse; width: 100%; margin-top: 8px; font-variant-numeric: tabular-nums; }
 th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--border); }
 th:first-child, td:first-child { text-align: left; }
+td.status { display: table-cell; text-align: left; white-space: normal; }   /* .status to flex - w tabeli psul uklad kolumn */
 .empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
 .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
 .cfg-grid fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px 12px; margin: 0; }
@@ -290,7 +298,12 @@ th:first-child, td:first-child { text-align: left; }
         <span><i class="sw" style="background:var(--s-loss)"></i>Straty falownika</span><span id="k-loss">–</span>
         <span>Ostatni zanik sieci</span><span id="k-outage">–</span>
       </div>
-      <details class="outages" id="outages"><summary>Zaniki sieci – historia</summary><div id="outlist">–</div></details>
+      <div class="st-now" id="stnow">
+        <div class="st-now-h">Strategia – teraz <span id="stnow-src"></span></div>
+        <div class="st-now-big" id="stnow-mode">–</div>
+        <div class="st-now-sub" id="stnow-why"></div>
+        <div class="st-now-next" id="stnow-next"></div>
+      </div>
     </div>
   </section>
 
@@ -341,15 +354,44 @@ th:first-child, td:first-child { text-align: left; }
 
   <section class="card" id="stcard">
     <div class="daynav">
-      <h2>Strategia osobista – symulacja</h2>
+      <h2>Strategia osobista</h2>
       <span class="status" id="ststatus"></span>
     </div>
     <div class="tiles" id="sttiles"></div>
     <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
       <span>Pułapy: sprzedawaj z magazynu od <input class="bp-num" id="st-floor" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
       <span>ładuj z sieci do <input class="bp-num" id="st-cap" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
+      <span title="Oszczędzanie baterii: plan rozkłada ładowanie z sieci na więcej tanich godzin, a falownik dostaje moc potrzebną na daną godzinę – nie więcej niż limit. Puste = maks. moc z symulacji">Moc maks.: ładowanie z sieci <input class="bp-num" id="st-pc" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW,
+        sprzedaż z magazynu <input class="bp-num" id="st-pd" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW</span>
+      <span title="Przy małym poborze falownik ma duże straty (np. 300 W do domu = ok. 400 W z magazynu). Puste = plan decyduje sam wg kosztów i zmierzonej sprawności przy małej mocy; wpisany próg = w godzinach z mniejszym przewidywanym poborem zawsze standby (dom z sieci, magazyn stoi)">Standby, gdy dom pobiera &lt; <input class="bp-num" id="st-sb" type="number" min="0" max="3000" step="50" style="width:70px"> W</span>
       <span><button class="fs-btn" id="st-save" type="button">Zapisz pułapy</button> <span class="status" id="st-msg"></span></span>
     </div>
+    <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
+      <span>Sterowanie falownikiem: <select id="st-ctl" class="fs-btn"><option value="wyl">wyłączone</option>
+        <option value="probny">próbnie (tylko dziennik, bez zapisu)</option><option value="wl">włączone – wysyłaj plan do falownika</option></select></span>
+      <span id="st-pzbox" hidden>Pauza: <select id="st-pz" class="fs-btn"><option value="">wybierz…</option><option value="godzina">do końca godziny</option>
+        <option value="1h">na 1 godzinę</option><option value="3h">na 3 godziny</option><option value="polnoc">do północy</option><option value="jutro">do jutra 6:00</option></select>
+        <button class="fs-btn" id="st-pzend" type="button" hidden>Wznów sterowanie</button></span>
+      <span class="status" id="st-ctlmsg"></span>
+    </div>
+    <div class="bp-row" style="flex-wrap:wrap;gap:8px 14px;margin:-4px 0 10px" id="st-man">
+      <span>Ręcznie: <select id="mn-tryb" class="fs-btn"><option value="standby">Standby</option><option value="auto">Samozużycie</option>
+        <option value="grid">Ładowanie z sieci</option><option value="discharge">Rozładowanie ze stałą mocą</option></select></span>
+      <span>na <select id="mn-czas" class="fs-btn"><option value="15m">15 min</option><option value="30m">30 min</option><option value="1h" selected>1 h</option>
+        <option value="2h">2 h</option><option value="min">własny…</option><option value="cancel">do anulowania</option></select>
+        <input class="bp-num" id="mn-min" type="number" min="1" max="1440" step="5" style="width:64px" placeholder="min" hidden></span>
+      <span id="mn-pw" hidden>moc <input class="bp-num" id="mn-kw" type="number" min="0.5" max="30" step="0.5" value="3" style="width:56px"> kW</span>
+      <span id="mn-smax" hidden>do SOC <input class="bp-num" id="mn-socmax" type="number" min="10" max="100" step="5" value="100" style="width:56px"> %</span>
+      <span id="mn-smin" hidden>min. SOC <input class="bp-num" id="mn-socmin" type="number" min="5" max="100" step="5" value="20" style="width:56px"> %</span>
+      <span id="mn-prz" hidden title="Limit mocy przyłącza: ładowanie + dom (albo oddanie do sieci) nie przekroczy tej wartości">przyłącze <input class="bp-num" id="mn-przyl" type="number" min="1" max="100" step="1" value="22" style="width:52px"> kW</span>
+      <span><button class="fs-btn" id="mn-go" type="button">Włącz ręczne</button> <button class="fs-btn" id="mn-stop" type="button" hidden>Anuluj ręczne</button>
+        <span class="status" id="mn-msg"></span></span>
+    </div>
+    <details id="st-ctldet" hidden>
+      <summary>Dziennik sterowania falownikiem</summary>
+      <div style="overflow-x:auto"><table><thead><tr><th>Kiedy</th><th>Tryb: poprzedni → nowy</th><th>Źródło</th><th>SOC</th><th style="text-align:left">Szczegóły</th></tr></thead><tbody id="st-ctllog"></tbody></table></div>
+      <p class="status" id="st-ctltime" style="display:block;margin-top:6px"></p>
+    </details>
     <div class="chart"><canvas id="cSt"></canvas></div>
     <div class="empty" id="stempty" hidden></div>
     <details>
@@ -368,7 +410,22 @@ th:first-child, td:first-child { text-align: left; }
         Z kluczem Pradcast (Ustawienia) plan sięga do pojutrza: godziny bez opublikowanych cen biorą prognozę Pradcast (rynek RDN),
         przeliczoną na ceny zakupu i sprzedaży dopasowaniem do ostatnich 7 dni. Bez Pradcast – gdy na jutro nie ma jeszcze cen, przyjmowane są ceny z dziś, a cena sprzedaży jest liczona ostrożniej (× 0,9). Słupki: zakup w dół, sprzedaż w górę (zł na godzinę). Latem, gdy PV i tak zapełni magazyn, plan zwykle zostaje przy autokonsumpcji.
         Energia zostawiona w magazynie na koniec okresu jest wyceniana ostrożnie (po cenie najtańszych godzin). Porównanie „bez strategii” to ta sama prognoza i ceny przy samej autokonsumpcji.
-        <b>To tylko symulacja – nic nie jest wysyłane do falownika.</b></p>
+        <b>Sterowanie falownikiem</b> (Remote EMS po Modbus): „wyłączone” (<b>domyślnie po instalacji</b>) – plan jest tylko symulacją, nic nie jest wysyłane do falownika; „próbnie” – w dzienniku widać, co zostałoby wysłane, bez zapisu;
+        „włączone” – co kilka sekund falownik dostaje tryb bieżącej godziny planu (autokonsumpcja → tryb 2, standby → 1, ładowanie z sieci → 3, sprzedaż z magazynu → 5).
+        Moc ładowania z sieci i sprzedaży z magazynu jest dobierana tak, by energia z planu rozłożyła się na całą godzinę (nie więcej niż limit „Moc maks.”);
+        mniejszy limit = łagodniejsza praca baterii – plan sam rozłoży ładowanie na więcej tanich godzin.
+        Straty przy małej mocy: plan liczy rozładowanie do domu ze zmierzoną sprawnością falownika w przedziałach do 1 kW (tabela sprawności, 30 dni) –
+        gdy w nocy dom pobiera kilkaset W, energia z magazynu jest przez straty droższa i plan częściej wybiera standby (dom z sieci, magazyn stoi).
+        Próg „Standby, gdy dom pobiera &lt; … W” wymusza standby w godzinach z mniejszym przewidywanym poborem niezależnie od cen.
+        Ładowanie i sprzedaż kończą się po osiągnięciu SOC z planu na koniec godziny (dalej standby do końca godziny). Brak planu, brak świeżego odczytu SOC,
+        wyłączenie sterowania albo zatrzymanie aplikacji = oddanie sterowania falownikowi (wraca do trybu z aplikacji mySigen).
+        <b>Ręcznie</b>: standby, samozużycie, ładowanie z sieci albo rozładowanie ze stałą mocą na 15 min – 2 h, własny czas lub do anulowania;
+        ma pierwszeństwo (ręczne &gt; pauza &gt; strategia) i działa także przy wyłączonej strategii; po czasie powrót do strategii („koniec ręcznego” w dzienniku).
+        Ładowanie kończy się na „do SOC”, rozładowanie na „min. SOC” (dalej standby), a moc jest ograniczana tak, by dom + ładowanie (albo oddanie do sieci) nie przekroczyło limitu przyłącza.
+        Dziennik zapisuje tylko zmiany trybu (czas, poprzedni → nowy, źródło, SOC); czas w trybach liczony z różnic między wpisami.
+        <b>Pauza</b> oddaje sterowanie falownikowi na wybrany czas (np. żeby przestawić coś ręcznie w mySigen) – po nim automat sam wraca do planu.
+        Falownik musi mieć włączony serwer Modbus TCP (aplikacja mySigen) – zapis wymaga tych samych ustawień co odczyt.
+        Polecenia z aplikacji mySigen (np. tryb AI, ręczne rozładowanie) mają pierwszeństwo przed Remote EMS.</p>
     </details>
   </section>
 
@@ -909,17 +966,7 @@ function showGrid(d) {
   const lo = d.last_outage;
   $('k-outage').textContent = og ? 'trwa' : lo ? `${ddmm(lo.start)} ${hms(lo.start)}–${hms(lo.end)} (${lo.approx ? '~' : ''}${durTxt(lo.end - lo.start)})` : 'brak zapisanych';
   const key = (lo && lo.start) + '|' + og;
-  if (key !== lastOutageKey && $('outages').open) loadOutages();
   lastOutageKey = key;
-}
-async function loadOutages() {
-  let r; try { r = await (await fetch('/api/grid_events?limit=30')).json(); } catch (e) { return; }
-  const ev = r.events || [];
-  $('outlist').innerHTML = ev.length ? '<table><thead><tr><th>Dzień</th><th>Od</th><th>Do</th><th>Czas</th><th>Rodzaj</th></tr></thead><tbody>' +
-    ev.map(e => `<tr><td>${ddmm(e.start)}</td><td>${hms(e.start)}</td><td>${e.end ? hms(e.end) : '<b>trwa</b>'}</td>` +
-      `<td>${e.end ? (e.approx ? '~' : '') + durTxt(e.end - e.start) : durTxt(Date.now() / 1000 - e.start)}</td>` +
-      `<td>${esc(r.modes?.[e.mode] || e.mode)}${e.source && e.source !== 'falownik' ? ' · ' + esc(e.source) : ''}</td></tr>`).join('') + '</tbody></table>'
-    : 'Brak zapisanych zaników – zapis od wersji 1.14.0 (rejestr trybu pracy falownika co 5 s).';
 }
 // swiezosc danych: znacznik czasu odczytu czerwony, gdy starszy niz 2 min (np. telefon wybudzony po dluzszej przerwie)
 let liveTs = 0;
@@ -1123,14 +1170,40 @@ async function loadForecast() {
   const acc = d.accuracy || { days: [], suggest: {} };
   const cols = Object.keys(N).filter(k => acc.days.some(r => r[k]));
   $('acchead').innerHTML = '<tr><th>Dzień</th><th>Rzeczywista</th>' + cols.map(k => `<th>${N[k]}</th>`).join('') + '</tr>';
+  // kolor trafnosci: 0 = najlepiej (zielony) .. 1 = najgorzej (czerwony)
+  const tint = t => `background:hsla(${Math.round(120 * (1 - Math.max(0, Math.min(1, t))))},70%,45%,.22)`;
   const cell = (r, k) => {
     const v = r[k]?.day_ahead;
     if (v == null) return '<td>–</td>';
     const dv = v > 0.05 ? Math.round(100 * (r.actual_kwh - v) / v) : null;
-    return `<td>${v}${dv != null ? ` <span style="color:var(--muted);font-size:11px">(${dv > 0 ? '+' : ''}${dv} %)</span>` : ''}</td>`;
+    // blad dnia wzgledem rzeczywistej produkcji: 0 % zielony, >= 50 % czerwony
+    const err = r.actual_kwh > 0.3 ? Math.abs(r.actual_kwh - v) / r.actual_kwh : null;
+    return `<td${err != null ? ` style="${tint(err / 0.5)}"` : ''}>${v}${dv != null ? ` <span style="color:var(--muted);font-size:11px">(${dv > 0 ? '+' : ''}${dv} %)</span>` : ''}</td>`;
   };
-  $('accbody').innerHTML = acc.days.length ? acc.days.map(r =>
-    `<tr><td>${r.day}</td><td>${r.actual_kwh}</td>${cols.map(k => cell(r, k)).join('')}</tr>`).join('')
+  // srednie odchylenie kazdej prognozy od rzeczywistej (dni z produkcja >= 0,3 kWh)
+  const mean = Object.fromEntries(cols.map(k => {
+    const ds = acc.days.filter(r => r[k]?.day_ahead != null && r.actual_kwh >= 0.3);
+    if (!ds.length) return [k, null];
+    const abs = ds.reduce((a, r) => a + Math.abs(r.actual_kwh - r[k].day_ahead), 0);
+    const bias = ds.reduce((a, r) => a + (r[k].day_ahead - r.actual_kwh), 0);
+    const act = ds.reduce((a, r) => a + r.actual_kwh, 0);
+    return [k, { mae: abs / ds.length, pct: act > 0 ? 100 * abs / act : null, bias: bias / ds.length, n: ds.length }];
+  }));
+  const ranked = cols.filter(k => mean[k]).sort((a, b) => mean[a].mae - mean[b].mae);
+  const rankT = k => ranked.length > 1 ? ranked.indexOf(k) / (ranked.length - 1) : 0;
+  const meanRow = ranked.length ? '<tr style="font-weight:600"><td>Średnie odchylenie</td><td class="status">' +
+    `${Math.max(...ranked.map(k => mean[k].n))} dni</td>` + cols.map(k => {
+      const m = mean[k];
+      if (!m) return '<td>–</td>';
+      const pos = ranked.indexOf(k) + 1;
+      return `<td style="${tint(rankT(k))}" title="średni błąd bezwzględny ${m.mae.toFixed(2)} kWh/dzień = ${m.pct?.toFixed(0)} % produkcji; ` +
+        `prognoza średnio ${m.bias >= 0 ? 'zawyża' : 'zaniża'} o ${Math.abs(m.bias).toFixed(2)} kWh; ${m.n} dni">±${m.mae.toFixed(2)} kWh` +
+        ` <span style="font-size:11px;font-weight:400">(${m.pct != null ? m.pct.toFixed(0) + ' %' : '–'}) · ${pos === 1 ? 'najtrafniejsza' : pos === ranked.length ? 'najmniej trafna' : pos + '.'}</span></td>`;
+    }).join('') + '</tr>' : '';
+  $('accbody').innerHTML = acc.days.length ? meanRow + acc.days.map(r =>
+    `<tr><td>${r.day}</td><td>${r.actual_kwh}</td>${cols.map(k => cell(r, k)).join('')}</tr>`).join('') +
+    '<tr><td colspan="' + (2 + cols.length) + '" class="status">Średnie odchylenie = średni błąd bezwzględny prognozy z dnia poprzedniego (kWh na dzień, w nawiasie % rzeczywistej produkcji); ' +
+    'kolor wiersza średnich – ranking prognoz (zielony najtrafniejsza, czerwony najmniej trafna), kolor dni – błąd dnia (zielony 0 %, czerwony ≥ 50 %).</td></tr>'
     : `<tr><td colspan="${2 + cols.length}" class="empty">Pierwsze wyniki po pierwszym pełnym dniu z prognozą z dnia poprzedniego.</td></tr>`;
   const sg = Object.entries(acc.suggest).sort((a, b) => a[1].blad_sr_proc - b[1].blad_sr_proc);
   $('accsugg').textContent = sg.length ? 'Ranking (średni błąd): ' + sg.map(([k, v]) =>
@@ -1329,22 +1402,133 @@ $('st-save').onclick = async () => {
   let r;
   try {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sell_floor: $('st-floor').value, buy_cap: $('st-cap').value }) })).json();
+      body: JSON.stringify({ sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
+        p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
   $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
   if (r.ok) loadStrategy();
 };
+$('st-ctl').onchange = async () => {
+  const t = $('st-ctl').value;
+  if (t === 'wl' && !confirm('Włączyć sterowanie falownikiem wg planu strategii?\n\nFalownik dostanie tryb Remote EMS bieżącej godziny (ładowanie z sieci, sprzedaż z magazynu, standby, autokonsumpcja). Wyłączenie oddaje sterowanie falownikowi.')) { loadCtl(); return; }
+  let r;
+  try {
+    r = await (await fetch('/api/inverter/ctl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tryb: t }) })).json();
+  } catch (e) { r = { ok: false, error: String(e) }; }
+  if (!r.ok) { $('st-ctlmsg').style.color = 'var(--eff-bad)'; $('st-ctlmsg').textContent = r.error || 'błąd'; }
+  setTimeout(loadCtl, 1500);
+};
+async function ctlPost(body) {
+  let r;
+  try {
+    r = await (await fetch('/api/inverter/ctl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+  } catch (e) { r = { ok: false, error: String(e) }; }
+  if (!r.ok) { $('st-ctlmsg').style.color = 'var(--eff-bad)'; $('st-ctlmsg').textContent = r.error || 'błąd'; }
+  setTimeout(loadCtl, 1500);
+}
+$('st-pz').onchange = () => { const v = $('st-pz').value; $('st-pz').value = ''; if (v) ctlPost({ pauza: v }); };
+$('st-pzend').onclick = () => ctlPost({ pauza: 'koniec' });
+const mnShow = () => {
+  const t = $('mn-tryb').value;
+  $('mn-min').hidden = $('mn-czas').value !== 'min';
+  $('mn-pw').hidden = $('mn-prz').hidden = !(t === 'grid' || t === 'discharge');
+  $('mn-smax').hidden = t !== 'grid';
+  $('mn-smin').hidden = t !== 'discharge';
+};
+$('mn-tryb').onchange = mnShow; $('mn-czas').onchange = mnShow;
+$('mn-go').onclick = () => {
+  const t = $('mn-tryb').value, c = $('mn-czas').value;
+  const name = $('mn-tryb').selectedOptions[0].text;
+  if (!confirm(`Włączyć ręcznie: ${name}` + (t === 'grid' || t === 'discharge' ? ` ${$('mn-kw').value} kW` : '') +
+    ` – ${c === 'min' ? ($('mn-min').value || '?') + ' min' : $('mn-czas').selectedOptions[0].text}?\n\nRęczne ma pierwszeństwo przed pauzą i strategią i jest wysyłane do falownika także przy wyłączonej strategii.`)) return;
+  ctlPost({ reczne: { tryb: t, czas: c === 'min' ? null : c, minuty: c === 'min' ? $('mn-min').value : null, kw: $('mn-kw').value,
+    soc_min: $('mn-socmin').value, soc_max: $('mn-socmax').value, przylacze_kw: $('mn-przyl').value } });
+};
+$('mn-stop').onclick = () => ctlPost({ reczne: { tryb: 'koniec' } });
+let mnUntil = null, mnSeen = 0;
+const fmtLeft = s => s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')} min` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+setInterval(() => {
+  if (!mnUntil) return;
+  const left = mnUntil - Date.now() / 1000;
+  $('mn-msg').textContent = left > 0 ? `zostało ${fmtLeft(left)}` : 'koniec – powrót do strategii…';
+  if (left < -3) { mnUntil = null; loadCtl(); }
+}, 1000);
+const modeDur = s => s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : `${Math.round(s / 60)} min`;
+let lastStrat = null;
+function renderStNow(c) {
+  const box = $('stnow'); if (!box) return;
+  const ds = c.desired, MN = c.mode_names || {};
+  const cap = t => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+  const sim = c.tryb !== 'wl' && !c.manual;
+  const now = lastStrat?.now;
+  let mode, cls = '';
+  if (ds) {
+    const PL = { auto: 'Autokonsumpcja', grid: 'Ładowanie z sieci', export: 'Sprzedaż z magazynu' };
+    mode = ds.ems === 1 ? 'Standby – dom z sieci' : PL[ds.plan] || cap(MN[ds.ems] || ds.label || '–');
+    cls = { 5: 'm-sell', 6: 'm-sell', 3: 'm-buy', 1: 'm-stby', 2: 'm-auto' }[ds.ems] || '';
+  } else if (sim && now) {
+    mode = cap(now.label); cls = { export: 'm-sell', grid: 'm-buy', standby: 'm-stby', auto: 'm-auto' }[now.mode] || '';
+  } else mode = 'Falownik (mySigen)';
+  box.className = 'st-now ' + cls;
+  $('stnow-mode').textContent = mode;
+  $('stnow-src').textContent = c.manual ? 'ręcznie' : c.tryb === 'wl' ? (c.src || '') : c.tryb === 'probny' ? 'próbnie – bez zapisu' : 'symulacja – sterowanie wyłączone';
+  $('stnow-why').textContent = ds ? (ds.why || '') + (c.applied ? '' : ' · wysyłam…') : (c.reason || '');
+  const x = lastStrat?.next && lastStrat.next.ts > Date.now() / 1000 ? lastStrat.next : null;
+  $('stnow-next').textContent = c.manual ? (c.manual.do ? 'ręczne do ' + new Date(c.manual.do * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : 'ręczne do anulowania')
+    : x ? `Następnie ${x.day !== 'dziś' ? x.day + ' ' : ''}${x.t}: ${x.label}` : 'bez zmian do końca planu';
+}
+async function loadCtl() {
+  let c;
+  try { c = await (await fetch('/api/inverter/ctl')).json(); } catch (e) { return; }
+  renderStNow(c);
+  if (document.activeElement?.id !== 'st-ctl') $('st-ctl').value = c.tryb;
+  const M = c.manual;
+  $('mn-stop').hidden = !M; $('mn-go').textContent = M ? 'Zmień ręczne' : 'Włącz ręczne';
+  mnUntil = M && M.do ? M.do : null;
+  if (M && !$('st-man').contains(document.activeElement) && !mnSeen) {   // formularz pokazuje aktywne polecenie
+    mnSeen = M.od; $('mn-tryb').value = M.tryb; $('mn-kw').value = M.kw; $('mn-socmin').value = M.soc_min;
+    $('mn-socmax').value = M.soc_max; $('mn-przyl').value = M.przylacze_kw; mnShow();
+  } else if (M && mnSeen !== M.od) mnSeen = 0;
+  if (!M) mnSeen = 0;
+  $('mn-msg').style.color = M ? 'var(--s-sell)' : 'var(--text-2)';
+  $('mn-msg').textContent = M ? (M.do ? '' : 'aktywne do anulowania') : '';
+  const paused = c.pause_until && c.pause_until * 1000 > Date.now();
+  $('st-pzbox').hidden = c.tryb !== 'wl';
+  $('st-pzend').hidden = !paused;
+  const hm = ts => ts ? new Date(ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–';
+  const m = $('st-ctlmsg');
+  m.style.color = c.error ? 'var(--eff-bad)' : c.tryb === 'wl' ? 'var(--s-sell)' : 'var(--text-2)';
+  m.textContent = M ? 'RĘCZNIE: ' + (c.desired ? c.desired.txt + ' – ' + (c.desired.why || '') : (c.reason || '')) +
+      (c.desired ? (c.applied ? ` · ✓ ustawione ${hm(c.applied_ts)}` : ' · wysyłam…') : '') + (c.error ? ' · błąd: ' + c.error : '')
+    : c.tryb === 'wyl' ? (c.owned ? 'oddaję sterowanie falownikowi…' : 'plan jest tylko symulacją – nic nie jest wysyłane')
+    : (c.tryb === 'probny' ? 'próbnie: ' : 'teraz: ') + (c.desired ? c.desired.txt + ' – ' + (c.desired.why || '') : 'brak polecenia – ' + (c.reason || '') + (c.tryb === 'wl' ? ' (sterowanie oddane falownikowi)' : '')) +
+      (c.tryb === 'wl' && c.desired ? (c.applied ? ` · ✓ ustawione ${hm(c.applied_ts)}` + (c.verify ? ` (odczyt: Remote EMS ${c.verify.enable}, tryb ${c.verify.mode})` : '') : ' · wysyłam…') : '') +
+      (c.error ? ' · błąd: ' + c.error : '');
+  $('st-ctldet').hidden = !(c.log || []).length;
+  const MN = c.mode_names || {};
+  const mname = v => v == null ? '–' : (MN[v] || v);
+  $('st-ctllog').innerHTML = (c.log || []).map(e => e.kind === 'zmiana'
+    ? `<tr><td>${hm(e.ts)}</td><td>${esc(mname(e.from))} → <b>${esc(mname(e.to))}</b>${e.dry ? ' <span class="status" style="display:inline">(próbnie)</span>' : ''}</td>` +
+      `<td>${esc(e.src || '')}</td><td>${e.soc != null ? e.soc.toFixed(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.det || '')}</td></tr>`
+    : `<tr><td>${hm(e.ts)}</td><td>${e.kind === 'mail' ? '✉ ' : e.kind === 'blad' ? '✗ ' : ''}${esc(e.txt || '')}</td><td>${e.kind === 'mail' ? 'powiadomienie' : e.kind === 'blad' ? 'błąd' : e.kind === 'ustawienie' ? 'ustawienie' : esc(e.kind || '')}</td>` +
+      `<td>${e.soc != null ? e.soc.toFixed(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.why || '')}</td></tr>`).join('');
+  const ct = (o) => Object.entries(o || {}).map(([k, v]) => `${k} ${modeDur(v)}`).join(' · ');
+  $('st-ctltime').textContent = Object.keys(c.czas_24h || {}).length ? `Czas w trybach – ostatnie 24 h: ${ct(c.czas_24h)}` +
+    (Object.keys(c.czas_7d || {}).length ? ` | 7 dni: ${ct(c.czas_7d)}` : '') : '';
+}
 async function loadStrategy() {
   let d;
-  try { d = await (await fetch('/api/strategy')).json(); } catch (e) { return; }
+  try { d = await (await fetch('/api/strategy')).json(); } catch (e) { loadCtl(); return; }
+  if (d.ok) lastStrat = d;
+  loadCtl();
   const em = $('stempty');
   if (!d.ok) { em.hidden = false; em.textContent = 'Symulacja niedostępna: ' + (d.error || ''); $('sttiles').innerHTML = ''; $('ststatus').textContent = ''; return; }
   em.hidden = true;
   const P = d.params, T = d.totals, n = d.now, x = d.next;
   const pe = d.pradcast?.eval || {};
   const peTxt = Object.entries(pe).map(([h, v]) => `${h} ±${v.mae.toFixed(2)} zł${v.mape != null ? ' (' + v.mape + ' %)' : ''}, ${v.days} dni`).join(' · ');
-  $('ststatus').textContent = `przeliczono ${new Date(d.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ceny: ${d.price_source} · tylko symulacja` +
+  $('ststatus').textContent = `przeliczono ${new Date(d.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ceny: ${d.price_source}` +
     (peTxt ? ` · trafność Pradcast: ${peTxt}` : d.pradcast ? ' · trafność Pradcast: zbieram dane' : '');
   const col = v => v >= 0.005 ? 'c-green' : v <= -0.005 ? 'c-red' : 'c-blue';
   const sav = (lbl, t) => !t ? '' : ctile(col(t.saving_total), lbl, t.saving_total.toFixed(2), 'zł',
@@ -1357,10 +1541,18 @@ async function loadStrategy() {
     sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
     ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
       `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · ` + (P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
-      (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFixed(2)} zł` : ''));
+      (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFixed(2)} zł` : '') +
+      ` · moc ładowania z sieci ≤ ${P.p_charge ?? P.p_max_kw} kW, sprzedaży ≤ ${P.p_discharge ?? P.p_max_kw} kW` +
+      (P.standby_below_w ? ` · standby przy poborze < ${P.standby_below_w} W` : '') +
+      ((P.eta_curve || []).length ? ' · sprawność rozładowania przy małej mocy (pomiary 30 dni): ' +
+        P.eta_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : ''));
   const ae = document.activeElement?.id;
   if (ae !== 'st-floor') $('st-floor').value = P.sell_floor ?? '';
   if (ae !== 'st-cap') $('st-cap').value = P.buy_cap ?? '';
+  if (ae !== 'st-pc') $('st-pc').value = P.p_charge ?? '';
+  if (ae !== 'st-pd') $('st-pd').value = P.p_discharge ?? '';
+  if (ae !== 'st-sb') $('st-sb').value = P.standby_below_w ?? '';
+  $('st-pc').placeholder = $('st-pd').placeholder = P.p_max_kw;
   const H = d.hours, labels = H.map(h => `${h.day} ${h.t}`);
   const money = h => h.buy == null ? 0 : h.grid > 0 ? -h.grid * h.buy : -h.grid * h.sell;   // bez kosztu zuzycia baterii
   const sets = [
@@ -2325,7 +2517,6 @@ $('fb-gh').onclick = () => {
   $('fb-info').textContent = 'Otwieram GitHub (wymaga konta GitHub).';
 };
 
-$('outages').addEventListener('toggle', () => { if ($('outages').open) loadOutages(); });
 // moduly (Ustawienia -> "Co masz"): instalacja PV Sigen i/lub rekuperator Vallox
 let MODS = { pv: true, vallox: false };
 function startPv() {
@@ -2334,6 +2525,7 @@ function startPv() {
   setInterval(loadPvMonthly, 600000);
   setInterval(loadPrices, 300000);
   setInterval(loadStrategy, 300000);
+  setInterval(loadCtl, 30000);
   setInterval(loadRegs, 60000);
   setInterval(loadSettings, 60000);
   setInterval(loadBatTemps, 120000);

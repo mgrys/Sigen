@@ -26,3 +26,8 @@ vallox_*.json
 *.jks
 secrets*
 pradcast_hist.json
+
+# sterowanie falownikiem - stan lokalny
+inverter_ctl.ini
+inverter_ctl_log.json
+inverter_ctl_state.json

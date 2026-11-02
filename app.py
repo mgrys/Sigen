@@ -30,8 +30,9 @@ import gridwatch
 import meter
 import smartlife
 import vallox
+import inverter_ctl
 
-__version__ = "1.18.0"
+__version__ = "1.19.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -78,6 +79,15 @@ def read(client, addr, count, unit=PLANT_ID):
         return client.read_input_registers(addr, count=count, device_id=unit)
     except TypeError:
         return client.read_input_registers(addr, count=count, slave=unit)
+
+
+def write_holding(client, addr, values, unit=PLANT_ID):
+    """Zapis holding registers (funkcja 0x10) - TYLKO sterowanie Remote EMS wg strategii (inverter_ctl.py),
+    gdy uzytkownik wlaczyl je na stronie (domyslnie wylaczone)."""
+    try:
+        return client.write_registers(addr, values, device_id=unit)
+    except TypeError:
+        return client.write_registers(addr, values, slave=unit)
 
 
 def read_holding(client, addr, count, unit=PLANT_ID):
@@ -234,6 +244,10 @@ def poll_loop():
                 con = None
                 time.sleep(max(0.5, INTERVAL - (time.time() - t0)))
                 continue
+            try:                                         # sterowanie wg strategii (tylko gdy wlaczone na stronie)
+                inverter_ctl.apply(client, write_holding, read_holding)
+            except Exception:  # noqa: BLE001
+                pass
             if t0 - last_counters >= COUNTER_INTERVAL:
                 last_counters = t0
                 read_counters(client, con)
@@ -1086,7 +1100,7 @@ def api_pstryk(date: str | None = None):
             "sigen": {"imp": e.get("imp"), "exp": e.get("exp")}}
 
 
-# --- strategia osobista (SYMULACJA - nic nie jest wysylane do falownika) -----------------
+# --- strategia osobista (plan; wykonanie przez inverter_ctl.py tylko po wlaczeniu na stronie) -----------------
 STRAT = {"cap_kwh": config.getf("strategia", "pojemnosc_kwh", 0) or None,
          "p_max_kw": config.getf("strategia", "moc_ladowania_kw", 5.0),
          "eta_c": config.getf("strategia", "sprawnosc_ladowania", 0.95),
@@ -1095,7 +1109,11 @@ STRAT = {"cap_kwh": config.getf("strategia", "pojemnosc_kwh", 0) or None,
          "wear": config.getf("strategia", "koszt_zuzycia_zl_kwh", 0.10)}
 EST_SELL = 0.9   # gdy brak cen na jutro (przyjete z dzis), cena sprzedazy liczona ostrozniej
 _strat_cache = {"ts": 0, "data": None}
-LIMIT_KEYS = {"sell_floor": "sprzedaz_z_magazynu_od", "buy_cap": "ladowanie_z_sieci_do"}
+LIMIT_KEYS = {"sell_floor": "sprzedaz_z_magazynu_od", "buy_cap": "ladowanie_z_sieci_do",
+              "p_charge": "moc_ladowania_z_sieci_maks_kw", "p_discharge": "moc_sprzedazy_maks_kw",
+              "standby_below_w": "standby_ponizej_w"}
+LIMIT_RANGE = {"p_charge": (0.5, 30, "moc 0,5–30 kW"), "p_discharge": (0.5, 30, "moc 0,5–30 kW"),
+               "standby_below_w": (0, 3000, "próg 0–3000 W")}
 
 
 def strat_limits():
@@ -1224,6 +1242,30 @@ def _market_actual(con):
     return f
 
 
+_eta_cache = {"ts": 0, "data": []}
+ETA_CURVE_DAYS = 30
+ETA_CURVE_MAX_KW = 1.0     # krzywa tylko dla malych mocy - wyzej stala sprawnosc STRAT["eta_d"]
+
+
+def _eta_curve():
+    """Sprawnosc falownika przy malej mocy z pomiarow (tabela sprawnosci, ostatnie 30 dni): [{od, do, eta, godzin}].
+    Przedzialy z co najmniej 1 h danych; odswiezane co godzine. Plan widzi, ze kilkaset W z magazynu to duze straty."""
+    now = time.time()
+    if now - _eta_cache["ts"] < 3600:
+        return _eta_cache["data"]
+    out = []
+    try:
+        for b in efficiency(None, ETA_CURVE_DAYS)["bins"]:
+            if b["od"] < ETA_CURVE_MAX_KW and b["godzin"] >= 1 and b["sprawnosc"]:
+                out.append({"od": b["od"], "do": b["do"] or ETA_CURVE_MAX_KW,
+                            "eta": round(max(0.4, min(0.97, b["sprawnosc"] / 100)), 3),
+                            "godzin": b["godzin"], "strata_w": b["strata_sr_w"]})
+    except Exception:  # noqa: BLE001 - bez krzywej plan liczy ze stala sprawnoscia
+        out = []
+    _eta_cache.update(ts=now, data=out)
+    return out
+
+
 def compute_strategy():
     now = time.time()
     if _strat_cache["data"] and now - _strat_cache["ts"] < 300:
@@ -1292,7 +1334,7 @@ def compute_strategy():
         hours.append({"ts": ts, "day": DAY_TXT.get((d - today).days, d.isoformat()), "t": time.strftime("%H:00", lt),
                       "fc": est and ts in fc,
                       "load": prof[lt.tm_hour] * frac, "pv": pv.get(d, [0] * 24)[lt.tm_hour] * frac,
-                      "buy": buy, "sell": sell, "est": est})
+                      "buy": buy, "sell": sell, "est": est, "dur": frac})
     if not hours:
         return {"ok": False, "error": "brak cen energii na dziś (PSE / Pstryk)"}
     st0 = min(max(float(soc) / 100 * cap, smin), smax)
@@ -1302,7 +1344,13 @@ def compute_strategy():
     strategy.WEAR = STRAT["wear"]
     lim = strat_limits()
     strategy.SELL_FLOOR, strategy.BUY_CAP = lim["sell_floor"], lim["buy_cap"]
-    pl = strategy.plan(hours, st0, *args, terminal_price=terminal)
+    strategy.P_CHARGE, strategy.P_DISCHARGE = lim["p_charge"], lim["p_discharge"]
+    strategy.MIN_DISCHARGE = lim["standby_below_w"] / 1000 if lim.get("standby_below_w") else None
+    curve = _eta_curve()
+    strategy.ETA_D_CURVE = [(c["od"], c["do"], c["eta"]) for c in curve] or None
+    cur = inverter_ctl.state.get("desired") if inverter_ctl.state.get("tryb") == "wl" else None
+    mode0 = {1: "standby", 2: "auto", 3: "grid", 5: "export", 6: "export"}.get(cur.get("ems") if cur else None, "auto")
+    pl = strategy.plan(hours, st0, *args, terminal_price=terminal, mode0=mode0)
     bl = strategy.baseline(hours, st0, *args)
     out, tot = [], {}
     for h, p, b in zip(hours, pl, bl):
@@ -1364,9 +1412,60 @@ def compute_strategy():
             "params": {"cap_kwh": round(cap, 2), "soc_min": round(100 * smin / cap), "soc_max": round(100 * smax / cap),
                        "p_max_kw": STRAT["p_max_kw"], "eta_c": STRAT["eta_c"], "eta_d": STRAT["eta_d"],
                        "sell_factor": STRAT["sell_factor"], "wear": STRAT["wear"], "terminal_price": round(terminal, 3),
-                       "profile_hours": nprof, "soc_now": soc, "sell_floor": lim["sell_floor"], "buy_cap": lim["buy_cap"]}}
+                       "profile_hours": nprof, "soc_now": soc, "sell_floor": lim["sell_floor"], "buy_cap": lim["buy_cap"],
+                       "p_charge": lim["p_charge"], "p_discharge": lim["p_discharge"],
+                       "standby_below_w": lim.get("standby_below_w"), "eta_curve": curve}}
     _strat_cache.update(ts=now, data=data)
     return data
+
+
+@app.get("/api/inverter/ctl")
+def api_inverter_ctl():
+    """Sterowanie falownikiem wg strategii (domyslnie wylaczone) - stan, polecenie, dziennik zmian trybu."""
+    return inverter_ctl.status()
+
+
+@app.post("/api/inverter/ctl")
+def api_inverter_ctl_set(payload: dict = Body(...)):
+    """{"tryb": "wyl" | "probny" | "wl"} albo {"pauza": "godzina" | "1h" | "3h" | "polnoc" | "jutro" | "koniec"}
+    albo {"reczne": {"tryb": "standby" | "auto" | "grid" | "discharge" | "koniec", "czas": "15m" | "30m" | "1h" | "2h" |
+    "cancel", "minuty": N, "kw": ..., "soc_min": ..., "soc_max": ..., "przylacze_kw": ...}}."""
+    try:
+        if payload.get("reczne"):
+            r = payload["reczne"]
+            inverter_ctl.set_manual(str(r.get("tryb") or "").lower(), r.get("czas"), r.get("minuty"), r.get("kw"),
+                                    r.get("soc_min"), r.get("soc_max"), r.get("przylacze_kw"))
+        elif payload.get("pauza"):
+            inverter_ctl.set_pause(str(payload["pauza"]).lower())
+        else:
+            inverter_ctl.set_tryb(str(payload.get("tryb") or "").lower())
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    try:
+        inverter_ctl.tick()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, **inverter_ctl.status()}
+
+
+def _soc_now():
+    with lock:
+        return (latest.get("soc"), latest.get("ts")) if latest.get("ok") else (None, None)
+
+
+def _ctl_limits():
+    """(maks. moc ladowania z sieci, maks. moc rozladowania przy sprzedazy) [kW] - pulapy uzytkownika <= p_max."""
+    lim, pm = strat_limits(), STRAT["p_max_kw"]
+    return (min(pm, lim["p_charge"]) if lim["p_charge"] else pm, min(pm, lim["p_discharge"]) if lim["p_discharge"] else pm)
+
+
+inverter_ctl.get_load = lambda: latest.get("load") if latest.get("ok") else None
+inverter_ctl.get_pv = lambda: latest.get("pv") if latest.get("ok") else None
+
+
+def release_inverter():
+    """Zatrzymanie aplikacji - oddanie sterowania falownikowi (tylko gdy aplikacja nim sterowala)."""
+    inverter_ctl.release_now(lambda: ModbusTcpClient(HOST, port=PORT, timeout=3), write_holding)
 
 
 @app.post("/api/strategy/limits")
@@ -1374,15 +1473,18 @@ def api_strategy_limits(payload: dict = Body(...)):
     """Pulapy cenowe strategii: {"sell_floor": 2.5, "buy_cap": 0.8} (puste = brak) - zapis w config.ini [strategia]."""
     vals = {}
     for k, key in LIMIT_KEYS.items():
+        if k not in payload:                     # brak pola = bez zmian
+            continue
         v = payload.get(k)
         if v in (None, ""):
             vals[key] = ""
             continue
+        lo, hi, msg = LIMIT_RANGE.get(k, (0, 20, "pułap 0–20 zł/kWh"))
         try:
             v = float(str(v).replace(",", "."))
-            assert 0 <= v <= 20
+            assert lo <= v <= hi
         except (TypeError, ValueError, AssertionError):
-            return JSONResponse({"ok": False, "error": "pułap 0–20 zł/kWh"}, status_code=400)
+            return JSONResponse({"ok": False, "error": msg}, status_code=400)
         vals[key] = f"{v:g}"
     config.update({"strategia": vals})
     _strat_cache.update(ts=0, data=None)
@@ -1391,7 +1493,7 @@ def api_strategy_limits(payload: dict = Body(...)):
 
 @app.get("/api/strategy")
 def api_strategy():
-    """Strategia osobista - symulacja planu magazynu na dzis i jutro (tylko obliczenia, bez sterowania)."""
+    """Strategia osobista - plan magazynu (sterowanie falownikiem osobno: /api/inverter/ctl, domyslnie wylaczone)."""
     try:
         return compute_strategy()
     except Exception as e:  # noqa: BLE001
@@ -1779,6 +1881,9 @@ def start_background():
         threading.Thread(target=poll_loop, daemon=True, name="modbus").start()
         threading.Thread(target=forecast.loop, args=(db_connect,), daemon=True, name="forecast").start()
         threading.Thread(target=efficiency_loop, daemon=True, name="efficiency").start()
+        inverter_ctl.P_MAX = STRAT["p_max_kw"]
+        threading.Thread(target=inverter_ctl.decide_loop, args=(compute_strategy, _soc_now, _ctl_limits),
+                         daemon=True, name="inverter_ctl").start()
     threading.Thread(target=prices.loop, args=(db_connect,), daemon=True, name="prices").start()
     threading.Thread(target=pstryk.loop, args=(lambda: config.get("pstryk", "api_key", ""), db_connect),
                      daemon=True, name="pstryk").start()

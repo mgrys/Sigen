@@ -80,7 +80,7 @@ DEFAULTS = {
         "forecast_solar": "tak",         # forecast.solar (limit 12 zapytan/h)
         "korekta": "",                   # np. open_meteo=1.05, om_ecmwf=0.97
     },
-    "strategia": {                       # strategia osobista - tylko symulacja (nic nie trafia do falownika)
+    "strategia": {                       # strategia osobista - plan; sterowanie falownikiem osobno, domyslnie wylaczone
         "pojemnosc_kwh": "",             # puste = odczyt z falownika
         "moc_ladowania_kw": "5",         # maks. moc ladowania/rozladowania magazynu
         "sprawnosc_ladowania": "0.95",
@@ -90,6 +90,9 @@ DEFAULTS = {
         "koszt_zuzycia_zl_kwh": "0.10",  # zuzycie baterii: zl za kWh oddana z magazynu (0 = pomijaj)
         "sprzedaz_z_magazynu_od": "",    # pulap [zl/kWh]: sprzedaz z magazynu do sieci przy cenie sprzedazy >= pulap; puste = bez
         "ladowanie_z_sieci_do": "",      # pulap [zl/kWh]: ladowanie z sieci tylko przy cenie zakupu <= pulap; puste = bez limitu
+        "moc_ladowania_z_sieci_maks_kw": "",  # oszczedzanie baterii: maks. moc ladowania z sieci; puste = moc_ladowania_kw
+        "moc_sprzedazy_maks_kw": "",     # maks. moc rozladowania przy sprzedazy z magazynu; puste = moc_ladowania_kw
+        "standby_ponizej_w": "",         # przy przewidywanym poborze domu ponizej [W] - standby zamiast rozladowania
     },
     "pstryk": {
         "api_key": "",                   # klucz API Pstryka (aplikacja Pstryk -> Integracje); puste = bez Pstryka

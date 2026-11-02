@@ -90,6 +90,11 @@ def main():
     except Exception as e:  # noqa: BLE001
         _message(f"Nie udało się uruchomić serwera na porcie {args.port}:\n{e}\n\nSzczegóły: {log_file}")
         sys.exit(1)
+    finally:                                    # zatrzymanie - oddaj sterowanie falownikowi (gdy bylo wlaczone)
+        try:
+            app.release_inverter()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 if __name__ == "__main__":

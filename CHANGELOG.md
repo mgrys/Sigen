@@ -2,6 +2,38 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.19.0] - 2026-11-02
+
+### Dodano
+- **Sterowanie falownikiem wg strategii osobistej (Remote EMS po Modbus) – po instalacji WYŁĄCZONE.** Karta
+  strategii: *wyłączone* (symulacja) / *próbnie* (dziennik bez zapisu) / *włączone* (z potwierdzeniem). Plan →
+  Remote EMS: autokonsumpcja 2, standby 1, ładowanie z sieci 3 (moc 40032), sprzedaż z magazynu 6 (moc 40034; przy
+  PV ≥ 0,5 kW tryb 5). Moc rozkładana na resztę godziny (≤ limit), koniec ładowania / sprzedaży na SOC z planu,
+  potem standby. Odczyt kontrolny po zapisie, ponowienie co 10 min; brak planu / brak świeżego SOC / wyłączenie /
+  zamknięcie aplikacji = oddanie sterowania falownikowi. Po starcie aplikacja czeka na pierwszy odczyt (bez
+  zbędnego oddawania). Awaryjnie `tools/inverter_release.py`. Pliki stanu w folderze danych (`inverter_ctl.*`).
+- **Sterowanie ręczne**: Standby / Samozużycie / Ładowanie z sieci / Rozładowanie ze stałą mocą na 15 min – 2 h,
+  własny czas lub do anulowania; licznik czasu, „Anuluj”; priorytet ręczne > pauza > strategia; granice SOC
+  i limit przyłącza (domyślnie 22 kW); stan przetrwa restart.
+- **Pauza sterowania** (do końca godziny / 1 h / 3 h / do północy / do jutra 6:00) – potem automat sam wraca.
+- **Dziennik tylko zmian trybu** (czas, poprzedni → nowy, źródło, SOC, szczegóły) i czas w trybach (24 h / 7 dni).
+- Strategia: **maks. moc ładowania z sieci i sprzedaży** (oszczędzanie baterii; plan rozkłada ładowanie na więcej
+  tanich godzin), **straty falownika przy małej mocy** ze zmierzonej sprawności (do 1 kW, 30 dni) i opcjonalny
+  próg „standby, gdy dom pobiera < … W” – config.ini `[strategia] moc_ladowania_z_sieci_maks_kw`,
+  `moc_sprzedazy_maks_kw`, `standby_ponizej_w` (też na stronie). Plan zaczyna od bieżącego trybu falownika
+  (mniej przełączeń).
+- Strona główna: **„Strategia – teraz”** obok schematu przepływów – bieżący tryb dużą czcionką (kolorem), źródło,
+  powód i następna zmiana planu.
+- Prognoza – **Trafność prognoz**: wiersz „Średnie odchylenie” (kWh/dzień i % produkcji, zawyżanie / zaniżanie
+  w podpowiedzi) z kolorami rankingu, komórki dni podbarwione wg błędu dnia.
+
+### Zmieniono
+- Usunięta rozwijana historia zaników sieci ze strony głównej (zostaje „Ostatni zanik sieci”; historia w
+  `/api/grid_events`).
+
+### Poprawiono
+- Komórki tabel z opisem rozpychały pierwszą kolumnę (tabela trafności, plan strategii).
+
 ## [1.18.0] - 2026-10-29
 
 ### Dodano

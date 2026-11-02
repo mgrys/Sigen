@@ -4,8 +4,10 @@ Lokalny podgląd instalacji fotowoltaicznej z magazynem energii **Sigenergy (Sig
 przepływy mocy na żywo, liczniki energii, prognoza produkcji, ceny energii z PSE, sprawność falownika
 i pełna lista odczytów – w przeglądarce, na komputerze i telefonie w sieci domowej.
 
-> Nieoficjalny projekt open source, **niezwiązany z Sigenergy**. Aplikacja **tylko odczytuje** dane
-> z falownika (Modbus TCP, funkcje 0x03/0x04) – niczego w nim nie zmienia.
+> Nieoficjalny projekt open source, **niezwiązany z Sigenergy**. Domyślnie aplikacja **tylko odczytuje** dane
+> z falownika (Modbus TCP, funkcje 0x03/0x04) – niczego w nim nie zmienia. Opcjonalne
+> [sterowanie falownikiem wg strategii](#sterowanie-falownikiem-opcjonalnie-domyślnie-wyłączone) jest po instalacji
+> **wyłączone** i działa dopiero po świadomym włączeniu na stronie.
 
 ![Przegląd: przepływy mocy na żywo i prognoza produkcji](docs/screens/01_przeglad.png)
 
@@ -19,7 +21,8 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Prognoza produkcji** na dziś i jutro dla każdej połaci dachu:
   - Open-Meteo (6 modeli pogodowych: ECMWF, ICON-EU, UK Met Office, GFS, Météo-France i automatyczny),
   - forecast.solar,
-  - porównanie z rzeczywistą produkcją i tabela trafności prognoz.
+  - porównanie z rzeczywistą produkcją i tabela trafności prognoz ze **średnim odchyleniem** każdej prognozy
+    (kWh/dzień i % produkcji) i kolorami – zielony najtrafniejsza, czerwony najmniej trafna; dni podbarwione wg błędu.
 - **Realna produkcja każdego stringu PV** (napięcie × prąd) – dzień oraz produkcja w miesiącach (wykres słupkowy z licznika falownika).
 - **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G13… operatorów Tauron, PGE,
   Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
@@ -28,21 +31,67 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
   temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą, obejście wymiennika
   z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem, wykresy dnia i energia odzyskana.
   Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus) albo gniazdka SmartLife/Tuya (User Code + skan QR w Ustawieniach, bez adresu IP i bez konta deweloperskiego); inny miernik – patrz `meter.py`. Szczegóły i automaty: [Rekuperacja](#rekuperacja--vallox-seria-mv-opcjonalnie).
-- **Zaniki sieci (off-grid):** czerwony pasek i tło strony, gdy dom pracuje bez sieci, oraz historia zaników
-  (od kiedy, jak długo).
+- **Zaniki sieci (off-grid):** czerwony pasek i tło strony, gdy dom pracuje bez sieci, ostatni zanik na stronie
+  głównej (pełna historia: `/api/grid_events`).
 - **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.
 - **Opcjonalnie dla klientów [Pstryka](https://pstryk.pl/):** po wpisaniu klucza API (aplikacja Pstryk → Integracje)
   w zakładce Ustawienia pojawia się licznik operatora (pobór i oddanie, porównanie z licznikami Sigena),
   rzeczywiste koszty dnia i miesiąca z rozbiciem oraz ceny godzinowe Pstryka na wykresie cen.
   Bez klucza dashboard działa jak dotąd.
-- **Strategia osobista – symulacja:** godzinowy plan magazynu na dziś i jutro (autokonsumpcja / standby /
-  ładowanie z sieci w tanich godzinach) z szacowaną oszczędnością. Tylko obliczenia – nic nie jest wysyłane do falownika.
+- **Strategia osobista:** godzinowy plan magazynu na dziś i jutro (z kluczem Pradcast – do pojutrza): autokonsumpcja /
+  standby / ładowanie z sieci w tanich godzinach / sprzedaż z magazynu w drogich, z pułapami cen, limitami mocy
+  (oszczędzanie baterii) i zmierzonymi stratami falownika przy małej mocy; szacowana oszczędność. Na stronie głównej,
+  obok schematu przepływów, **„Strategia – teraz”** dużą czcionką. Plan może opcjonalnie sterować falownikiem –
+  [szczegóły](#sterowanie-falownikiem-opcjonalnie-domyślnie-wyłączone); domyślnie to tylko symulacja.
 - **Sprawność falownika** w przedziałach mocy (dzień, 7/30 dni, cała historia).
 - **Wszystkie odczyty falownika** (61 rejestrów) i ustawienia (tylko odczyt) z historią zmian.
 - Baza **SQLite** – darmowa, wbudowana, nic nie trzeba instalować.
 - Wszystkie ustawienia na stronie, w zakładce **Ustawienia**. Na górze **„Co masz”**: instalacja PV Sigen, rekuperator
   Vallox albo oba – z samym rekuperatorem aplikacja nie łączy się z falownikiem, nie pokazuje komunikatów o nim
   i otwiera się od razu na zakładce Rekuperacja.
+
+## Sterowanie falownikiem (opcjonalnie, domyślnie wyłączone)
+
+Plan strategii osobistej może być wykonywany przez falownik – przez **Remote EMS** (Modbus TCP, rejestry 40029–40034
+wg Sigenergy Modbus Protocol). **Po instalacji sterowanie jest wyłączone**: aplikacja niczego nie zapisuje w falowniku,
+dopóki nie przełączysz go na karcie *Strategia osobista*.
+
+- **Przełącznik:** *wyłączone* (plan = symulacja), *próbnie* (dziennik pokazuje, co zostałoby wysłane, bez zapisu),
+  *włączone* (z potwierdzeniem) – co kilka sekund falownik dostaje tryb bieżącej godziny planu:
+
+  | Plan | Remote EMS |
+  |---|---|
+  | autokonsumpcja | tryb 2 – maks. autokonsumpcja |
+  | standby (dom z sieci, magazyn stoi) | tryb 1 |
+  | ładowanie z sieci | tryb 3, moc 40032 |
+  | sprzedaż z magazynu | tryb 6 (najpierw magazyn, moc 40034); przy produkcji PV ≥ 0,5 kW tryb 5 |
+
+- **Moc:** energia z planu rozkładana na resztę godziny (z zapasem), nie więcej niż limit „Moc maks.”; ładowanie
+  i sprzedaż kończą się po osiągnięciu SOC z planu (dalej standby do końca godziny). Bez przeskakiwania trybów
+  na koniec godziny i bez skakania mocy co kilka minut.
+- **Ręcznie** (pierwszeństwo przed pauzą i strategią, działa też przy wyłączonej strategii): Standby, Samozużycie,
+  Ładowanie z sieci, Rozładowanie ze stałą mocą – na 15 min / 30 min / 1 h / 2 h / własny czas / do anulowania,
+  z licznikiem czasu i przyciskiem „Anuluj”. Ładowanie do „do SOC”, rozładowanie do „min. SOC”, moc ograniczona
+  tak, by dom + ładowanie (albo oddanie do sieci) nie przekroczyło limitu przyłącza (domyślnie 22 kW).
+  Stan zapisany w pliku – przetrwa restart.
+- **Pauza** (do końca godziny / 1 h / 3 h / do północy / do jutra 6:00) – sterowanie oddane falownikowi, potem automat
+  sam wraca do planu.
+- **Dziennik tylko zmian trybu:** czas, poprzedni → nowy tryb, źródło (strategia / ręczne / pauza / wyłączone / brak
+  danych), SOC, szczegóły; pod nim czas w każdym trybie (24 h, 7 dni).
+- **Bezpieczeństwo:** brak planu, brak świeżego odczytu SOC (> 3 min), wyłączenie sterowania albo zamknięcie aplikacji
+  = oddanie sterowania falownikowi (40029 = 0, wraca tryb z aplikacji mySigen). Po każdym zapisie odczyt kontrolny,
+  ponowienie co 10 min. Granice SOC, limity przyłącza i rezerwę backup pilnuje sam falownik. Awaryjnie:
+  `python tools/inverter_release.py`. Gdy komputer z aplikacją nagle się wyłączy (bez oddania sterowania),
+  falownik zostaje w ostatnim trybie – sprawdź wtedy aplikację mySigen.
+- **Wymagania:** serwer Modbus TCP włączony w aplikacji mySigen (ten sam co do odczytu). Polecenia z mySigen
+  (np. tryb AI, ręczne rozładowanie) mają pierwszeństwo przed Remote EMS. Zmiany z innych urządzeń w sieci – tylko
+  po PIN-ie (Ustawienia → Strona).
+
+Strategia uwzględnia też **straty falownika przy małej mocy**: rozładowanie do domu liczone ze zmierzoną sprawnością
+w przedziałach do 1 kW (tabela sprawności, 30 dni) – nocny pobór kilkuset W z magazynu jest przez straty droższy,
+więc plan częściej wybiera standby. Opcjonalny próg „Standby, gdy dom pobiera < … W” wymusza standby w takich
+godzinach. Ustawienia w config.ini `[strategia]`: `moc_ladowania_z_sieci_maks_kw`, `moc_sprzedazy_maks_kw`,
+`standby_ponizej_w` (też na stronie).
 
 ## Rekuperacja – Vallox seria MV (opcjonalnie)
 
@@ -317,6 +366,7 @@ Wszystkie endpointy zwracają JSON, np. do własnych integracji:
 - `/api/pv_monthly`
 - `/api/prices`
 - `/api/strategy`
+- `/api/inverter/ctl` (sterowanie falownikiem: stan, polecenie, dziennik; `POST` – tryb / pauza / ręczne, wymaga PIN-u z innych urządzeń)
 - `/api/pstryk?date=RRRR-MM-DD` (tylko z kluczem API Pstryka)
 - `/api/efficiency?days=30`
 - `/api/registers`
