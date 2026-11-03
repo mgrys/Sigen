@@ -19,7 +19,7 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Dzień:** liczniki energii z falownika (produkcja, zużycie, pobór i oddanie do sieci, ładowanie/rozładowanie),
   autokonsumpcja, samowystarczalność, wykres mocy, tabela godzinowa, historia dowolnego dnia.
 - **Prognoza produkcji** na dziś i jutro dla każdej połaci dachu:
-  - Open-Meteo (6 modeli pogodowych: ECMWF, ICON-EU, UK Met Office, GFS, Météo-France i automatyczny),
+  - Open-Meteo (4 modele pogodowe: ECMWF, ICON-EU, Météo-France i automatyczny),
   - forecast.solar,
   - porównanie z rzeczywistą produkcją i tabela trafności prognoz ze **średnim odchyleniem** każdej prognozy
     (kWh/dzień i % produkcji) i kolorami – zielony najtrafniejsza, czerwony najmniej trafna; dni podbarwione wg błędu.

@@ -32,7 +32,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.19.1"
+__version__ = "1.20.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -836,11 +836,12 @@ def eff_minutes(rows, dc_by_min):
     - minuty bez PV (np. noc, tylko magazyn) liczone z rejestrow mocy,
     - minuty z gwaltowna zmiana mocy (rozjazd odczytow) odrzucane.
     """
-    return [(h, i, o) for h, i, o, _m in eff_minutes_ex(rows, dc_by_min)]
+    return [(h, i, o) for h, i, o, _m, _b in eff_minutes_ex(rows, dc_by_min)]
 
 
 def eff_minutes_ex(rows, dc_by_min):
-    """Jak eff_minutes, ale z trybem minuty: 'konwersja' albo 'czuwanie' (brak przetwarzania PV/magazynu)."""
+    """Jak eff_minutes, ale z trybem minuty: 'konwersja' albo 'czuwanie' (brak przetwarzania PV/magazynu)
+    i moca magazynu (+ ladowanie, - rozladowanie): [(godzin, p_in, p_out, tryb, bat)]."""
     buckets = {}
     for ts, pv, bat, pl, *_ in rows:
         buckets.setdefault(ts // 60, []).append((pv, bat, pl))
@@ -868,7 +869,7 @@ def eff_minutes_ex(rows, dc_by_min):
         if p_out > p_in:                 # ujemna strata - rozjazd odczytow, minuta odrzucana
             continue
         mode = "czuwanie" if pv_in < STANDBY_KW and abs(bat) < STANDBY_KW else "konwersja"
-        out.append((1 / 60, p_in, p_out, mode))
+        out.append((1 / 60, p_in, p_out, mode, bat))
     return out
 
 
@@ -882,7 +883,7 @@ def loss_split(rows, dc_by_min, soc_min=None, soc_max=None):
     rows: (ts, pv, bat, plant, grid, soc)
     """
     out = {"konwersja": 0.0, "czuwanie": 0.0, "h_czuwanie": 0.0, "regulacja_pobor": 0.0, "regulacja_oddanie": 0.0}
-    for h, p_in, p_out, mode in eff_minutes_ex(rows, dc_by_min):
+    for h, p_in, p_out, mode, _bat in eff_minutes_ex(rows, dc_by_min):
         out[mode] += (p_in - p_out) * h
         if mode == "czuwanie":
             out["h_czuwanie"] += h
@@ -906,15 +907,27 @@ def loss_split(rows, dc_by_min, soc_min=None, soc_max=None):
     return res
 
 
+IDLE_BIN = -1      # przedzial "czuwanie": falownik nic nie przetwarza (PV i magazyn < 30 W) - zuzycie wlasne z sieci
+# Ladowanie magazynu wg mocy ladowania: minuty, w ktorych >= 70 % energii wyjsciowej idzie do magazynu (PV -> magazyn,
+# siec -> magazyn), zapisywane w efficiency_daily jako bin_from = CHG_BIN_OFFSET + od [kW] (ten sam podzial EFF_BINS).
+CHG_BIN_OFFSET = 100
+CHG_DOMINANT = 0.7
+ALL_BINS = [IDLE_BIN] + EFF_BINS + [CHG_BIN_OFFSET + b for b in EFF_BINS]
+
+
 def eff_bins_from_rows(rows, dc_by_min=None):
-    """{od: [godzin, e_in, e_out]} z probek (ts, pv, bat, plant) i mocy DC stringow {minuta: kW}."""
-    acc = {lo: [0.0, 0.0, 0.0] for lo in EFF_BINS}
-    for h, p_in, p_out in eff_minutes(rows, dc_by_min or {}):
-        lo = max(b for b in EFF_BINS if p_in >= b)
-        a = acc[lo]
-        a[0] += h
-        a[1] += p_in * h
-        a[2] += p_out * h
+    """{od: [godzin, e_in, e_out]} z probek (ts, pv, bat, plant) i mocy DC stringow {minuta: kW}.
+    Minuty czuwania (bez przetwarzania PV / magazynu) - osobno w IDLE_BIN, nie zanizaja sprawnosci przy malej mocy."""
+    acc = {lo: [0.0, 0.0, 0.0] for lo in ALL_BINS}
+    for h, p_in, p_out, mode, bat in eff_minutes_ex(rows, dc_by_min or {}):
+        los = [IDLE_BIN if mode == "czuwanie" else max(b for b in EFF_BINS if p_in >= b)]
+        if mode == "konwersja" and bat >= STANDBY_KW and p_out > 0 and bat >= CHG_DOMINANT * p_out:
+            los.append(CHG_BIN_OFFSET + max(b for b in EFF_BINS if bat >= b))
+        for lo in los:
+            a = acc[lo]
+            a[0] += h
+            a[1] += p_in * h
+            a[2] += p_out * h
     return acc
 
 
@@ -985,7 +998,7 @@ def efficiency(date: str | None = None, days: int = 1):
     first = None if days <= 0 else (d - dt.timedelta(days=days - 1)).isoformat()
     con = db_connect()
     try:
-        acc = {lo: [0.0, 0.0, 0.0] for lo in EFF_BINS}
+        acc = {lo: [0.0, 0.0, 0.0] for lo in ALL_BINS}
         today = dt.date.today()
         for day, lo, h, e_in, e_out in db.load_efficiency(con, first, d.isoformat()):
             if day == today.isoformat():
@@ -1005,23 +1018,29 @@ def efficiency(date: str | None = None, days: int = 1):
             n_days += 1 if n else 0
     finally:
         con.close()
-    out = []
-    for i, lo in enumerate(EFF_BINS):
-        h, e_in, e_out = acc[lo]
-        if h < 1 / 60:   # mniej niz minuta danych - pomijamy
-            continue
-        loss = e_in - e_out
-        out.append({
-            "od": lo, "do": EFF_BINS[i + 1] if i + 1 < len(EFF_BINS) else None,
-            "godzin": round(h, 2),
-            "e_in": round(e_in, 2),
-            "straty_kwh": round(loss, 3),
-            "strata_sr_w": round(1000 * loss / h),
-            "moc_sr_kw": round(e_in / h, 2),
-            "sprawnosc": round(100 * e_out / e_in, 1) if e_in > 0.01 else None,
-            "mala_probka": h < EFF_MIN_HOURS,
-        })
-    return {"date": d.isoformat(), "days": days, "n_days": n_days, "bins": out}
+    def _bins(off):
+        res = []
+        for i, lo in enumerate(EFF_BINS):
+            h, e_in, e_out = acc[off + lo]
+            if h < 1 / 60:   # mniej niz minuta danych - pomijamy
+                continue
+            loss = e_in - e_out
+            res.append({
+                "od": lo, "do": EFF_BINS[i + 1] if i + 1 < len(EFF_BINS) else None,
+                "godzin": round(h, 2),
+                "e_in": round(e_in, 2),
+                "e_out": round(e_out, 2),
+                "straty_kwh": round(loss, 3),
+                "strata_sr_w": round(1000 * loss / h),
+                "moc_sr_kw": round((e_out if off else e_in) / h, 2),
+                "sprawnosc": round(100 * e_out / e_in, 1) if e_in > 0.01 else None,
+                "mala_probka": h < EFF_MIN_HOURS,
+            })
+        return res
+    out, chg = _bins(0), _bins(CHG_BIN_OFFSET)
+    h, e_in, e_out = acc[IDLE_BIN]
+    idle = {"godzin": round(h, 2), "kwh": round(e_in - e_out, 3), "sr_w": round(1000 * (e_in - e_out) / h)} if h >= 1 / 60 else None
+    return {"date": d.isoformat(), "days": days, "n_days": n_days, "bins": out, "ladowanie": chg, "czuwanie": idle}
 
 
 @app.get("/api/registers")
@@ -1111,9 +1130,14 @@ EST_SELL = 0.9   # gdy brak cen na jutro (przyjete z dzis), cena sprzedazy liczo
 _strat_cache = {"ts": 0, "data": None}
 LIMIT_KEYS = {"sell_floor": "sprzedaz_z_magazynu_od", "buy_cap": "ladowanie_z_sieci_do",
               "p_charge": "moc_ladowania_z_sieci_maks_kw", "p_discharge": "moc_sprzedazy_maks_kw",
-              "standby_below_w": "standby_ponizej_w"}
+              "standby_below_w": "standby_ponizej_w", "tarcza": "tarcza_limit_zl_kwh",
+              "tarcza_rezerwa": "tarcza_rezerwa_proc"}
 LIMIT_RANGE = {"p_charge": (0.5, 30, "moc 0,5–30 kW"), "p_discharge": (0.5, 30, "moc 0,5–30 kW"),
-               "standby_below_w": (0, 3000, "próg 0–3000 W")}
+               "standby_below_w": (0, 3000, "próg 0–3000 W"), "tarcza": (0, 5, "limit tarczy 0–5 zł/kWh"),
+               "tarcza_rezerwa": (0, 100, "rezerwa 0–100 %")}
+LIMIT_DEFAULTS = {"tarcza": "0.61", "tarcza_rezerwa": "60"}
+RESERVE_FACTOR = 0.8   # rezerwa pod sprzedaz wyceniana na 80 % pulapu sprzedazy (sprzedaz w przyszlosci niepewna)
+TARCZA_MARGIN_DEFAULT = 0.098   # zl/kWh brutto - marza / oplata handlowa Pstryka (0,08 netto), gdy brak danych
 
 
 def strat_limits():
@@ -1121,11 +1145,52 @@ def strat_limits():
     cp = config.load()
     out = {}
     for k, key in LIMIT_KEYS.items():
-        v = cp.get("strategia", key, fallback="").strip().replace(",", ".")
+        v = cp.get("strategia", key, fallback=LIMIT_DEFAULTS.get(k, "")).strip().replace(",", ".")
         try:
             out[k] = float(v) if v else None
         except ValueError:
             out[k] = None
+    out["tarcza_mode"] = cp.get("strategia", "tarcza_tryb", fallback="auto").strip().lower() or "auto"   # auto | tak | nie
+    return out
+
+
+def tarcza_info(lim, now=None):
+    """Tarcza Pstryk: czy dziala w biezacym miesiacu i efektywna cena zakupu.
+
+    Tarcza ogranicza srednia cene samej energii w miesiacu (z VAT) do limitu. Gdy srednia jest powyzej limitu, kazda
+    kWh energii kosztuje tyle samo (limit) - niezaleznie od godziny zakupu. Zostaja skladniki zalezne od kWh, ktorych
+    tarcza nie obejmuje: marza / oplata handlowa Pstryka, dystrybucja zmienna, akcyza (z VAT).
+    efektywna cena zakupu = limit + marza + dystrybucja + akcyza  [zl/kWh brutto]."""
+    cap = lim.get("tarcza") or 0.61
+    mode = lim.get("tarcza_mode", "auto")
+    out = {"cap": cap, "mode": mode, "active": False, "avg": None, "eff_buy": None, "margin": None, "rest": None}
+    if not pstryk.enabled() or mode == "nie":
+        out["reason"] = "wyłączona" if mode == "nie" else "brak Pstryka"
+        return out
+    now = now or time.time()
+    d = dt.date.fromtimestamp(now)
+    ms = day_range(d.replace(day=1))[0]
+    con = db_connect()
+    try:
+        month = pstryk.load(con, ms, int(now) + 3600)
+        recent = pstryk.load(con, int(now) - 14 * 86400, int(now) + 3600)
+    finally:
+        con.close()
+    imp = sum(r.get("imp") or 0 for r in month)
+    if imp > 0.5:
+        out["avg"] = round(sum(r.get("energy_net") or 0 for r in month) * 1.23 / imp, 3)
+        out["month_kwh"] = round(imp, 1)
+    rimp = sum(r.get("imp") or 0 for r in recent)
+    if rimp > 0.5:
+        out["margin"] = round(sum(r.get("service") or 0 for r in recent) * 1.23 / rimp, 4)
+        out["rest"] = round(sum((r.get("dist_var") or 0) + (r.get("excise") or 0) for r in recent) * 1.23 / rimp, 4)
+    margin = out["margin"] if out["margin"] is not None else TARCZA_MARGIN_DEFAULT
+    rest = out["rest"] if out["rest"] is not None else 0.10
+    out["eff_buy"] = round(cap + margin + rest, 4)
+    out["active"] = mode == "tak" or (out["avg"] is not None and out["avg"] > cap)
+    out["reason"] = ("włączona ręcznie" if mode == "tak" else
+                     f"średnia energii {out['avg']:.2f} zł > limit {cap:.2f} zł" if out["active"] else
+                     f"średnia energii {out['avg']:.2f} zł ≤ limit – ceny godzinowe" if out["avg"] is not None else "za mało danych w miesiącu")
     return out
 
 
@@ -1242,28 +1307,47 @@ def _market_actual(con):
     return f
 
 
-_eta_cache = {"ts": 0, "data": []}
+_eta_cache = {"ts": 0, "data": [], "chg": []}
+ETA_C_MIN = 0.80           # PV do magazynu (EMS 4) dopiero od mocy, przy ktorej zmierzona sprawnosc ladowania >= 80 %
+PVCHG_MIN_FLOOR = 0.5      # i nie ponizej 0,5 kW (krok limitu ladowania w sterowaniu)
 ETA_CURVE_DAYS = 30
 ETA_CURVE_MAX_KW = 1.0     # krzywa tylko dla malych mocy - wyzej stala sprawnosc STRAT["eta_d"]
 
 
 def _eta_curve():
     """Sprawnosc falownika przy malej mocy z pomiarow (tabela sprawnosci, ostatnie 30 dni): [{od, do, eta, godzin}].
-    Przedzialy z co najmniej 1 h danych; odswiezane co godzine. Plan widzi, ze kilkaset W z magazynu to duze straty."""
+    Przedzialy z co najmniej 1 h danych; odswiezane co godzine."""
     now = time.time()
     if now - _eta_cache["ts"] < 3600:
         return _eta_cache["data"]
-    out = []
+    out, chg = [], []
     try:
-        for b in efficiency(None, ETA_CURVE_DAYS)["bins"]:
-            if b["od"] < ETA_CURVE_MAX_KW and b["godzin"] >= 1 and b["sprawnosc"]:
-                out.append({"od": b["od"], "do": b["do"] or ETA_CURVE_MAX_KW,
-                            "eta": round(max(0.4, min(0.97, b["sprawnosc"] / 100)), 3),
-                            "godzin": b["godzin"], "strata_w": b["strata_sr_w"]})
+        eff = efficiency(None, ETA_CURVE_DAYS)
+        for key, dst in (("bins", out), ("ladowanie", chg)):
+            for b in eff.get(key) or []:
+                if b["od"] < ETA_CURVE_MAX_KW and b["godzin"] >= 1 and b["sprawnosc"]:
+                    dst.append({"od": b["od"], "do": b["do"] or ETA_CURVE_MAX_KW,
+                                "eta": round(max(0.4, min(0.97, b["sprawnosc"] / 100)), 3),
+                                "godzin": b["godzin"], "strata_w": b["strata_sr_w"]})
     except Exception:  # noqa: BLE001 - bez krzywej plan liczy ze stala sprawnoscia
-        out = []
-    _eta_cache.update(ts=now, data=out)
+        out, chg = [], []
+    _eta_cache.update(ts=now, data=out, chg=chg)
     return out
+
+
+def _eta_c_curve():
+    """Sprawnosc ladowania magazynu przy malej mocy ladowania (pomiary 30 dni): [{od, do, eta, godzin}]."""
+    _eta_curve()
+    return _eta_cache["chg"]
+
+
+def _pvchg_min_kw(chg):
+    """Prog trybu PV do magazynu z pomiarow: koniec najwyzszego przedzialu ponizej 1 kW ze sprawnoscia < ETA_C_MIN."""
+    thr = PVCHG_MIN_FLOOR
+    for c in chg:
+        if c["eta"] < ETA_C_MIN and c["do"] > thr:
+            thr = c["do"]
+    return round(min(thr, ETA_CURVE_MAX_KW), 2)
 
 
 def compute_strategy():
@@ -1337,19 +1421,40 @@ def compute_strategy():
                       "buy": buy, "sell": sell, "est": est, "dur": frac})
     if not hours:
         return {"ok": False, "error": "brak cen energii na dziś (PSE / Pstryk)"}
+    # Tarcza Pstryk: w miesiacu, w ktorym dziala, zakup energii kosztuje tyle samo o kazdej godzinie
+    lim = strat_limits()
+    try:
+        tz = tarcza_info(lim, now)
+    except Exception as e:  # noqa: BLE001
+        tz = {"active": False, "reason": f"błąd: {e}"}
+    if tz.get("active") and tz.get("eff_buy"):
+        cur_month = dt.date.fromtimestamp(now).month
+        for h in hours:
+            if time.localtime(h["ts"]).tm_mon == cur_month:
+                h["buy_hour"] = h["buy"]
+                h["buy"] = tz["eff_buy"]
+                h["tarcza"] = True
     st0 = min(max(float(soc) / 100 * cap, smin), smax)
     last = sorted(h["buy"] for h in hours[-24:])
     terminal = sum(last[:6]) / max(1, len(last[:6]))
     args = (smin, smax, STRAT["p_max_kw"], STRAT["eta_c"], STRAT["eta_d"])
     strategy.WEAR = STRAT["wear"]
-    lim = strat_limits()
     strategy.SELL_FLOOR, strategy.BUY_CAP = lim["sell_floor"], lim["buy_cap"]
     strategy.P_CHARGE, strategy.P_DISCHARGE = lim["p_charge"], lim["p_discharge"]
     strategy.MIN_DISCHARGE = lim["standby_below_w"] / 1000 if lim.get("standby_below_w") else None
+    rez = lim.get("tarcza_rezerwa")
+    if tz.get("active") and rez and lim.get("sell_floor"):
+        strategy.RESERVE_KWH = rez / 100 * cap
+        strategy.RESERVE_PRICE = lim["sell_floor"] * RESERVE_FACTOR
+    else:
+        strategy.RESERVE_KWH = strategy.RESERVE_PRICE = None
     curve = _eta_curve()
     strategy.ETA_D_CURVE = [(c["od"], c["do"], c["eta"]) for c in curve] or None
+    curve_c = _eta_c_curve()
+    strategy.ETA_C_CURVE = [(c["od"], c["do"], c["eta"]) for c in curve_c] or None
+    strategy.PVCHG_MIN_KW = inverter_ctl.PVCHG_MIN_KW = _pvchg_min_kw(curve_c)
     cur = inverter_ctl.state.get("desired") if inverter_ctl.state.get("tryb") == "wl" else None
-    mode0 = {1: "standby", 2: "auto", 3: "grid", 5: "export", 6: "export"}.get(cur.get("ems") if cur else None, "auto")
+    mode0 = {1: "standby", 2: "auto", 3: "grid", 4: "pvchg", 5: "export", 6: "export"}.get(cur.get("ems") if cur else None, "auto")
     pl = strategy.plan(hours, st0, *args, terminal_price=terminal, mode0=mode0)
     bl = strategy.baseline(hours, st0, *args)
     out, tot = [], {}
@@ -1414,7 +1519,10 @@ def compute_strategy():
                        "sell_factor": STRAT["sell_factor"], "wear": STRAT["wear"], "terminal_price": round(terminal, 3),
                        "profile_hours": nprof, "soc_now": soc, "sell_floor": lim["sell_floor"], "buy_cap": lim["buy_cap"],
                        "p_charge": lim["p_charge"], "p_discharge": lim["p_discharge"],
-                       "standby_below_w": lim.get("standby_below_w"), "eta_curve": curve}}
+                       "standby_below_w": lim.get("standby_below_w"), "eta_curve": curve, "eta_c_curve": curve_c,
+                       "pvchg_min_kw": strategy.PVCHG_MIN_KW, "tarcza_rezerwa": lim.get("tarcza_rezerwa"),
+                       "reserve_price": strategy.RESERVE_PRICE and round(strategy.RESERVE_PRICE, 2),
+                       "tarcza": tz}}
     _strat_cache.update(ts=now, data=data)
     return data
 
@@ -1461,6 +1569,8 @@ def _ctl_limits():
 
 inverter_ctl.get_load = lambda: latest.get("load") if latest.get("ok") else None
 inverter_ctl.get_pv = lambda: latest.get("pv") if latest.get("ok") else None
+inverter_ctl.get_flows = lambda: ({k: latest.get(k) for k in ("pv", "bat", "grid", "soc")}
+                                  if latest.get("ok") and time.time() - (latest.get("ts") or 0) < 60 else None)
 
 
 def release_inverter():
@@ -1472,6 +1582,11 @@ def release_inverter():
 def api_strategy_limits(payload: dict = Body(...)):
     """Pulapy cenowe strategii: {"sell_floor": 2.5, "buy_cap": 0.8} (puste = brak) - zapis w config.ini [strategia]."""
     vals = {}
+    if "tarcza_mode" in payload:
+        tm = str(payload.get("tarcza_mode") or "auto").lower()
+        if tm not in ("auto", "tak", "nie"):
+            return JSONResponse({"ok": False, "error": "tarcza: auto / tak / nie"}, status_code=400)
+        vals["tarcza_tryb"] = tm
     for k, key in LIMIT_KEYS.items():
         if k not in payload:                     # brak pola = bez zmian
             continue

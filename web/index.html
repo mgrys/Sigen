@@ -364,6 +364,9 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span title="Oszczędzanie baterii: plan rozkłada ładowanie z sieci na więcej tanich godzin, a falownik dostaje moc potrzebną na daną godzinę – nie więcej niż limit. Puste = maks. moc z symulacji">Moc maks.: ładowanie z sieci <input class="bp-num" id="st-pc" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW,
         sprzedaż z magazynu <input class="bp-num" id="st-pd" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW</span>
       <span title="Przy małym poborze falownik ma duże straty (np. 300 W do domu = ok. 400 W z magazynu). Puste = plan decyduje sam wg kosztów i zmierzonej sprawności przy małej mocy; wpisany próg = w godzinach z mniejszym przewidywanym poborem zawsze standby (dom z sieci, magazyn stoi)">Standby, gdy dom pobiera &lt; <input class="bp-num" id="st-sb" type="number" min="0" max="3000" step="50" style="width:70px"> W</span>
+      <span title="Tylko z Pstrykiem. Gdy Tarcza działa (średnia cena energii w miesiącu powyżej limitu), każda kWh z sieci kosztuje tyle samo – plan nie rozładowuje magazynu do domu, ładuje go z PV (tryb „PV do magazynu”) i trzyma energię na sprzedaż w drogich godzinach">Tarcza Pstryk: limit <input class="bp-num" id="st-tz" type="number" min="0" max="5" step="0.01" style="width:70px"> zł/kWh
+        <select id="st-tzm" class="fs-btn"><option value="auto">auto (wg średniej w miesiącu)</option><option value="tak">zawsze</option><option value="nie">wyłączona</option></select></span>
+      <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">rezerwa pod sprzedaż do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
       <span><button class="fs-btn" id="st-save" type="button">Zapisz pułapy</button> <span class="status" id="st-msg"></span></span>
     </div>
     <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
@@ -374,6 +377,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <button class="fs-btn" id="st-pzend" type="button" hidden>Wznów sterowanie</button></span>
       <span class="status" id="st-ctlmsg"></span>
     </div>
+    <div id="st-ctlmm" hidden style="margin:-4px 0 10px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--eff-bad);background:color-mix(in srgb, var(--eff-bad) 10%, transparent)"></div>
     <div class="bp-row" style="flex-wrap:wrap;gap:8px 14px;margin:-4px 0 10px" id="st-man">
       <span>Ręcznie: <select id="mn-tryb" class="fs-btn"><option value="standby">Standby</option><option value="auto">Samozużycie</option>
         <option value="grid">Ładowanie z sieci</option><option value="discharge">Rozładowanie ze stałą mocą</option></select></span>
@@ -491,6 +495,15 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <table><thead><tr><th>Moc przetwarzana</th><th>Czas [h]</th><th>Śr. moc [kW]</th><th>Energia wej. [kWh]</th>
       <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
       <tbody id="effbody"></tbody></table>
+    </div>
+    <h3 style="margin:14px 0 4px;font-size:14px">Ładowanie magazynu wg mocy ładowania</h3>
+    <p class="status" style="display:block;margin:0 0 6px">Minuty, w których co najmniej 70 % energii wyjściowej falownika idzie do magazynu
+      (PV → magazyn, sieć → magazyn). Sprawność = energia do magazynu (i AC) ÷ energia wejściowa. Strategia liczy ładowanie przy małej mocy
+      z tą sprawnością, a tryb „PV do magazynu” (Tarcza) włącza dopiero od mocy, przy której sprawność ≥ 80 % (min. 0,5 kW).</p>
+    <div style="overflow-x:auto">
+    <table><thead><tr><th>Moc ładowania</th><th>Czas [h]</th><th>Śr. moc ład. [kW]</th><th>Energia wej. [kWh]</th>
+      <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
+      <tbody id="effchgbody"></tbody></table>
     </div>
     <p class="status" style="margin-top:10px">Moc przetwarzana = PV + rozładowanie magazynu + pobór AC z sieci przez falownik.
       Sprawność = energia wyjściowa (ładowanie + AC) ÷ energia wejściowa. Wejście PV = moc DC stringów (napięcie × prąd),
@@ -1403,7 +1416,8 @@ $('st-save').onclick = async () => {
   try {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
-        p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value }) })).json();
+        p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value, tarcza: $('st-tz').value, tarcza_mode: $('st-tzm').value,
+        tarcza_rezerwa: $('st-rez').value }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
   $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
@@ -1505,13 +1519,17 @@ async function loadCtl() {
     : (c.tryb === 'probny' ? 'próbnie: ' : 'teraz: ') + (c.desired ? c.desired.txt + ' – ' + (c.desired.why || '') : 'brak polecenia – ' + (c.reason || '') + (c.tryb === 'wl' ? ' (sterowanie oddane falownikowi)' : '')) +
       (c.tryb === 'wl' && c.desired ? (c.applied ? ` · ✓ ustawione ${hm(c.applied_ts)}` + (c.verify ? ` (odczyt: Remote EMS ${c.verify.enable}, tryb ${c.verify.mode})` : '') : ' · wysyłam…') : '') +
       (c.error ? ' · błąd: ' + c.error : '');
+  const mm = c.mismatch;
+  $('st-ctlmm').hidden = !mm;
+  if (mm) $('st-ctlmm').innerHTML = `⚠ <b>${mm.alert ? 'Falownik robi co innego niż polecenie' : 'Możliwa niezgodność falownika'}</b> od ${hm(mm.since)}: ${esc(mm.txt || '')}` +
+    (mm.alert ? ' – sprawdź aplikację mySigen (jej polecenia mają pierwszeństwo przed Remote EMS).' : ' – obserwuję (ostrzeżenie po 5 min).');
   $('st-ctldet').hidden = !(c.log || []).length;
   const MN = c.mode_names || {};
   const mname = v => v == null ? '–' : (MN[v] || v);
   $('st-ctllog').innerHTML = (c.log || []).map(e => e.kind === 'zmiana'
     ? `<tr><td>${hm(e.ts)}</td><td>${esc(mname(e.from))} → <b>${esc(mname(e.to))}</b>${e.dry ? ' <span class="status" style="display:inline">(próbnie)</span>' : ''}</td>` +
       `<td>${esc(e.src || '')}</td><td>${e.soc != null ? e.soc.toFixed(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.det || '')}</td></tr>`
-    : `<tr><td>${hm(e.ts)}</td><td>${e.kind === 'mail' ? '✉ ' : e.kind === 'blad' ? '✗ ' : ''}${esc(e.txt || '')}</td><td>${e.kind === 'mail' ? 'powiadomienie' : e.kind === 'blad' ? 'błąd' : e.kind === 'ustawienie' ? 'ustawienie' : esc(e.kind || '')}</td>` +
+    : `<tr><td>${hm(e.ts)}</td><td>${e.kind === 'mail' ? '✉ ' : e.kind === 'blad' ? '✗ ' : e.kind === 'niezgodnosc' ? '⚠ ' : ''}${esc(e.txt || '')}</td><td>${e.kind === 'mail' ? 'powiadomienie' : e.kind === 'blad' ? 'błąd' : e.kind === 'ustawienie' ? 'ustawienie' : e.kind === 'niezgodnosc' ? 'niezgodność' : esc(e.kind || '')}</td>` +
       `<td>${e.soc != null ? e.soc.toFixed(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.why || '')}</td></tr>`).join('');
   const ct = (o) => Object.entries(o || {}).map(([k, v]) => `${k} ${modeDur(v)}`).join(' · ');
   $('st-ctltime').textContent = Object.keys(c.czas_24h || {}).length ? `Czas w trybach – ostatnie 24 h: ${ct(c.czas_24h)}` +
@@ -1545,10 +1563,22 @@ async function loadStrategy() {
       ` · moc ładowania z sieci ≤ ${P.p_charge ?? P.p_max_kw} kW, sprzedaży ≤ ${P.p_discharge ?? P.p_max_kw} kW` +
       (P.standby_below_w ? ` · standby przy poborze < ${P.standby_below_w} W` : '') +
       ((P.eta_curve || []).length ? ' · sprawność rozładowania przy małej mocy (pomiary 30 dni): ' +
-        P.eta_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : ''));
+        P.eta_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : '') +
+      ((P.eta_c_curve || []).length ? ' · sprawność ładowania przy małej mocy: ' +
+        P.eta_c_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : '') +
+      (P.pvchg_min_kw != null && P.tarcza && P.tarcza.active ? ` · PV do magazynu od ${String(P.pvchg_min_kw).replace('.', ',')} kW` : '')) +
+    (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
+      P.tarcza.active ? 'działa' : 'nie działa', '',
+      esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
+        ` (limit ${P.tarcza.cap.toFixed(2)} + marża ${(P.tarcza.margin ?? 0.098).toFixed(2)} + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż` +
+        (P.reserve_price ? ` · rezerwa pod sprzedaż do ${P.tarcza_rezerwa} % (wyceniana ${P.reserve_price.toFixed(2)} zł/kWh)` : '') : '')) : '');
   const ae = document.activeElement?.id;
   if (ae !== 'st-floor') $('st-floor').value = P.sell_floor ?? '';
   if (ae !== 'st-cap') $('st-cap').value = P.buy_cap ?? '';
+  const TZ = P.tarcza || {};
+  if (ae !== 'st-tz') $('st-tz').value = TZ.cap ?? 0.61;
+  if (ae !== 'st-tzm') $('st-tzm').value = TZ.mode || 'auto';
+  if (ae !== 'st-rez') $('st-rez').value = P.tarcza_rezerwa ?? '';
   if (ae !== 'st-pc') $('st-pc').value = P.p_charge ?? '';
   if (ae !== 'st-pd') $('st-pd').value = P.p_discharge ?? '';
   if (ae !== 'st-sb') $('st-sb').value = P.standby_below_w ?? '';
@@ -1649,13 +1679,18 @@ async function loadEff() {
   const hide = $('effhide').checked, bins = hide ? d.bins.filter(b => !b.mala_probka) : d.bins;
   const hidden = d.bins.length - bins.length;
   if (hidden) $('effinfo').textContent += ` Ukryto ${hidden} przedz. z małą próbką (* – łącznie mniej niż 15 min danych w przedziale).`;
-  $('effbody').innerHTML = bins.length ? bins.map(b =>
+  const effRow = b =>
     `<tr${b.mala_probka ? ' style="color:var(--muted)" title="mniej niż 15 min danych – wynik orientacyjny"' : ''}><td>${range(b)}${b.mala_probka ? ' *' : ''}</td><td>${b.godzin.toFixed(2)}</td><td>${b.moc_sr_kw.toFixed(2)}</td><td>${b.e_in.toFixed(2)}</td>` +
     `<td>${b.straty_kwh.toFixed(3)}</td><td>${b.strata_sr_w}</td>` +
     `<td>${b.sprawnosc == null ? '–' : (() => { const c = b.sprawnosc >= 90 ? '--eff-good' : b.sprawnosc >= 70 ? '--eff-mid' : '--eff-bad';
       return `<span class="effbar" style="width:${Math.max(4, Math.min(90, (b.sprawnosc - 50) * 1.8))}px;background:var(${c})"></span>` +
-        `<span style="color:var(${c});font-weight:600">${b.sprawnosc.toFixed(1)} %</span>`; })()}</td></tr>`
-  ).join('') : '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
+        `<span style="color:var(${c});font-weight:600">${b.sprawnosc.toFixed(1)} %</span>`; })()}</td></tr>`;
+  $('effbody').innerHTML = bins.length ? bins.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
+  const I = d.czuwanie;
+  if (I) $('effbody').innerHTML = `<tr style="color:var(--text-2)" title="falownik nic nie przetwarza – zużycie własne systemu z sieci"><td>czuwanie (bez przetwarzania)</td><td>${I.godzin.toFixed(2)}</td><td>–</td><td>–</td>` +
+    `<td>${I.kwh.toFixed(3)}</td><td>${I.sr_w}</td><td>–</td></tr>` + $('effbody').innerHTML;
+  const cb = (d.ladowanie || []).filter(b => !hide || !b.mala_probka);
+  $('effchgbody').innerHTML = cb.length ? cb.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych ładowania w tym okresie.</td></tr>';
 }
 $('effdays').onchange = loadEff;
 $('effhide').onchange = loadEff;

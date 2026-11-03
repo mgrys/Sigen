@@ -23,6 +23,7 @@ MODES = {
     "standby": ("standby – dom z sieci", 1),
     "grid": ("ładowanie z sieci", 3),
     "export": ("sprzedaż z magazynu", 5),
+    "pvchg": ("PV do magazynu, dom z sieci", 4),   # tylko z Tarcza: cale PV do magazynu (pod sprzedaz), dom z sieci
 }
 SELL_FLOOR = None   # zl/kWh - sprzedaz z magazynu tylko przy cenie sprzedazy >= pulap (None = bez sprzedazy z magazynu)
 BUY_CAP = None      # zl/kWh - ladowanie z sieci tylko przy cenie zakupu <= pulap (None = bez ograniczenia)
@@ -31,13 +32,33 @@ P_DISCHARGE = None  # kW - maks. moc rozladowania magazynu przy sprzedazy (None 
 # Sprawnosc rozladowania przy malej mocy (z pomiarow falownika): [(od kW, do kW, sprawnosc)]. Przy mocy kilkuset W
 # straty falownika sa duze (np. 300 W do domu = 400 W z magazynu) - plan widzi, ze taka energia jest drozsza.
 ETA_D_CURVE = None
+# Sprawnosc ladowania magazynu przy malej mocy ladowania (z pomiarow): [(od kW, do kW, sprawnosc)] - stale straty falownika
+# i BMS / przetwornic magazynu sa przy kilkuset W duza czescia energii, wiec slabe PV lepiej oddac do domu.
+ETA_C_CURVE = None
+# Rezerwa pod sprzedaz (Tarcza): energia w magazynie do RESERVE_KWH na koniec planu wyceniana po RESERVE_PRICE
+# (ostroznie liczona przyszla sprzedaz) zamiast po najtanszym zakupie - plan laduje magazyn (PV, tanio z sieci)
+# do rezerwy i trzyma ja na drogie godziny, takze poza horyzontem planu.
+RESERVE_KWH = None
+RESERVE_PRICE = None
 MIN_DISCHARGE = None  # kW - gdy dom pobiera mniej (minus PV), zamiast autokonsumpcji standby (dom z sieci)
+PVCHG_MIN_KW = 0.5   # PV do magazynu (EMS 4) tylko przy sredniej PV >= progu [kW] (app.py: z krzywej ladowania, min. 0,5)
+# Godziny z Tarcza Pstryk (h["tarcza"]): zakup po stalej cenie tarczy - przy niedoborze PV zawsze standby (dom z sieci),
+# magazyn ladowany z PV / z sieci tylko pod sprzedaz w drogich godzinach (rozladowanie do domu oszczedza tylko cene tarczy).
 
 
 def eta_at(p, default):
     """Sprawnosc rozladowania przy mocy p [kW] wg ETA_D_CURVE (powyzej krzywej - default)."""
     if ETA_D_CURVE and p > 0:
         for lo, hi, e in ETA_D_CURVE:
+            if lo <= p < hi:
+                return min(e, default)
+    return default
+
+
+def eta_c_at(p, default):
+    """Sprawnosc ladowania przy mocy ladowania p [kW] wg ETA_C_CURVE (powyzej krzywej - default)."""
+    if ETA_C_CURVE and p > 0:
+        for lo, hi, e in ETA_C_CURVE:
             if lo <= p < hi:
                 return min(e, default)
     return default
@@ -52,7 +73,7 @@ def _auto_d(load, pv, stored, s_min, s_max, p_max, eta_c, eta_d, dur=1.0):
 
 
 def _apply(stored, d, eta_c, eta_d, dur=1.0):
-    return stored + (d * eta_c if d > 0 else d / eta_at(-d / dur, eta_d))
+    return stored + (d * eta_c_at(d / dur, eta_c) if d > 0 else d / eta_at(-d / dur, eta_d))
 
 
 WEAR = 0.0   # zl za kWh oddana z magazynu (zuzycie baterii) - ustawiane z aplikacji
@@ -99,7 +120,9 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
     V = [[[0.0] * M for _ in range(n + 1)] for _ in range(T + 1)]
     for i in range(n + 1):  # energia zostawiona na koniec - wyceniana ostroznie (tania energia z sieci)
         for m in range(M):
-            V[T][i][m] = -(levels[i] - s_min) * eta_d * terminal_price
+            e = levels[i] - s_min
+            r = max(0.0, min(levels[i], RESERVE_KWH) - s_min) if RESERVE_KWH and RESERVE_PRICE else 0.0
+            V[T][i][m] = -(r * (RESERVE_PRICE or 0.0) + (e - r) * terminal_price) * eta_d
     choice = [[[None] * M for _ in range(n + 1)] for _ in range(T)]
 
     for t in range(T - 1, -1, -1):
@@ -107,6 +130,8 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
         load, pv, buy, sell = h["load"], h["pv"], h["buy"], h["sell"]
         dur = h.get("dur", 1.0)
         low = MIN_DISCHARGE is not None and 0 < (load - pv) / dur < MIN_DISCHARGE   # maly pobor - tylko standby
+        if h.get("tarcza") and load > pv + 0.005:
+            low = True    # Tarcza: dom z sieci po stalej cenie, magazyn tylko na sprzedaz (bez rozladowania do domu)
         surplus = max(pv - load, 0.0)
         for i in range(n + 1):
             s = levels[i]
@@ -122,6 +147,9 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
                 if avail > need + 0.05:
                     for k in range(1, ex_levels + 1):
                         opts.append((3, -(need + (avail - need) * k / ex_levels)))
+            if h.get("tarcza") and pv / dur >= PVCHG_MIN_KW and room > 0.05 and load > 0.02:
+                # Tarcza: cale PV do magazynu (Remote EMS 4, limit = moc PV), dom w calosci z sieci po cenie tarczy
+                opts.append((4, min(pv, p_chg, room)))
             evals = []
             for mi, d in opts:
                 j = idx(_apply(s, d, eta_c, eta_d, dur))
@@ -129,6 +157,8 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
                 c = _cost(grid, buy, sell, d)
                 if mi == 2:
                     c += TIE_EPS * (d - surplus) + SPREAD_EPS * (d - surplus) ** 2
+                elif mi == 4:
+                    c += TIE_EPS * 0.7 * dur
                 elif mi == 3:
                     c += TIE_EPS * (-d) + SPREAD_EPS * d * d
                 elif mi == 1:
@@ -159,6 +189,8 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
 def label(step, h):
     """Opis kroku dla uzytkownika."""
     surplus = max(h["pv"] - h["load"], 0.0)
+    if step["mode"] == "pvchg":
+        return f"PV do magazynu {step['d']:.1f} kWh, dom z sieci"
     if step["mode"] == "export":
         out = max(0.0, -step["d"] - max(h["load"] - h["pv"], 0.0))
         return f"sprzedaż z magazynu {out:.1f} kWh"
@@ -166,6 +198,8 @@ def label(step, h):
         return f"ładowanie z sieci {max(step['d'] - surplus, 0):.1f} kWh"
     if step["mode"] == "grid" and step["d"] - surplus > 0.005:
         return "ładowanie z sieci < 0,1 kWh"
+    if step["mode"] == "standby" and h.get("tarcza") and h["load"] > h["pv"] + 0.005:
+        return "standby – tarcza (dom z sieci)"
     if step["mode"] == "standby" and MIN_DISCHARGE is not None and 0 < h["load"] - h["pv"] < MIN_DISCHARGE * h.get("dur", 1.0):
         return "standby – mały pobór (straty falownika)"
     if step["mode"] == "standby":

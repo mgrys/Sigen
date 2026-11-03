@@ -2,6 +2,25 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.20.0] - 2026-11-03
+
+### Dodano
+- Strategia: **Tarcza Pstryk** (tylko z Pstrykiem; limit, tryb auto / zawsze / wyłączona) – w miesiącu, w którym
+  Tarcza działa, zakup liczony po stałej cenie (limit + marża + dystrybucja i akcyza); magazyn nie jest rozładowywany
+  do domu, tylko trzymany na sprzedaż.
+- Strategia: tryb **PV do magazynu, dom z sieci** (Remote EMS 4, limit = bieżąca moc PV) – w godzinach z Tarczą całe PV
+  idzie do magazynu pod sprzedaż; poniżej progu mocy standby.
+- Strategia: **rezerwa pod sprzedaż** przy Tarczy (domyślnie 60 % pojemności, wyceniana na 80 % pułapu sprzedaży).
+- Sprawność: tabela **ładowania magazynu wg mocy ładowania** i wiersz **czuwania** (falownik nic nie przetwarza);
+  strategia liczy ładowanie przy małej mocy ze zmierzoną sprawnością, próg PV do magazynu z pomiarów (sprawność ≥ 80 %,
+  min. 0,5 kW).
+- Sterowanie falownikiem: **wykrywanie niezgodności** – falownik robi co innego niż polecenie (np. tryb z aplikacji
+  mySigen ma pierwszeństwo przed Remote EMS); po 5 min czerwone ostrzeżenie w karcie Strategia i wpis w dzienniku.
+
+### Usunięto
+- Prognozy UK Met Office i GFS (Open-Meteo) – w praktyce wyraźnie mniej trafne; zostają ECMWF, ICON-EU, Météo-France
+  i automatyczny wybór Open-Meteo.
+
 ## [1.19.1] - 2026-11-02
 
 ### Poprawiono

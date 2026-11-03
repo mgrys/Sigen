@@ -29,7 +29,7 @@ TZ = config.get("instalacja", "strefa_czasowa", "Europe/Warsaw")
 POLACIE = config.planes()
 
 # Zrodlo w kafelkach: open_meteo (najlepsze dopasowanie Open-Meteo), om_srednia (srednia modeli),
-# om_ecmwf, om_icon_eu, om_ukmo, om_gfs, om_meteofrance albo forecast_solar
+# om_ecmwf, om_icon_eu, om_meteofrance albo forecast_solar (UK Met Office i GFS usuniete w 1.20.0 - mniej trafne)
 GLOWNE_ZRODLO = config.get("prognoza", "glowne_zrodlo", "open_meteo")
 FORECAST_SOLAR = config.getb("prognoza", "forecast_solar", True)
 
@@ -38,8 +38,6 @@ OM_MODELS = {
     "open_meteo": "best_match",          # automatyczny wybor Open-Meteo
     "om_ecmwf": "ecmwf_ifs025",          # ECMWF IFS (Europa, 0,25°)
     "om_icon_eu": "icon_eu",             # DWD ICON-EU (7 km)
-    "om_ukmo": "ukmo_seamless",          # UK Met Office UM
-    "om_gfs": "gfs_seamless",            # NOAA GFS
     "om_meteofrance": "meteofrance_seamless",
 }
 
@@ -54,7 +52,7 @@ ODSWIEZANIE = 3600   # s - kazde zrodlo co godzine (forecast.solar: 3 zapytania/
 
 SOURCES = {
     "open_meteo": "Open-Meteo", "om_srednia": "Średnia modeli", "om_ecmwf": "ECMWF",
-    "om_icon_eu": "ICON-EU", "om_ukmo": "UK Met Office", "om_gfs": "GFS",
+    "om_icon_eu": "ICON-EU",
     "om_meteofrance": "Météo-France", "forecast_solar": "forecast.solar",
 }
 MODEL_SOURCES = [s for s in OM_MODELS if s != "open_meteo"]   # skladniki sredniej

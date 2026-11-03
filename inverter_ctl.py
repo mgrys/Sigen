@@ -26,6 +26,10 @@ Dziennik: tylko zmiany trybu (czas, poprzedni -> nowy tryb, zrodlo, SOC) - czas 
 Pauza (inverter_ctl.ini [sterowanie] pauza_do = ts): sterowanie oddane falownikowi do podanej chwili, potem samo wraca.
 Powiadomienia e-mail (alerts.ini, _notify z app.py): blad zapisu, sterowanie oddane z powodu braku planu / danych,
 brak odczytu z falownika gdy sterowalismy (falownik mogl zostac w ostatnim trybie) - i informacja, gdy wszystko wroci.
+Niezgodnosc: falownik robi co innego niz wyslany tryb (np. polecenie z aplikacji mySigen ma pierwszenstwo nad Remote EMS)
+- kontrola przeplywow co DECIDE_S (np. standby, a magazyn laduje / rozladowuje; sprzedaz, a magazyn nie oddaje energii)
+i odczyt kontrolny rejestrow 40029 / 40031 co REG_CHECK_S; trwajaca >= MISMATCH_AFTER -> ostrzezenie na stronie,
+wpis w dzienniku i e-mail (oraz informacja, gdy ustapi).
 """
 import configparser
 import json
@@ -41,10 +45,12 @@ LOG = BASE / "inverter_ctl_log.json"
 STATE = BASE / "inverter_ctl_state.json"
 
 REG_ENABLE, REG_MODE, REG_CHG, REG_DIS = 40029, 40031, 40032, 40034
-PLAN_TO_EMS = {"auto": 2, "standby": 1, "grid": 3, "export": 5}
-EMS_TXT = {1: "standby", 2: "maks. autokonsumpcja", 3: "ładowanie z sieci", 5: "rozładowanie do sieci",
+PLAN_TO_EMS = {"auto": 2, "standby": 1, "grid": 3, "export": 5, "pvchg": 4}
+EMS_TXT = {1: "standby", 2: "maks. autokonsumpcja", 3: "ładowanie z sieci", 4: "ładowanie z PV (dom z sieci)",
+           5: "rozładowanie do sieci",
            6: "rozładowanie stałą mocą", 0: "oddane falownikowi"}
-MODE_NAME = {0: "falownik (mySigen)", 1: "standby", 2: "samozużycie", 3: "ładowanie z sieci", 5: "sprzedaż z magazynu",
+MODE_NAME = {0: "falownik (mySigen)", 1: "standby", 2: "samozużycie", 3: "ładowanie z sieci", 4: "PV do magazynu",
+             5: "sprzedaż z magazynu",
              6: "rozładowanie stałą mocą"}
 MANUAL = {"standby": (1, "Standby"), "auto": (2, "Samozużycie"), "grid": (3, "Ładowanie z sieci"),
           "discharge": (6, "Rozładowanie ze stałą mocą")}
@@ -52,6 +58,12 @@ MANUAL_DUR = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "cancel": 0}
 P_MAX = 8.0            # kW - maks. moc falownika (ustawiane z app.py)
 PRZYLACZE_KW = 22.0    # kW - domyslny limit mocy przylacza dla trybow recznych
 get_load = None        # funkcja -> biezacy pobor domu [kW] (app.py)
+PVCHG_MIN_KW = 0.5     # prog PV do magazynu [kW] - ustawiany z app.py (z pomiarow sprawnosci ladowania)
+get_flows = None       # funkcja -> {"pv", "bat" (+ ladowanie), "grid" (+ pobor), "soc"} [kW, %] (app.py)
+MISMATCH_KW = 0.3      # kW - odchylka przeplywu magazynu uznawana za niezgodnosc z trybem
+MISMATCH_AFTER = 300   # s - niezgodnosc trwajaca dluzej = ostrzezenie + e-mail
+MISMATCH_SETTLE = 60   # s - po zapisie trybu falownik ma czas na zmiane
+REG_CHECK_S = 60       # s - odczyt kontrolny rejestrow Remote EMS miedzy ponowieniami
 get_pv = None          # funkcja -> biezaca moc PV [kW] (app.py)
 EXPORT_PV_KW = 0.5     # kW - ponizej: sprzedaz trybem 6 (najpierw magazyn, moc = 40034), powyzej: tryb 5 (najpierw PV)
 TRYBY = {"wyl": "wyłączone", "probny": "próbnie (bez zapisu)", "wl": "włączone"}
@@ -72,6 +84,7 @@ state = {"tryb": "wyl", "desired": None, "reason": None, "applied": None, "appli
          "decided_ts": None, "verify": None, "owned": False, "pause_until": 0, "last_txt": None,
          "src": None, "write": False, "soc": None, "manual": None, "last_mode": None, "note": None}
 _alerts = {}           # rodzaj -> {"since": ts, "sent": ts | None}
+_mm = {"since": None, "txt": None, "miss": 0, "logged": False, "reg": None, "reg_ts": 0}
 _latch = {}            # godzina (ts) -> True, gdy cel SOC tej godziny osiagniety
 
 
@@ -283,6 +296,64 @@ def _problem(kind, active, subject, body, now=None):
 
 
 # --- decyzja wg planu ----------------------------------------------------
+def _mismatch_txt(cmd, f):
+    """Opis niezgodnosci przeplywow z trybem albo None."""
+    if not cmd or not f or f.get("bat") is None:
+        return None
+    ems, bat, grid, pv = cmd.get("ems"), float(f["bat"]), float(f.get("grid") or 0), float(f.get("pv") or 0)
+    k = MISMATCH_KW
+    if ems == 1 and abs(bat) > k:
+        return f"standby, a magazyn {'ładuje' if bat > 0 else 'oddaje'} {abs(bat):.1f} kW"
+    if ems in (3, 4) and bat < -k:
+        return f"{'ładowanie z sieci' if ems == 3 else 'PV do magazynu'}, a magazyn oddaje {-bat:.1f} kW"
+    if ems in (5, 6):
+        if bat > k:
+            return f"sprzedaż z magazynu, a magazyn ładuje {bat:.1f} kW"
+        if (cmd.get("discharge_kw") or 0) >= 0.5 and bat > -0.1:
+            return f"sprzedaż z magazynu {cmd['discharge_kw']:g} kW, a magazyn nie oddaje energii"
+    if ems == 2:
+        if bat < -k and grid < -k:
+            return f"samozużycie, a magazyn oddaje {-bat:.1f} kW do sieci (eksport {-grid:.1f} kW)"
+        if bat > k and grid > k and pv < 0.1:
+            return f"samozużycie, a magazyn ładuje się z sieci {bat:.1f} kW"
+    return None
+
+
+def _check_mismatch(now):
+    """Kontrola co DECIDE_S: niezgodnosc przeplywow (lub rejestrow) trwajaca >= MISMATCH_AFTER -> ostrzezenie i e-mail."""
+    cmd = state.get("desired")
+    txt = None
+    if state.get("owned") and state.get("write") and cmd and state.get("applied") == _key(cmd) \
+            and now - (state.get("applied_ts") or now) >= MISMATCH_SETTLE:
+        try:
+            txt = _mm["reg"] or _mismatch_txt(cmd, get_flows() if get_flows else None)
+        except Exception:  # noqa: BLE001
+            txt = None
+    if txt:
+        _mm["miss"] = 0
+        if _mm["since"] is None:
+            _mm.update(since=now, logged=False)
+        _mm["txt"] = txt
+    elif _mm["since"] is not None:
+        _mm["miss"] += 1
+        if _mm["miss"] >= 2:                        # dwa kolejne odczyty zgodne - koniec niezgodnosci
+            if _mm["logged"]:
+                _log({"kind": "niezgodnosc", "txt": "falownik znów zgodny z poleceniem", "why": _mm["txt"] or "",
+                      "soc": state.get("soc")})
+            _mm.update(since=None, txt=None, miss=0, logged=False)
+    active = _mm["since"] is not None and now - _mm["since"] >= MISMATCH_AFTER
+    if active and not _mm["logged"]:
+        _mm["logged"] = True
+        _log({"kind": "niezgodnosc", "txt": "falownik robi co innego niż polecenie: " + _txt(cmd), "why": _mm["txt"],
+              "soc": state.get("soc"), "ok": False})
+    state["mismatch"] = {"since": int(_mm["since"]), "txt": _mm["txt"], "alert": active} if _mm["since"] else None
+    _problem("niezgodnosc", active, "falownik robi co innego niż polecenie",
+             f"Wysłane polecenie: {_txt(cmd)}\nFalownik: {_mm['txt'] or '?'} (od "
+             f"{time.strftime('%H:%M', time.localtime(_mm['since'] or now))}).\n"
+             "Najczęstsza przyczyna: tryb ustawiony w aplikacji mySigen (ma pierwszeństwo przed Remote EMS) – "
+             "sprawdź aplikację mySigen albo wyłącz tam ręczne polecenie.")
+
+
 def _plan_hour(data, now):
     for h in data.get("hours") or []:
         if h.get("mode") in (None, "past"):
@@ -337,6 +408,19 @@ def decide(data, soc, soc_ts, now, limits):
             kw = min(p_chg, _steady(kw, "grid", h["ts"]))
             cmd.update(ems=3, charge_kw=kw, why=f"ładowanie z sieci do {target:.0f} % (teraz {soc:.0f} %), "
                                                 f"{kw:g} kW (limit {p_chg:g} kW)")
+    elif mode == "pvchg":
+        # Remote EMS 4 (wymuszone ladowanie, najpierw PV) z limitem = biezaca moc PV zaokraglona w dol do 0,5 kW:
+        # magazyn bierze tylko energie ze slonca (bez dokupowania z sieci), dom zasila siec. Malo PV -> standby.
+        try:
+            pv = float(get_pv()) if get_pv else 0.0
+        except Exception:  # noqa: BLE001
+            pv = 0.0
+        kw = min(p_chg, math.floor(pv / 0.5) * 0.5)
+        if kw < 0.5 or pv < PVCHG_MIN_KW:
+            cmd.update(ems=1, label=f"standby – za mało PV do ładowania ({pv:.2f} kW < {PVCHG_MIN_KW:g} kW)".replace(".", ","),
+                       why=f"PV do magazynu – za mało PV ({pv:.2f} kW), standby")
+        else:
+            cmd.update(ems=4, charge_kw=kw, why=f"PV do magazynu {kw:g} kW (PV {pv:.1f} kW), dom z sieci")
     elif mode == "export":
         if reached or (target is not None and soc <= target + SOC_TOL):
             _latch[h["ts"]] = True
@@ -488,6 +572,7 @@ def _tick(get_plan=None, get_soc=None, get_limits=None, _fns={}):
              "Od ponad 3 minut brak odczytu z falownika, a automat sterował falownikiem – nie da się oddać sterowania,"
              f" falownik może pracować dalej w ostatnim trybie: {state.get('last_txt') or '?'}.\n"
              "Sprawdź połączenie (Wi-Fi / falownik) albo przestaw tryb w aplikacji mySigen.")
+    _check_mismatch(now)
     if not write and state["tryb"] == "probny":   # proba: zmiany trybu w dzienniku, bez zapisu
         _transition(cmd["ems"] if cmd else 0, src, why, dry=True)
 
@@ -529,6 +614,17 @@ def apply(client, write, read_holding):
         key = _key(cmd)
         same = state["applied"] == key
         if same and now - (state["applied_ts"] or 0) < REASSERT_S:
+            if now - _mm["reg_ts"] >= REG_CHECK_S:      # odczyt kontrolny: czy ktos nie zmienil rejestrow Remote EMS
+                _mm["reg_ts"] = now
+                try:
+                    r1, r2 = read_holding(client, REG_ENABLE, 1), read_holding(client, REG_MODE, 1)
+                    if not r1.isError() and not r2.isError():
+                        en, md = r1.registers[0], r2.registers[0]
+                        _mm["reg"] = None if (en == 1 and md == cmd["ems"]) else \
+                            f"rejestry zmienione poza aplikacją: Remote EMS {en}, tryb {md} (wysłano tryb {cmd['ems']})"
+                        state["verify"] = {"enable": en, "mode": md}
+                except Exception:  # noqa: BLE001
+                    pass
             return
         _owned_save(True)              # przed zapisem - przy czesciowym bledzie i tak oddamy sterowanie
         if cmd.get("charge_kw"):
@@ -545,6 +641,7 @@ def apply(client, write, read_holding):
         except Exception:  # noqa: BLE001
             pass
         ok = ver is None or (ver["enable"] == 1 and ver["mode"] == cmd["ems"])
+        _mm.update(reg=None, reg_ts=now)
         state.update(applied=key if ok else None, applied_ts=int(now), verify=ver, last_txt=_txt(cmd), error=None if ok else
                      f"odczyt kontrolny niezgodny: Remote EMS {ver['enable']}, tryb {ver['mode']}")
         _problem("zapis", not ok, "błąd zapisu do falownika", state.get("error") or "")
@@ -594,7 +691,7 @@ def durations(window_s, now=None):
 
 def status():
     d = {k: state.get(k) for k in ("tryb", "reason", "applied_ts", "error", "decided_ts", "verify", "owned",
-                                   "pause_until", "last_txt", "src", "soc", "manual", "last_mode")}
+                                   "pause_until", "last_txt", "src", "soc", "manual", "last_mode", "mismatch")}
     d["manual_modes"] = {k: v[1] for k, v in MANUAL.items()}
     d["mode_names"] = MODE_NAME
     d["p_max"] = P_MAX
