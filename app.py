@@ -32,7 +32,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.20.0"
+__version__ = "1.21.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -1131,12 +1131,46 @@ _strat_cache = {"ts": 0, "data": None}
 LIMIT_KEYS = {"sell_floor": "sprzedaz_z_magazynu_od", "buy_cap": "ladowanie_z_sieci_do",
               "p_charge": "moc_ladowania_z_sieci_maks_kw", "p_discharge": "moc_sprzedazy_maks_kw",
               "standby_below_w": "standby_ponizej_w", "tarcza": "tarcza_limit_zl_kwh",
-              "tarcza_rezerwa": "tarcza_rezerwa_proc"}
+              "tarcza_rezerwa": "tarcza_rezerwa_proc", "legal_days": "sprzedaz_tylko_z_pv_dni"}
 LIMIT_RANGE = {"p_charge": (0.5, 30, "moc 0,5–30 kW"), "p_discharge": (0.5, 30, "moc 0,5–30 kW"),
                "standby_below_w": (0, 3000, "próg 0–3000 W"), "tarcza": (0, 5, "limit tarczy 0–5 zł/kWh"),
-               "tarcza_rezerwa": (0, 100, "rezerwa 0–100 %")}
-LIMIT_DEFAULTS = {"tarcza": "0.61", "tarcza_rezerwa": "60"}
+               "tarcza_rezerwa": (0, 100, "rezerwa 0–100 %"), "legal_days": (0, 366, "okres 0–366 dni")}
+LIMIT_DEFAULTS = {"tarcza": "0.61", "tarcza_rezerwa": "60", "legal_days": "7"}
 RESERVE_FACTOR = 0.8   # rezerwa pod sprzedaz wyceniana na 80 % pulapu sprzedazy (sprzedaz w przyszlosci niepewna)
+def legal_budget(days):
+    """Limit sprzedazy (arbitraz zgodny z prawem): produkcja PV - energia oddana do sieci w ostatnich `days` dniach
+    (dzis wlacznie), z licznikow falownika (tabela counters: pv_total, exp_total). {"pv", "exp", "budget"} [kWh]."""
+    first = (dt.date.today() - dt.timedelta(days=max(1, int(days)) - 1)).isoformat()
+    con = db_connect()
+    try:
+        r = {}
+        for key in ("pv_total", "exp_total"):
+            row = con.execute('SELECT MIN("first"), MAX("last") FROM counters WHERE "key" = ? AND "day" >= ?',
+                              (key, first)).fetchone()
+            r[key] = max(0.0, float(row[1]) - float(row[0])) if row and row[0] is not None and row[1] is not None else None
+    finally:
+        con.close()
+    if r["pv_total"] is None or r["exp_total"] is None:
+        return None
+    return {"pv": round(r["pv_total"], 2), "exp": round(r["exp_total"], 2),
+            "budget": round(max(0.0, r["pv_total"] - r["exp_total"]), 2), "days": int(days)}
+
+
+def _legal_caps(hours, pl, budget):
+    """Godziny sprzedazy z magazynu ponad limit: limit rosnie o prognozowana produkcje PV i maleje o oddawanie do sieci.
+    Zwraca {indeks godziny: maks. energia z magazynu do sieci [kWh]} albo {}, gdy plan miesci sie w limicie."""
+    caps, b = {}, budget
+    for t, (h, p) in enumerate(zip(hours, pl)):
+        b += max(h["pv"], 0.0)
+        b -= max(-p["grid"], 0.0)
+        if b < -0.01 and p["mode"] == "export":
+            bat_exp = max(0.0, -p["d"] - max(h["load"] - h["pv"], 0.0))
+            cut = min(-b, bat_exp)
+            caps[t] = max(0.0, bat_exp - cut)
+            b += cut
+    return caps
+
+
 TARCZA_MARGIN_DEFAULT = 0.098   # zl/kWh brutto - marza / oplata handlowa Pstryka (0,08 netto), gdy brak danych
 
 
@@ -1307,6 +1341,7 @@ def _market_actual(con):
     return f
 
 
+_hour_lock = {}            # {"ts": poczatek godziny, "mode": tryb planu, "at": kiedy ustalony} - blokada trybu na godzine
 _eta_cache = {"ts": 0, "data": [], "chg": []}
 ETA_C_MIN = 0.80           # PV do magazynu (EMS 4) dopiero od mocy, przy ktorej zmierzona sprawnosc ladowania >= 80 %
 PVCHG_MIN_FLOOR = 0.5      # i nie ponizej 0,5 kW (krok limitu ladowania w sterowaniu)
@@ -1454,8 +1489,35 @@ def compute_strategy():
     strategy.ETA_C_CURVE = [(c["od"], c["do"], c["eta"]) for c in curve_c] or None
     strategy.PVCHG_MIN_KW = inverter_ctl.PVCHG_MIN_KW = _pvchg_min_kw(curve_c)
     cur = inverter_ctl.state.get("desired") if inverter_ctl.state.get("tryb") == "wl" else None
-    mode0 = {1: "standby", 2: "auto", 3: "grid", 4: "pvchg", 5: "export", 6: "export"}.get(cur.get("ems") if cur else None, "auto")
-    pl = strategy.plan(hours, st0, *args, terminal_price=terminal, mode0=mode0)
+    # tryb z PLANU (nie wyslany kod EMS - np. PV do magazynu przy chwilowo malym PV wysyla standby, a plan to nadal pvchg)
+    mode0 = (cur.get("plan") if cur and cur.get("plan") in strategy.MODES else
+             {1: "standby", 2: "auto", 3: "grid", 4: "pvchg", 5: "export", 6: "export"}.get(cur.get("ems") if cur else None, "auto"))
+    if mode0 == "auto" and cur and cur.get("ems") == 2 and cur.get("discharge_kw") == 0:
+        mode0 = "nodis"
+    # blokada trybu na godzine: tryb wybrany na poczatku godziny obowiazuje do jej konca, przeliczanie od kolejnej
+    h0 = hours[0]["ts"]
+    hlock = _hour_lock if _hour_lock.get("ts") == h0 else None
+    pl = strategy.plan(hours, st0, *args, terminal_price=terminal, mode0=mode0, force0=hlock["mode"] if hlock else None)
+    legal = None
+    if lim.get("legal_days"):
+        try:
+            legal = legal_budget(lim["legal_days"])
+        except Exception as e:  # noqa: BLE001
+            legal = {"error": str(e)}
+        if legal and legal.get("budget") is not None:
+            capped = {}
+            for _it in range(4):          # sprzedaz z magazynu nie wiecej niz wyprodukowane PV (z prognoza do konca planu)
+                caps = _legal_caps(hours, pl, legal["budget"])
+                if not caps:
+                    break
+                for t, cap_ in caps.items():
+                    hours[t]["exp_cap"] = min(cap_, hours[t].get("exp_cap", cap_))
+                    capped[t] = hours[t]["exp_cap"]
+                pl = strategy.plan(hours, st0, *args, terminal_price=terminal, mode0=mode0,
+                                   force0=hlock["mode"] if hlock else None)
+            legal["capped_hours"] = len(capped)
+    if not hlock:
+        _hour_lock.update(ts=h0, mode=pl[0]["mode"], at=int(now))
     bl = strategy.baseline(hours, st0, *args)
     out, tot = [], {}
     for h, p, b in zip(hours, pl, bl):
@@ -1522,7 +1584,8 @@ def compute_strategy():
                        "standby_below_w": lim.get("standby_below_w"), "eta_curve": curve, "eta_c_curve": curve_c,
                        "pvchg_min_kw": strategy.PVCHG_MIN_KW, "tarcza_rezerwa": lim.get("tarcza_rezerwa"),
                        "reserve_price": strategy.RESERVE_PRICE and round(strategy.RESERVE_PRICE, 2),
-                       "tarcza": tz}}
+                       "tarcza": tz, "legal": legal, "legal_days": lim.get("legal_days"),
+                       "hour_lock": dict(_hour_lock) if _hour_lock.get("ts") == h0 else None}}
     _strat_cache.update(ts=now, data=data)
     return data
 
@@ -1603,6 +1666,7 @@ def api_strategy_limits(payload: dict = Body(...)):
         vals[key] = f"{v:g}"
     config.update({"strategia": vals})
     _strat_cache.update(ts=0, data=None)
+    _hour_lock.clear()             # nowe pulapy / limity - biezaca godzina liczona od nowa
     return {"ok": True, "limits": strat_limits()}
 
 

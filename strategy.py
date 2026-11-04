@@ -24,6 +24,7 @@ MODES = {
     "grid": ("ładowanie z sieci", 3),
     "export": ("sprzedaż z magazynu", 5),
     "pvchg": ("PV do magazynu, dom z sieci", 4),   # tylko z Tarcza: cale PV do magazynu (pod sprzedaz), dom z sieci
+    "nodis": ("samozużycie bez rozładowania", 2),  # EMS 2 + limit rozladowania 0: PV do domu, nadwyzka do magazynu, brak z sieci
 }
 SELL_FLOOR = None   # zl/kWh - sprzedaz z magazynu tylko przy cenie sprzedazy >= pulap (None = bez sprzedazy z magazynu)
 BUY_CAP = None      # zl/kWh - ladowanie z sieci tylko przy cenie zakupu <= pulap (None = bez ograniczenia)
@@ -96,11 +97,14 @@ def baseline(hours, stored, s_min, s_max, p_max, eta_c, eta_d):
     return out
 
 
-def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_price=0.0, step=None, mode0="auto"):
+def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_price=0.0, step=None, mode0="auto",
+         force0=None):
     """hours: [{load, pv, buy, sell}] (kWh i zl/kWh w danej godzinie). Zwraca liste krokow planu.
 
     Stan: energia w magazynie (siatka ok. 0,25 % pojemnosci) i poprzedni tryb
     (kazda zmiana trybu kosztuje SWITCH_COST, zeby plan nie przelaczal falownika co godzine).
+    force0: tryb biezacej godziny ustalony na jej poczatku (blokada na godzine) - w kroku 0 tylko ten tryb
+    (o ile mozliwy w tej godzinie), kolejne godziny liczone na nowo.
     """
     span = max(s_max - s_min, 0.1)
     step = step or max(0.02, span / 400)
@@ -144,9 +148,17 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
             if SELL_FLOOR is not None and sell >= SELL_FLOOR:
                 avail = min(p_dis, max(0.0, (s - s_min) * eta_d))     # maks. rozladowanie (dom + siec)
                 need = max(load - pv, 0.0)                              # tyle i tak zabralby dom
-                if avail > need + 0.05:
+                extra = avail - need
+                if h.get("exp_cap") is not None:          # sprzedaz tylko energii z PV (limit z produkcji)
+                    extra = min(extra, h["exp_cap"])
+                if extra > 0.05:
                     for k in range(1, ex_levels + 1):
-                        opts.append((3, -(need + (avail - need) * k / ex_levels)))
+                        opts.append((3, -(need + extra * k / ex_levels)))
+            # samozuzycie bez rozladowania: PV najpierw dom, nadwyzka do magazynu (do mocy i miejsca), magazyn nie oddaje
+            if pv > 0.05 * dur:
+                opts.append((5, min(surplus, p_max, room)))
+                if h.get("tarcza"):     # Tarcza: zamiast samozuzycia - bez rozladowania (magazyn tylko na sprzedaz)
+                    opts = [o for o in opts if o[0] != 0]
             if h.get("tarcza") and pv / dur >= PVCHG_MIN_KW and room > 0.05 and load > 0.02:
                 # Tarcza: cale PV do magazynu (Remote EMS 4, limit = moc PV), dom w calosci z sieci po cenie tarczy
                 opts.append((4, min(pv, p_chg, room)))
@@ -163,7 +175,13 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
                     c += TIE_EPS * (-d) + SPREAD_EPS * d * d
                 elif mi == 1:
                     c += TIE_EPS * 0.5 * dur
+                elif mi == 5:
+                    c += TIE_EPS * 0.3 * dur      # przy rownych kosztach przed standby (nadwyzka PV nie ucieka do sieci)
                 evals.append((mi, d, j, c))
+            if t == 0 and force0 in names:
+                fe = [e for e in evals if e[0] == names.index(force0)]
+                if fe:
+                    evals = fe
             for mp in range(M):
                 best, bc = INF, None
                 for mi, d, j, c in evals:
@@ -191,6 +209,9 @@ def label(step, h):
     surplus = max(h["pv"] - h["load"], 0.0)
     if step["mode"] == "pvchg":
         return f"PV do magazynu {step['d']:.1f} kWh, dom z sieci"
+    if step["mode"] == "nodis":
+        return (f"samozużycie bez rozładowania – nadwyżka PV {step['d']:.1f} kWh do magazynu" if step["d"] >= 0.05
+                else "samozużycie bez rozładowania (dom z PV i sieci)")
     if step["mode"] == "export":
         out = max(0.0, -step["d"] - max(h["load"] - h["pv"], 0.0))
         return f"sprzedaż z magazynu {out:.1f} kWh"

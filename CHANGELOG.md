@@ -2,6 +2,25 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.21.0] - 2026-11-04
+
+### Dodano
+- Strategia i sterowanie ręczne: tryb **samozużycie bez rozładowania** (Remote EMS 2 + limit rozładowania 0 kW) – PV
+  najpierw do domu, nadwyżka do magazynu, brak z sieci; przy Tarczy zastępuje zwykłe samozużycie (magazyn zostaje
+  na sprzedaż) i przy równych kosztach wygrywa ze standby (nadwyżka PV nie ucieka tanio do sieci).
+- Sterowanie ręczne: **PV do magazynu (dom z sieci)** – limit ładowania = bieżące PV, opcjonalnie maks. moc, do SOC.
+- Strategia: **sprzedaż tylko energii z PV** (arbitraż zgodny z prawem) – do sieci nie więcej niż produkcja PV
+  z ostatnich N dni (domyślnie 7) minus energia już oddana; limit rośnie o prognozę PV, sprzedaż ponad limit
+  przycinana. config.ini [strategia] sprzedaz_tylko_z_pv_dni (0 = bez limitu), kafel „Limit sprzedaży (z PV)”.
+
+### Poprawiono
+- Strategia: **tryb ustalony na całą godzinę** – wybrany na początku godziny obowiązuje do jej końca (plan zmienia
+  kolejne godziny); tryb falownika brany z planu, a nie z wysłanego kodu (PV do magazynu przy chwilowo małym PV nie
+  przeskakuje już na standby).
+- Samozużycie (plan i ręczne) przywraca limity ładowania 40032 i rozładowania 40034 na pełną moc – po „PV do
+  magazynu” zostawał np. limit 0,5 kW i nadwyżka PV szła do sieci.
+- „Strategia – teraz”: nazwa trybu ręcznego (np. „Samozużycie bez rozładowania”).
+
 ## [1.20.0] - 2026-11-03
 
 ### Dodano

@@ -156,7 +156,7 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .tile.c-blue { border-color: color-mix(in srgb, var(--s-load) 55%, var(--border)); background: color-mix(in srgb, var(--s-load) 7%, transparent); }
 .tile.c-blue .v { color: var(--s-load); }
 .stm { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
-.stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); } .stm.export { color: var(--s-sell); font-weight: 600; }
+.stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); } .stm.export { color: var(--s-sell); font-weight: 600; } .stm.pvchg { color: var(--s-pv); font-weight: 600; } .stm.nodis { color: var(--s-bat); font-weight: 600; }
 .pvsplit { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
 .pvmon { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
 .pvmon .chart { height: 260px; }
@@ -367,6 +367,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span title="Tylko z Pstrykiem. Gdy Tarcza działa (średnia cena energii w miesiącu powyżej limitu), każda kWh z sieci kosztuje tyle samo – plan nie rozładowuje magazynu do domu, ładuje go z PV (tryb „PV do magazynu”) i trzyma energię na sprzedaż w drogich godzinach">Tarcza Pstryk: limit <input class="bp-num" id="st-tz" type="number" min="0" max="5" step="0.01" style="width:70px"> zł/kWh
         <select id="st-tzm" class="fs-btn"><option value="auto">auto (wg średniej w miesiącu)</option><option value="tak">zawsze</option><option value="nie">wyłączona</option></select></span>
       <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">rezerwa pod sprzedaż do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
+      <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. 0 / puste = bez limitu">Sprzedaż tylko energii z PV – z ostatnich <input class="bp-num" id="st-legal" type="number" min="0" max="366" step="1" style="width:56px"> dni</span>
       <span><button class="fs-btn" id="st-save" type="button">Zapisz pułapy</button> <span class="status" id="st-msg"></span></span>
     </div>
     <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
@@ -380,7 +381,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div id="st-ctlmm" hidden style="margin:-4px 0 10px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--eff-bad);background:color-mix(in srgb, var(--eff-bad) 10%, transparent)"></div>
     <div class="bp-row" style="flex-wrap:wrap;gap:8px 14px;margin:-4px 0 10px" id="st-man">
       <span>Ręcznie: <select id="mn-tryb" class="fs-btn"><option value="standby">Standby</option><option value="auto">Samozużycie</option>
-        <option value="grid">Ładowanie z sieci</option><option value="discharge">Rozładowanie ze stałą mocą</option></select></span>
+        <option value="grid">Ładowanie z sieci</option><option value="pvchg">PV do magazynu (dom z sieci)</option><option value="auto_nodis">Samozużycie bez rozładowania</option><option value="discharge">Rozładowanie ze stałą mocą</option></select></span>
       <span>na <select id="mn-czas" class="fs-btn"><option value="15m">15 min</option><option value="30m">30 min</option><option value="1h" selected>1 h</option>
         <option value="2h">2 h</option><option value="min">własny…</option><option value="cancel">do anulowania</option></select>
         <input class="bp-num" id="mn-min" type="number" min="1" max="1440" step="5" style="width:64px" placeholder="min" hidden></span>
@@ -1417,7 +1418,7 @@ $('st-save').onclick = async () => {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
         p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value, tarcza: $('st-tz').value, tarcza_mode: $('st-tzm').value,
-        tarcza_rezerwa: $('st-rez').value }) })).json();
+        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
   $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
@@ -1446,11 +1447,13 @@ $('st-pzend').onclick = () => ctlPost({ pauza: 'koniec' });
 const mnShow = () => {
   const t = $('mn-tryb').value;
   $('mn-min').hidden = $('mn-czas').value !== 'min';
-  $('mn-pw').hidden = $('mn-prz').hidden = !(t === 'grid' || t === 'discharge');
-  $('mn-smax').hidden = t !== 'grid';
+  $('mn-pw').hidden = !(t === 'grid' || t === 'discharge' || t === 'pvchg');
+  $('mn-prz').hidden = !(t === 'grid' || t === 'discharge');
+  $('mn-smax').hidden = !(t === 'grid' || t === 'pvchg');
   $('mn-smin').hidden = t !== 'discharge';
 };
-$('mn-tryb').onchange = mnShow; $('mn-czas').onchange = mnShow;
+$('mn-tryb').onchange = () => { if ($('mn-tryb').value === 'pvchg') $('mn-kw').value = ''; else if (!$('mn-kw').value) $('mn-kw').value = 3; mnShow(); };
+$('mn-kw').placeholder = 'maks.'; $('mn-czas').onchange = mnShow;
 $('mn-go').onclick = () => {
   const t = $('mn-tryb').value, c = $('mn-czas').value;
   const name = $('mn-tryb').selectedOptions[0].text;
@@ -1478,11 +1481,12 @@ function renderStNow(c) {
   const now = lastStrat?.now;
   let mode, cls = '';
   if (ds) {
-    const PL = { auto: 'Autokonsumpcja', grid: 'Ładowanie z sieci', export: 'Sprzedaż z magazynu' };
-    mode = ds.ems === 1 ? 'Standby – dom z sieci' : PL[ds.plan] || cap(MN[ds.ems] || ds.label || '–');
-    cls = { 5: 'm-sell', 6: 'm-sell', 3: 'm-buy', 1: 'm-stby', 2: 'm-auto' }[ds.ems] || '';
+    const PL = { auto: 'Autokonsumpcja', grid: 'Ładowanie z sieci', export: 'Sprzedaż z magazynu', pvchg: 'PV do magazynu, dom z sieci', nodis: 'Samozużycie bez rozładowania' };
+    mode = ds.ems === 2 && ds.discharge_kw === 0 ? 'Samozużycie bez rozładowania'
+      : ds.ems === 1 ? 'Standby – dom z sieci' : ds.plan === 'manual' ? cap(ds.label || MN[ds.ems] || '–') : PL[ds.plan] || cap(MN[ds.ems] || ds.label || '–');
+    cls = { 5: 'm-sell', 6: 'm-sell', 3: 'm-buy', 1: 'm-stby', 2: 'm-auto', 4: 'm-auto' }[ds.ems] || '';
   } else if (sim && now) {
-    mode = cap(now.label); cls = { export: 'm-sell', grid: 'm-buy', standby: 'm-stby', auto: 'm-auto' }[now.mode] || '';
+    mode = cap(now.label); cls = { export: 'm-sell', grid: 'm-buy', standby: 'm-stby', auto: 'm-auto', pvchg: 'm-auto', nodis: 'm-auto' }[now.mode] || '';
   } else mode = 'Falownik (mySigen)';
   box.className = 'st-now ' + cls;
   $('stnow-mode').textContent = mode;
@@ -1554,7 +1558,8 @@ async function loadStrategy() {
     (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFixed(1)} kWh` : '') +
     (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFixed(2)} zł` : ''));
   $('sttiles').innerHTML =
-    tile('Teraz wg planu', esc(n.label), '', `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)`) +
+    tile('Teraz wg planu', esc(n.label), '', `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)` +
+      (P.hour_lock ? ` · tryb ustalony o ${new Date(P.hour_lock.at * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} na całą godzinę (do ${new Date((P.hour_lock.ts + 3600) * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })})` : '')) +
     tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? esc(x.label) : 'bez zmian do końca jutra') +
     sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
     ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
@@ -1567,6 +1572,9 @@ async function loadStrategy() {
       ((P.eta_c_curve || []).length ? ' · sprawność ładowania przy małej mocy: ' +
         P.eta_c_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : '') +
       (P.pvchg_min_kw != null && P.tarcza && P.tarcza.active ? ` · PV do magazynu od ${String(P.pvchg_min_kw).replace('.', ',')} kW` : '')) +
+    (P.legal && P.legal.budget != null ? ctile(P.legal.budget > 0.5 ? 'c-green' : 'c-red', 'Limit sprzedaży (z PV)', P.legal.budget.toFixed(1).replace('.', ','), 'kWh',
+      `produkcja PV ${P.legal.pv.toFixed(1).replace('.', ',')} kWh − oddane do sieci ${P.legal.exp.toFixed(1).replace('.', ',')} kWh (ostatnie ${P.legal.days} dni)` +
+      ` · do końca planu rośnie o prognozę PV` + (P.legal.capped_hours ? ` · sprzedaż ograniczona w ${P.legal.capped_hours} godz.` : '')) : '') +
     (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
       P.tarcza.active ? 'działa' : 'nie działa', '',
       esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
@@ -1579,6 +1587,7 @@ async function loadStrategy() {
   if (ae !== 'st-tz') $('st-tz').value = TZ.cap ?? 0.61;
   if (ae !== 'st-tzm') $('st-tzm').value = TZ.mode || 'auto';
   if (ae !== 'st-rez') $('st-rez').value = P.tarcza_rezerwa ?? '';
+  if (ae !== 'st-legal') $('st-legal').value = P.legal_days ?? '';
   if (ae !== 'st-pc') $('st-pc').value = P.p_charge ?? '';
   if (ae !== 'st-pd') $('st-pd').value = P.p_discharge ?? '';
   if (ae !== 'st-sb') $('st-sb').value = P.standby_below_w ?? '';

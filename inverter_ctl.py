@@ -45,7 +45,7 @@ LOG = BASE / "inverter_ctl_log.json"
 STATE = BASE / "inverter_ctl_state.json"
 
 REG_ENABLE, REG_MODE, REG_CHG, REG_DIS = 40029, 40031, 40032, 40034
-PLAN_TO_EMS = {"auto": 2, "standby": 1, "grid": 3, "export": 5, "pvchg": 4}
+PLAN_TO_EMS = {"auto": 2, "standby": 1, "grid": 3, "export": 5, "pvchg": 4, "nodis": 2}
 EMS_TXT = {1: "standby", 2: "maks. autokonsumpcja", 3: "ładowanie z sieci", 4: "ładowanie z PV (dom z sieci)",
            5: "rozładowanie do sieci",
            6: "rozładowanie stałą mocą", 0: "oddane falownikowi"}
@@ -53,6 +53,7 @@ MODE_NAME = {0: "falownik (mySigen)", 1: "standby", 2: "samozużycie", 3: "łado
              5: "sprzedaż z magazynu",
              6: "rozładowanie stałą mocą"}
 MANUAL = {"standby": (1, "Standby"), "auto": (2, "Samozużycie"), "grid": (3, "Ładowanie z sieci"),
+          "pvchg": (4, "PV do magazynu, dom z sieci"), "auto_nodis": (2, "Samozużycie bez rozładowania"),
           "discharge": (6, "Rozładowanie ze stałą mocą")}
 MANUAL_DUR = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "cancel": 0}
 P_MAX = 8.0            # kW - maks. moc falownika (ustawiane z app.py)
@@ -166,7 +167,7 @@ def set_manual(tryb, dur=None, minutes=None, kw=None, soc_min=None, soc_max=None
             raise ValueError(f"{what} {lo:g}–{hi:g}")
         return v
     m = {"tryb": tryb, "od": now, "do": now + secs if secs else 0,
-         "kw": num(kw, 0.5, P_MAX, min(3.0, P_MAX), "moc kW"),
+         "kw": num(kw, 0.5, P_MAX, P_MAX if tryb == "pvchg" else min(3.0, P_MAX), "moc kW"),
          "soc_min": num(soc_min, 5, 100, 20, "min. SOC %"), "soc_max": num(soc_max, 10, 100, 100, "maks. SOC %"),
          "przylacze_kw": num(przylacze_kw, 1, 100, PRZYLACZE_KW, "przyłącze kW")}
     _cfg_save(manual=m)
@@ -311,6 +312,8 @@ def _mismatch_txt(cmd, f):
             return f"sprzedaż z magazynu, a magazyn ładuje {bat:.1f} kW"
         if (cmd.get("discharge_kw") or 0) >= 0.5 and bat > -0.1:
             return f"sprzedaż z magazynu {cmd['discharge_kw']:g} kW, a magazyn nie oddaje energii"
+    if ems == 2 and cmd.get("discharge_kw") == 0 and bat < -k:
+        return f"samozużycie bez rozładowania, a magazyn oddaje {-bat:.1f} kW (falownik nie respektuje limitu 0 kW?)"
     if ems == 2:
         if bat < -k and grid < -k:
             return f"samozużycie, a magazyn oddaje {-bat:.1f} kW do sieci (eksport {-grid:.1f} kW)"
@@ -441,6 +444,8 @@ def decide(data, soc, soc_ts, now, limits):
                                                    f"{kw:g} kW (limit {p_dis:g} kW)")
     else:
         cmd.update(ems=PLAN_TO_EMS[mode], why=h.get("label") or mode)
+        if cmd["ems"] == 2:          # samozuzycie: limity ladowania (40032) i rozladowania (40034) na pelna moc
+            cmd["charge_kw"], cmd["discharge_kw"] = P_MAX, (0 if mode == "nodis" else P_MAX)
     for k in [k for k in _latch if k < now - 7200]:
         _latch.pop(k, None)
     return cmd, cmd["why"]
@@ -454,9 +459,11 @@ def _txt(cmd):
     if cmd is None:
         return "oddanie sterowania falownikowi (Remote EMS wyłączone)"
     t = f"Remote EMS tryb {cmd['ems']} – {EMS_TXT.get(cmd['ems'], '?')}"
-    if cmd.get("charge_kw"):
+    if cmd.get("charge_kw") and cmd["ems"] != 2:
         t += f", ładowanie do {cmd['charge_kw']:g} kW"
-    if cmd.get("discharge_kw"):
+    if cmd.get("discharge_kw") == 0:
+        t += ", bez rozładowania (limit 0 kW)"
+    elif cmd.get("discharge_kw") and cmd["ems"] != 2:
         t += f", rozładowanie do {cmd['discharge_kw']:g} kW"
     return t
 
@@ -483,6 +490,29 @@ def _manual_cmd(m, soc, soc_ts, now):
         else:
             kw = max(0.5, min(m["kw"], P_MAX, lim - load))          # pobor z sieci = dom + ladowanie <= przylacze
             cmd.update(charge_kw=round(kw * 2) / 2, why=f"ręcznie: ładowanie z sieci {round(kw * 2) / 2:g} kW do {m['soc_max']:g} %" + left)
+    elif m["tryb"] in ("auto", "auto_nodis"):
+        # samozuzycie: PV najpierw do domu, nadwyzka do magazynu; auto_nodis - limit rozladowania 0 kW (40034),
+        # brakujaca moc z sieci zamiast z magazynu
+        nod = m["tryb"] == "auto_nodis"
+        # limit ladowania 40032 na pelna moc - po "PV do magazynu" zostawal np. 0,5 kW i nadwyzka PV szla do sieci
+        cmd.update(charge_kw=P_MAX, discharge_kw=0 if nod else P_MAX,
+                   why=("ręcznie: samozużycie bez rozładowania – PV do domu, nadwyżka do magazynu, brak z sieci" if nod
+                        else "ręcznie: samozużycie") + left)
+    elif m["tryb"] == "pvchg":
+        # jak w planie: limit ladowania = biezace PV w dol do 0,5 kW (bez dokupowania z sieci), maks. moc z pola "moc"
+        try:
+            pv = float(get_pv()) if get_pv else 0.0
+        except Exception:  # noqa: BLE001
+            pv = 0.0
+        if reached or soc >= m["soc_max"] - SOC_TOL:
+            _latch["manual"] = m["od"]
+            cmd.update(ems=1, why=f"ręcznie: PV do magazynu – osiągnięty SOC {m['soc_max']:g} %, standby" + left)
+        else:
+            kw = min(m["kw"] or P_MAX, P_MAX, math.floor(pv / 0.5) * 0.5)
+            if kw < 0.5:
+                cmd.update(ems=1, why=f"ręcznie: PV do magazynu – za mało PV ({pv:.2f} kW), chwilowo standby" + left)
+            else:
+                cmd.update(charge_kw=kw, why=f"ręcznie: PV do magazynu {kw:g} kW (PV {pv:.1f} kW) do {m['soc_max']:g} %, dom z sieci" + left)
     elif m["tryb"] == "discharge":
         if reached or soc <= m["soc_min"] + SOC_TOL:
             _latch["manual"] = m["od"]
@@ -627,9 +657,9 @@ def apply(client, write, read_holding):
                     pass
             return
         _owned_save(True)              # przed zapisem - przy czesciowym bledzie i tak oddamy sterowanie
-        if cmd.get("charge_kw"):
+        if cmd.get("charge_kw") is not None:
             _check(write(client, REG_CHG, _u32(cmd["charge_kw"] * 1000)), "40032")
-        if cmd.get("discharge_kw"):
+        if cmd.get("discharge_kw") is not None:
             _check(write(client, REG_DIS, _u32(cmd["discharge_kw"] * 1000)), "40034")
         _check(write(client, REG_MODE, [cmd["ems"]]), f"40031={cmd['ems']}")
         _check(write(client, REG_ENABLE, [1]), "40029=1")
