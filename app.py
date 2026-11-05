@@ -32,7 +32,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.21.0"
+__version__ = "1.22.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -1560,6 +1560,9 @@ def compute_strategy():
             r = by.get(ts)
             buy, sell = pr.get(ts) or (None, 0.0)
             sell = (sell or 0.0) * STRAT["sell_factor"]
+            buy_hour, tz_h = None, False
+            if buy is not None and tz.get("active") and tz.get("eff_buy"):   # z Tarcza placisz stala cene
+                buy_hour, buy, tz_h = buy, tz["eff_buy"], True
             if r is None or r[1] is None:
                 past.append({"ts": ts, "day": "dziś", "t": time.strftime("%H:00", time.localtime(ts)), "mode": "past",
                              "label": "brak danych", "load": None, "pv": None, "buy": buy, "sell": sell, "est": False,
@@ -1569,6 +1572,7 @@ def compute_strategy():
             c = round((g * buy if g > 0 else g * sell) if buy is not None else 0.0, 3)
             past.append({"ts": ts, "day": "dziś", "t": time.strftime("%H:00", time.localtime(ts)), "mode": "past",
                          "label": "rzeczywiste", "load": round(float(r[3] or 0), 3), "pv": round(float(r[4] or 0), 3),
+                         **({"tarcza": True, "buy_hour": buy_hour} if tz_h else {}),
                          "buy": buy, "sell": sell, "est": False, "grid": round(g, 3), "soc": round(float(r[1]), 1),
                          "base_soc": round(float(r[1]), 1), "cost": c, "base_cost": c, "base_grid": round(g, 3)})
     out = past + out

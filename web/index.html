@@ -155,6 +155,82 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .tile.c-green .v { color: var(--s-sell); }
 .tile.c-blue { border-color: color-mix(in srgb, var(--s-load) 55%, var(--border)); background: color-mix(in srgb, var(--s-load) 7%, transparent); }
 .tile.c-blue .v { color: var(--s-load); }
+.tile.c-amber { border-color: color-mix(in srgb, var(--s-grid) 60%, var(--border)); background: color-mix(in srgb, var(--s-grid) 9%, transparent); }
+.tile.c-amber .v { color: var(--eff-mid); }
+.tile.c-pv { border-color: color-mix(in srgb, var(--s-pv) 60%, var(--border)); background: color-mix(in srgb, var(--s-pv) 9%, transparent); }
+.tile.c-pv .v { color: var(--s-pv); }
+#tab-pv .card.live .flow .val { font-size: 19.5px; font-weight: 700; }
+#tab-pv .card.live .flow .sub { font-size: 13.2px; }
+#tab-pv .card.live .flow .lbl { font-size: 14.5px; font-weight: 700; }
+#tab-pv .card.live .flow { overflow: visible; }
+.vxflow .val { font-size: 24px; font-weight: 700; }
+.vxflow .lbl { font-size: 13px; }
+.ntcats { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 12px; margin: 8px 0; font-size: 13px; }
+.ntcats label { display: flex; gap: 6px; align-items: center; }
+/* strategia: grupy ustawien w ramkach, biezacy tryb falownika wyrozniony */
+.stgrp { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; }
+.stgrp-h { font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin: 0 0 8px; }
+.stgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 8px 18px; align-items: center; }
+.stgrid > span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.stgrp-act { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
+.stnow { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid var(--muted);
+  background: color-mix(in srgb, var(--muted) 6%, transparent); }
+.stnow.on { border-left-color: var(--s-sell); background: color-mix(in srgb, var(--s-sell) 8%, transparent); }
+.stnow.man { border-left-color: var(--s-grid); background: color-mix(in srgb, var(--s-grid) 10%, transparent); }
+.stnow.err { border-left-color: var(--eff-bad); background: color-mix(in srgb, var(--eff-bad) 8%, transparent); }
+.stnow .m { font-size: 15px; font-weight: 700; }
+.stnow .s { font-size: 12px; color: var(--text-2); margin-top: 3px; }
+/* kafle strategii: jednakowe, niskie */
+#sttiles, .ctiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+#sttiles .tile, .ctiles .tile { padding: 7px 10px; display: flex; flex-direction: column; justify-content: center; min-height: 58px; }
+#sttiles .tile .t, .ctiles .tile .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sttiles .tile .v, .ctiles .tile .v { font-size: 19px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sttiles .tile .v.vt, .ctiles .tile .v.vt { font-size: 15px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* przyciski wygladaja jak przyciski, pola jak pola (cala aplikacja) */
+:where(button:not([role=tab]), .fs-btn):not(select) { font-weight: 600; background: color-mix(in srgb, var(--text) 5%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--text) 24%, var(--border)); box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.08);
+  transition: background .12s, box-shadow .12s, transform .05s; }
+:where(button:not([role=tab]), .fs-btn):not(select):not(:disabled):hover { background: color-mix(in srgb, var(--text) 11%, var(--surface)); }
+:where(button:not([role=tab]), .fs-btn):not(select):not(:disabled):active { transform: translateY(1px); box-shadow: none; }
+:where(button:not([role=tab]), .fs-btn):not(select):focus-visible { outline: 2px solid var(--s-fc); outline-offset: 2px; }
+:where(.fs-btn.primary, button.primary) { background: var(--s-fc); border-color: color-mix(in srgb, var(--s-fc) 80%, #000); color: #fff; }
+:where(.fs-btn.primary, button.primary):not(:disabled):hover { background: color-mix(in srgb, var(--s-fc) 85%, #000); }
+:where(select, select.fs-btn, input[type=number], input[type=text], input[type=time], input[type=date], .bp-num) {
+  font-weight: 400; box-shadow: inset 0 1px 2px rgba(0,0,0,.07); background: var(--bg); border: 1px solid var(--border); cursor: auto; }
+:where(select, select.fs-btn) { cursor: pointer; }
+/* rekuperacja: kafle obok sprawnosci - jednakowe */
+.vtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; margin-bottom: 0; }
+.vtiles .tile { display: flex; flex-direction: column; justify-content: center; min-height: 92px; }
+.vtiles .tile .v { font-size: 24px; }
+.vtiles .tile .sub { font-size: 12px; color: var(--text-2); line-height: 1.35; margin-top: 2px; }
+.spcol { display: flex; flex-direction: column; gap: 12px; }
+.spcol .fanbox h3 { margin-top: 0; }
+.socgrp { grid-column: 1 / -1; }
+.socrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.soccell { padding: 10px 14px; border-left: 1px solid var(--border); }
+.soccell:first-child { border-left: 0; }
+.soccell .t { font-size: 12px; color: var(--text-2); }
+.soccell .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.soccell .v.na { color: var(--muted); }
+.soccell .w { font-size: 11px; color: var(--muted); }
+/* kafle z opisem w dymku (strategia): zwarte kafle, opis po najechaniu / dotknieciu */
+.tiles.popn .tile { position: relative; cursor: help; }
+.tiles.popn .tile .v.vt { font-size: 16px; line-height: 1.25; }
+.tiles.popn .tile:has(.n) .t::after { content: ' ⓘ'; color: var(--muted); }
+.tiles.popn .tile .n { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: max(240px, 100%);
+  max-width: 340px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface, #fff);
+  box-shadow: 0 8px 22px rgba(0,0,0,.18); font-size: 12px; line-height: 1.45; color: var(--text-2); white-space: normal; }
+.tiles.popn .tile.pr .n { left: auto; right: 0; }
+.tiles.popn .tile:hover .n, .tiles.popn .tile.open .n { display: block; }
+.infowrap { position: relative; display: inline-block; }
+.infopop { display: none; position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: min(520px, 86vw);
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface, #fff);
+  box-shadow: 0 8px 22px rgba(0,0,0,.18); font-size: 12px; line-height: 1.5; color: var(--text-2); text-align: left; }
+.infowrap:hover .infopop, .infowrap.open .infopop { display: block; }
+.ttlinfo { cursor: help; }
+.ttlinfo .ib { color: var(--muted); font-weight: 400; font-size: .85em; }
+.ttlinfo .infopop { left: 0; right: auto; font-weight: 400; font-size: 12px; }
+.infopop::before { content: ''; position: absolute; top: -8px; left: 0; right: 0; height: 8px; }
 .stm { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); } .stm.export { color: var(--s-sell); font-weight: 600; } .stm.pvchg { color: var(--s-pv); font-weight: 600; } .stm.nodis { color: var(--s-bat); font-weight: 600; }
 .pvsplit { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
@@ -254,7 +330,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <line x1="9.5" y1="-14" x2="14" y2="12"/><line x1="-23.5" y1="-1" x2="23.5" y2="-1"/>
         <line x1="-16" y1="12" x2="-16" y2="24"/><line x1="16" y1="12" x2="16" y2="24"/>
       </g>
-      <text class="lbl" x="268" y="32">PV</text><text class="val" x="268" y="50" id="v-pv">–</text>
+      <text class="lbl" x="268" y="27">PV</text><text class="val" x="268" y="53" id="v-pv">–</text>
       <!-- Siec: slup energetyczny -->
       <g class="icon" transform="translate(38 150)" stroke="var(--s-grid)">
         <line x1="-13" y1="26" x2="-3" y2="-26"/><line x1="13" y1="26" x2="3" y2="-26"/>
@@ -265,15 +341,15 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <line x1="-11" y1="16" x2="9" y2="5"/><line x1="11" y1="16" x2="-9" y2="5"/>
         <line x1="-8.5" y1="3" x2="6" y2="-9"/><line x1="8.5" y1="3" x2="-6" y2="-9"/>
       </g>
-      <text class="lbl" x="38" y="196">Sieć</text><text class="val" x="38" y="214" id="v-grid">–</text>
-      <text class="sub" x="38" y="230" id="s-grid"></text>
+      <text class="lbl" x="38" y="190">Sieć</text><text class="val" x="38" y="217" id="v-grid">–</text>
+      <text class="sub" x="38" y="234" id="s-grid"></text>
       <!-- Dom -->
       <g class="icon" transform="translate(362 150)" stroke="var(--s-load)">
         <path d="M-27,-2 L0,-25 L27,-2" /><path d="M-20,-7 V24 H20 V-7" class="icon-bg"/>
         <rect x="-5" y="9" width="10" height="15"/><rect x="8" y="1" width="7" height="7"/>
         <line x1="13" y1="-14" x2="13" y2="-22"/><line x1="13" y1="-22" x2="18" y2="-22"/><line x1="18" y1="-22" x2="18" y2="-10"/>
       </g>
-      <text class="lbl" x="362" y="196">Dom</text><text class="val" x="362" y="214" id="v-load">–</text>
+      <text class="lbl" x="358" y="190">Dom</text><text class="val" x="358" y="217" id="v-load">–</text>
       <!-- Magazyn energii -->
       <g class="icon" transform="translate(200 260)" stroke="var(--s-bat)">
         <rect x="-6" y="-30" width="12" height="4" rx="1"/>
@@ -282,8 +358,8 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <path d="M2,-16 L-5,-1 H1 L-3,12 L6,-4 H0 Z" stroke-width="1.5" fill="var(--surface)"/>
       </g>
       <text class="sub" x="200" y="302" id="v-soc-c">–</text>
-      <text class="lbl" x="268" y="254">Magazyn</text><text class="val" x="268" y="272" id="v-bat">–</text>
-      <text class="sub" x="268" y="288" id="s-bat"></text>
+      <text class="lbl" x="268" y="248">Magazyn</text><text class="val" x="268" y="275" id="v-bat">–</text>
+      <text class="sub" x="268" y="292" id="s-bat"></text>
     </svg>
     <div>
       <h2>Magazyn energii</h2>
@@ -312,7 +388,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <h2>Prognoza produkcji PV</h2>
       <span class="status" id="fcstatus"></span>
     </div>
-    <div class="tiles" id="fctiles"></div>
+    <div class="tiles popn ctiles" id="fctiles"></div>
     <div class="fc-pick" id="fc-pick"></div>
     <div class="chart"><canvas id="cFc"></canvas></div>
     <div class="empty" id="fcempty" hidden>Brak prognozy – aplikacja pobierze ją z Open-Meteo i forecast.solar, gdy będzie dostęp do internetu.</div>
@@ -343,13 +419,12 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2>Ceny energii – dziś i jutro</h2>
+      <h2><span class="infowrap ttlinfo">Ceny energii – dziś i jutro <span class="ib">ⓘ</span><span class="infopop" id="prformula"></span></span></h2>
       <span class="status" id="prstatus"></span>
     </div>
     <div class="tiles" id="prtiles"></div>
     <div class="chart"><canvas id="cPrice"></canvas></div>
     <div class="empty" id="prempty" hidden>Brak cen – pobieram z PSE (ceny na jutro po ok. 13:40).</div>
-    <p class="status" style="margin-top:10px" id="prformula"></p>
   </section>
 
   <section class="card" id="stcard">
@@ -357,30 +432,35 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <h2>Strategia osobista</h2>
       <span class="status" id="ststatus"></span>
     </div>
-    <div class="tiles" id="sttiles"></div>
-    <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
-      <span>Pułapy: sprzedawaj z magazynu od <input class="bp-num" id="st-floor" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
-      <span>ładuj z sieci do <input class="bp-num" id="st-cap" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
-      <span title="Oszczędzanie baterii: plan rozkłada ładowanie z sieci na więcej tanich godzin, a falownik dostaje moc potrzebną na daną godzinę – nie więcej niż limit. Puste = maks. moc z symulacji">Moc maks.: ładowanie z sieci <input class="bp-num" id="st-pc" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW,
-        sprzedaż z magazynu <input class="bp-num" id="st-pd" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW</span>
+    <div class="tiles popn" id="sttiles"></div>
+    <div class="stgrp"><div class="stgrp-h">Pułapy i limity</div>
+    <div class="stgrid">
+      <span>Sprzedawaj z magazynu od <input class="bp-num" id="st-floor" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
+      <span>Ładuj z sieci do <input class="bp-num" id="st-cap" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
+      <span title="Oszczędzanie baterii: plan rozkłada ładowanie z sieci na więcej tanich godzin, a falownik dostaje moc potrzebną na daną godzinę – nie więcej niż limit. Puste = maks. moc z symulacji">Moc maks. ładowania z sieci <input class="bp-num" id="st-pc" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW</span>
+      <span title="Puste = maks. moc z symulacji">Moc maks. sprzedaży z magazynu <input class="bp-num" id="st-pd" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW</span>
       <span title="Przy małym poborze falownik ma duże straty (np. 300 W do domu = ok. 400 W z magazynu). Puste = plan decyduje sam wg kosztów i zmierzonej sprawności przy małej mocy; wpisany próg = w godzinach z mniejszym przewidywanym poborem zawsze standby (dom z sieci, magazyn stoi)">Standby, gdy dom pobiera &lt; <input class="bp-num" id="st-sb" type="number" min="0" max="3000" step="50" style="width:70px"> W</span>
       <span title="Tylko z Pstrykiem. Gdy Tarcza działa (średnia cena energii w miesiącu powyżej limitu), każda kWh z sieci kosztuje tyle samo – plan nie rozładowuje magazynu do domu, ładuje go z PV (tryb „PV do magazynu”) i trzyma energię na sprzedaż w drogich godzinach">Tarcza Pstryk: limit <input class="bp-num" id="st-tz" type="number" min="0" max="5" step="0.01" style="width:70px"> zł/kWh
         <select id="st-tzm" class="fs-btn"><option value="auto">auto (wg średniej w miesiącu)</option><option value="tak">zawsze</option><option value="nie">wyłączona</option></select></span>
-      <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">rezerwa pod sprzedaż do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
+      <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">Rezerwa pod sprzedaż (Tarcza) do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
       <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. 0 / puste = bez limitu">Sprzedaż tylko energii z PV – z ostatnich <input class="bp-num" id="st-legal" type="number" min="0" max="366" step="1" style="width:56px"> dni</span>
-      <span><button class="fs-btn" id="st-save" type="button">Zapisz pułapy</button> <span class="status" id="st-msg"></span></span>
     </div>
-    <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px;margin:-4px 0 10px">
-      <span>Sterowanie falownikiem: <select id="st-ctl" class="fs-btn"><option value="wyl">wyłączone</option>
+    <div class="stgrp-act"><span class="status" id="st-msg"></span><button class="fs-btn primary" id="st-save" type="button">Zapisz pułapy</button></div>
+    </div>
+    <div class="stgrp"><div class="stgrp-h">Sterowanie falownikiem</div>
+    <div class="bp-row" style="flex-wrap:wrap;gap:8px 18px">
+      <span>Tryb: <select id="st-ctl" class="fs-btn"><option value="wyl">wyłączone</option>
         <option value="probny">próbnie (tylko dziennik, bez zapisu)</option><option value="wl">włączone – wysyłaj plan do falownika</option></select></span>
       <span id="st-pzbox" hidden>Pauza: <select id="st-pz" class="fs-btn"><option value="">wybierz…</option><option value="godzina">do końca godziny</option>
         <option value="1h">na 1 godzinę</option><option value="3h">na 3 godziny</option><option value="polnoc">do północy</option><option value="jutro">do jutra 6:00</option></select>
         <button class="fs-btn" id="st-pzend" type="button" hidden>Wznów sterowanie</button></span>
-      <span class="status" id="st-ctlmsg"></span>
+    </div>
+    <div class="stnow" id="st-ctlmsg"></div>
     </div>
     <div id="st-ctlmm" hidden style="margin:-4px 0 10px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--eff-bad);background:color-mix(in srgb, var(--eff-bad) 10%, transparent)"></div>
-    <div class="bp-row" style="flex-wrap:wrap;gap:8px 14px;margin:-4px 0 10px" id="st-man">
-      <span>Ręcznie: <select id="mn-tryb" class="fs-btn"><option value="standby">Standby</option><option value="auto">Samozużycie</option>
+    <div class="stgrp"><div class="stgrp-h">Ręcznie</div>
+    <div class="bp-row" style="flex-wrap:wrap;gap:8px 14px" id="st-man">
+      <span>Tryb: <select id="mn-tryb" class="fs-btn"><option value="standby">Standby</option><option value="auto">Samozużycie</option>
         <option value="grid">Ładowanie z sieci</option><option value="pvchg">PV do magazynu (dom z sieci)</option><option value="auto_nodis">Samozużycie bez rozładowania</option><option value="discharge">Rozładowanie ze stałą mocą</option></select></span>
       <span>na <select id="mn-czas" class="fs-btn"><option value="15m">15 min</option><option value="30m">30 min</option><option value="1h" selected>1 h</option>
         <option value="2h">2 h</option><option value="min">własny…</option><option value="cancel">do anulowania</option></select>
@@ -389,8 +469,9 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span id="mn-smax" hidden>do SOC <input class="bp-num" id="mn-socmax" type="number" min="10" max="100" step="5" value="100" style="width:56px"> %</span>
       <span id="mn-smin" hidden>min. SOC <input class="bp-num" id="mn-socmin" type="number" min="5" max="100" step="5" value="20" style="width:56px"> %</span>
       <span id="mn-prz" hidden title="Limit mocy przyłącza: ładowanie + dom (albo oddanie do sieci) nie przekroczy tej wartości">przyłącze <input class="bp-num" id="mn-przyl" type="number" min="1" max="100" step="1" value="22" style="width:52px"> kW</span>
-      <span><button class="fs-btn" id="mn-go" type="button">Włącz ręczne</button> <button class="fs-btn" id="mn-stop" type="button" hidden>Anuluj ręczne</button>
+      <span><button class="fs-btn primary" id="mn-go" type="button">Włącz ręczne</button> <button class="fs-btn" id="mn-stop" type="button" hidden>Anuluj ręczne</button>
         <span class="status" id="mn-msg"></span></span>
+    </div>
     </div>
     <details id="st-ctldet" hidden>
       <summary>Dziennik sterowania falownikiem</summary>
@@ -518,7 +599,12 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div id="alarms"></div>
     <div class="regs" id="settings"></div>
     <div class="grp btgrp">
-      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;font-size:14px">Temperatura ogniw magazynu i falownika</h3>
+      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;font-size:14px"><span class="infowrap ttlinfo">Temperatura ogniw magazynu i falownika <span class="ib">ⓘ</span><span class="infopop"><b>Ogniwa</b> – zielone pole: zakres korzystny dla ogniw LFP (15–35 °C, najlepiej ok. 20–30 °C).
+        Poniżej ok. 10 °C BMS ogranicza ładowanie (ryzyko osadzania litu); poniżej 0 °C bateria SigenStor najpierw się grzeje (do ok. 2 h), dopiero potem ładuje.
+        Powyżej ok. 35–40 °C szybciej postępuje starzenie. Zakres pracy SigenStor: −20…55 °C.<br>
+        <b>Falownik</b> – linia pokazuje temperaturę <b>wewnętrzną</b> części mocy (rejestr 31003), przy pracy wyraźnie wyższą od otoczenia.
+        Wytyczne Sigen dotyczą temperatury <b>otoczenia</b>: zalecana 10–35 °C, powyżej 40 °C możliwe ograniczanie mocy (pomarańczowa linia), maks. zakres pracy TP2 −30…60 °C.
+        Sigen nie publikuje limitu temperatury wewnętrznej PCS.</span></span></h3>
         <span class="bt-range"><button id="bt-prev" aria-label="Poprzedni dzień">‹</button><input type="date" id="bt-date">
           <button id="bt-next" aria-label="Następny dzień">›</button><button id="bt-today">Dziś</button>
           <button data-d="1" class="on">doba</button><button data-d="7">7 dni</button><button data-d="30">30 dni</button></span>
@@ -526,12 +612,6 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <div class="tiles bt6" id="bttiles"></div>
       <div class="chart"><canvas id="cBt"></canvas></div>
       <div class="empty" id="btempty" hidden>Brak zapisów temperatury – zapis co 60 s od wersji 1.32.</div>
-      <p class="status" style="margin-top:6px;display:block"><b>Ogniwa</b> – zielone pole: zakres korzystny dla ogniw LFP (15–35 °C, najlepiej ok. 20–30 °C).
-        Poniżej ok. 10 °C BMS ogranicza ładowanie (ryzyko osadzania litu); poniżej 0 °C bateria SigenStor najpierw się grzeje (do ok. 2 h), dopiero potem ładuje.
-        Powyżej ok. 35–40 °C szybciej postępuje starzenie. Zakres pracy SigenStor: −20…55 °C.<br>
-        <b>Falownik</b> – linia pokazuje temperaturę <b>wewnętrzną</b> części mocy (rejestr 31003), przy pracy wyraźnie wyższą od otoczenia.
-        Wytyczne Sigen dotyczą temperatury <b>otoczenia</b>: zalecana 10–35 °C, powyżej 40 °C możliwe ograniczanie mocy (pomarańczowa linia), maks. zakres pracy TP2 −30…60 °C.
-        Sigen nie publikuje limitu temperatury wewnętrznej PCS.</p>
     </div>
     <details>
       <summary>Historia zmian ustawień i alarmów</summary>
@@ -540,7 +620,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     </details>
   </section>
 
-  <section class="card">
+  <section class="card" data-hide="regs" hidden>
     <div class="daynav">
       <h2>Odczyty falownika</h2>
       <span class="status" id="regstatus"></span>
@@ -552,7 +632,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
   <div id="tab-rek" role="tabpanel" hidden>
   <section class="card live">
     <div>
-    <svg class="flow" viewBox="0 0 400 260" role="img" aria-label="Przepływ powietrza w rekuperatorze">
+    <svg class="flow vxflow" viewBox="0 0 400 260" role="img" aria-label="Przepływ powietrza w rekuperatorze">
       <!-- dom (lewa) -->
       <g class="icon" transform="translate(45 36)" stroke="var(--s-load)">
         <path d="M-24,-1 L0,-21 L24,-1"/><path d="M-18,-5 V22 H18 V-5" class="icon-bg"/>
@@ -571,13 +651,13 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <!-- przeplywy: gora zewnatrz -> dom (nawiew), dol dom -> zewnatrz (wywiew/wyrzut) -->
       <path id="v-l-in"  class="line" d="M345 112 L55 112"  stroke="var(--s-fc)"/>
       <path id="v-l-out" class="line" d="M55 192 L345 192" stroke="var(--s-pv)"/>
-      <image href="/static/recuperator.svg" x="146" y="102" width="108" height="104" preserveAspectRatio="xMidYMid meet">
+      <image href="/static/recuperator.svg" x="163" y="118" width="74" height="72" preserveAspectRatio="xMidYMid meet">
         <title>Rekuperator Vallox</title></image>
-      <text class="sub" x="200" y="226" id="v-model" style="font-weight:600"></text>
-      <text class="lbl" x="325" y="100">Powietrze zewn.</text><text class="val" x="325" y="134" id="v-tout">–</text>
-      <text class="lbl" x="75" y="100">Nawiew</text><text class="val" x="75" y="134" id="v-tsup">–</text>
-      <text class="lbl" x="75" y="180">Wywiew</text><text class="val" x="75" y="214" id="v-text">–</text>
-      <text class="lbl" x="325" y="180">Wyrzut</text><text class="val" x="325" y="214" id="v-texh">–</text>
+      <text class="sub" x="200" y="210" id="v-model" style="font-weight:600"></text>
+      <text class="lbl" x="325" y="100">Powietrze zewn.</text><text class="val" x="325" y="140" id="v-tout">–</text>
+      <text class="lbl" x="75" y="100">Nawiew</text><text class="val" x="75" y="140" id="v-tsup">–</text>
+      <text class="lbl" x="75" y="180">Wywiew</text><text class="val" x="75" y="220" id="v-text">–</text>
+      <text class="lbl" x="325" y="180">Wyrzut</text><text class="val" x="325" y="220" id="v-texh">–</text>
     </svg>
     <div class="eltiles" id="v-el"></div>
     </div>
@@ -585,7 +665,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <h2><span id="vname">Rekuperator Vallox</span> <span class="status" id="vstatus" style="display:inline"></span></h2>
       <div class="soc-big" id="v-eff">–</div>
       <div class="status" style="margin:4px 0 14px">sprawność odzysku ciepła (nawiew / wywiew)</div>
-      <div class="kv" id="v-kv"></div>
+      <div class="tiles vtiles" id="v-kv"></div>
     </div>
   </section>
 
@@ -875,6 +955,11 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div id="cfg-msg" style="font-size:13px;margin-top:8px"></div>
     <p class="status" style="margin-top:10px" id="cfg-info"></p>
   </section>
+  <section class="card">
+    <h2>Widoczność kart</h2>
+    <p class="status" style="display:block;margin:0 0 8px">Rzadko potrzebne karty są ukryte. Zaznacz, żeby pokazać je na tym urządzeniu.</p>
+    <div class="ntcats" id="uishow"></div>
+  </section>
   </div>
 
 
@@ -1054,6 +1139,15 @@ function baseOpts(unit) {
 function ds(label, data, color) {
   return { label, data, borderColor: color, backgroundColor: color, fill: false };
 }
+function popTiles(box) {
+  // dymek z opisem: przy prawej krawedzi otwierany w lewo; dotkniecie (telefon) przelacza
+  const W = box.clientWidth;
+  box.querySelectorAll('.tile').forEach(t => {
+    t.classList.toggle('pr', t.offsetLeft + t.offsetWidth / 2 > W / 2);
+    const v = t.querySelector('.v'); if (v) v.classList.toggle('vt', v.textContent.trim().length > 10 && !/^[+\-−]?[\d.,]+\s/.test(v.textContent.trim()));
+    t.onclick = () => { const o = t.classList.contains('open'); box.querySelectorAll('.tile.open').forEach(x => x.classList.remove('open')); if (!o) t.classList.add('open'); };
+  });
+}
 function ctile(cls, t, v, unit, note) {
   return tile(t, v, unit, note).replace('<div class="tile">', `<div class="tile ${cls}">`);
 }
@@ -1170,14 +1264,15 @@ async function loadForecast() {
   const fcSrc = T ? `${N[d.main]}${T.kind === 'dzien_wczesniej' ? ' z ' + fmtDT(T.fetched) : ' (bieżąca)'}` : '';
   const pct = T && d.forecast_until_now_kwh > 0.05 ? Math.round(100 * d.actual_kwh / d.forecast_until_now_kwh) : null;
   $('fctiles').innerHTML =
-    tile('Prognoza na dziś', T?.total_kwh, 'kWh', '<b>' + N[d.main] + '</b> (główna) · cały dzień' + fcWhen(T) +
+    ctile('c-pv', 'Prognoza na dziś', T?.total_kwh, 'kWh', '<b>' + N[d.main] + '</b> (główna) · cały dzień' + fcWhen(T) +
       (note(rT, FS.today, EC.today, OM.today) ? '<br>dla porównania: ' + note(rT, FS.today, EC.today, OM.today) : '')) +
     tile('Wyprodukowano dziś', d.actual_kwh, 'kWh', d.actual_src === 'falownik' ? 'licznik falownika' : 'obliczone z mocy') +
     tile('Prognoza do teraz', d.forecast_until_now_kwh, 'kWh', T ? `od wschodu do ${nowHM} · ${fcSrc}` : '') +
     tile('Realizacja prognozy', pct, '%', pct != null ? `wyprodukowano ${d.actual_kwh} z ${d.forecast_until_now_kwh} kWh przewidzianych do ${nowHM} (${fcSrc})` : '') +
-    tile('Prognoza na jutro', J?.total_kwh, 'kWh', '<b>' + N[d.main] + '</b> (główna) · cały dzień' + fcWhen(J) +
+    ctile('c-pv', 'Prognoza na jutro', J?.total_kwh, 'kWh', '<b>' + N[d.main] + '</b> (główna) · cały dzień' + fcWhen(J) +
       (note(rJ, FS.tomorrow, EC.tomorrow, OM.tomorrow) ? '<br>dla porównania: ' + note(rJ, FS.tomorrow, EC.tomorrow, OM.tomorrow) : '')) +
     tile('Szczyt jutro', J ? J.peak_kw : null, J ? 'kW o ' + hm(J.peak_min) : '');
+  popTiles($('fctiles'));
   $('fcempty').hidden = !!(T || J);
 
   // tabela trafnosci: kolumny dla zrodel, ktore maja dane
@@ -1431,7 +1526,7 @@ $('st-ctl').onchange = async () => {
   try {
     r = await (await fetch('/api/inverter/ctl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tryb: t }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
-  if (!r.ok) { $('st-ctlmsg').style.color = 'var(--eff-bad)'; $('st-ctlmsg').textContent = r.error || 'błąd'; }
+  if (!r.ok) { $('st-ctlmsg').className = 'stnow err'; $('st-ctlmsg').innerHTML = `<div class="m">${esc(r.error || 'błąd')}</div>`; }
   setTimeout(loadCtl, 1500);
 };
 async function ctlPost(body) {
@@ -1439,7 +1534,7 @@ async function ctlPost(body) {
   try {
     r = await (await fetch('/api/inverter/ctl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
-  if (!r.ok) { $('st-ctlmsg').style.color = 'var(--eff-bad)'; $('st-ctlmsg').textContent = r.error || 'błąd'; }
+  if (!r.ok) { $('st-ctlmsg').className = 'stnow err'; $('st-ctlmsg').innerHTML = `<div class="m">${esc(r.error || 'błąd')}</div>`; }
   setTimeout(loadCtl, 1500);
 }
 $('st-pz').onchange = () => { const v = $('st-pz').value; $('st-pz').value = ''; if (v) ctlPost({ pauza: v }); };
@@ -1516,13 +1611,17 @@ async function loadCtl() {
   $('st-pzend').hidden = !paused;
   const hm = ts => ts ? new Date(ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–';
   const m = $('st-ctlmsg');
-  m.style.color = c.error ? 'var(--eff-bad)' : c.tryb === 'wl' ? 'var(--s-sell)' : 'var(--text-2)';
-  m.textContent = M ? 'RĘCZNIE: ' + (c.desired ? c.desired.txt + ' – ' + (c.desired.why || '') : (c.reason || '')) +
-      (c.desired ? (c.applied ? ` · ✓ ustawione ${hm(c.applied_ts)}` : ' · wysyłam…') : '') + (c.error ? ' · błąd: ' + c.error : '')
-    : c.tryb === 'wyl' ? (c.owned ? 'oddaję sterowanie falownikowi…' : 'plan jest tylko symulacją – nic nie jest wysyłane')
-    : (c.tryb === 'probny' ? 'próbnie: ' : 'teraz: ') + (c.desired ? c.desired.txt + ' – ' + (c.desired.why || '') : 'brak polecenia – ' + (c.reason || '') + (c.tryb === 'wl' ? ' (sterowanie oddane falownikowi)' : '')) +
-      (c.tryb === 'wl' && c.desired ? (c.applied ? ` · ✓ ustawione ${hm(c.applied_ts)}` + (c.verify ? ` (odczyt: Remote EMS ${c.verify.enable}, tryb ${c.verify.mode})` : '') : ' · wysyłam…') : '') +
-      (c.error ? ' · błąd: ' + c.error : '');
+  const des = c.desired ? c.desired.txt + (c.desired.why ? ' – ' + c.desired.why : '') : null;
+  const mainTxt = M ? 'Ręcznie: ' + (des || c.reason || '')
+    : c.tryb === 'wyl' ? (c.owned ? 'Oddaję sterowanie falownikowi…' : 'Sterowanie wyłączone – plan jest tylko symulacją')
+    : (c.tryb === 'probny' ? 'Próbnie (bez zapisu): ' : 'Teraz: ') + (des || 'brak polecenia – ' + (c.reason || '') + (c.tryb === 'wl' ? ' (sterowanie oddane falownikowi)' : ''));
+  const sub = [
+    ...((M || c.tryb === 'wl') && c.desired ? [c.applied ? `✓ ustawione ${hm(c.applied_ts)}` + (c.verify ? ` · odczyt: Remote EMS ${c.verify.enable}, tryb ${c.verify.mode}` : '') : 'wysyłam…'] : []),
+    ...(c.error ? ['błąd: ' + c.error] : []),
+  ];
+  m.className = 'stnow' + (c.error ? ' err' : M ? ' man' : c.tryb === 'wl' ? ' on' : '');
+  m.style.color = '';
+  m.innerHTML = `<div class="m">${esc(mainTxt)}</div>` + (sub.length ? `<div class="s">${esc(sub.join(' · '))}</div>` : '');
   const mm = c.mismatch;
   $('st-ctlmm').hidden = !mm;
   if (mm) $('st-ctlmm').innerHTML = `⚠ <b>${mm.alert ? 'Falownik robi co innego niż polecenie' : 'Możliwa niezgodność falownika'}</b> od ${hm(mm.since)}: ${esc(mm.txt || '')}` +
@@ -1558,9 +1657,9 @@ async function loadStrategy() {
     (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFixed(1)} kWh` : '') +
     (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFixed(2)} zł` : ''));
   $('sttiles').innerHTML =
-    tile('Teraz wg planu', esc(n.label), '', `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)` +
+    tile('Teraz wg planu', esc(n.label.split(' – ')[0]), '', (n.label.includes(' – ') ? esc(n.label) + ' · ' : '') + `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)` +
       (P.hour_lock ? ` · tryb ustalony o ${new Date(P.hour_lock.at * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} na całą godzinę (do ${new Date((P.hour_lock.ts + 3600) * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })})` : '')) +
-    tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? esc(x.label) : 'bez zmian do końca jutra') +
+    tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? 'na: ' + esc(x.label) : 'bez zmian do końca jutra') +
     sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
     ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
       `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · ` + (P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
@@ -1572,14 +1671,25 @@ async function loadStrategy() {
       ((P.eta_c_curve || []).length ? ' · sprawność ładowania przy małej mocy: ' +
         P.eta_c_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : '') +
       (P.pvchg_min_kw != null && P.tarcza && P.tarcza.active ? ` · PV do magazynu od ${String(P.pvchg_min_kw).replace('.', ',')} kW` : '')) +
-    (P.legal && P.legal.budget != null ? ctile(P.legal.budget > 0.5 ? 'c-green' : 'c-red', 'Limit sprzedaży (z PV)', P.legal.budget.toFixed(1).replace('.', ','), 'kWh',
-      `produkcja PV ${P.legal.pv.toFixed(1).replace('.', ',')} kWh − oddane do sieci ${P.legal.exp.toFixed(1).replace('.', ',')} kWh (ostatnie ${P.legal.days} dni)` +
-      ` · do końca planu rośnie o prognozę PV` + (P.legal.capped_hours ? ` · sprzedaż ograniczona w ${P.legal.capped_hours} godz.` : '')) : '') +
+    (P.legal && P.legal.budget != null ? (() => {
+      // do sprzedazy teraz = mniejsze z: limit prawny (PV - oddane, N dni) i energia w magazynie ponad min. SOC (po stratach)
+      const f1 = v => v.toFixed(1).replace('.', ',');
+      const bat = P.soc_now != null && P.cap_kwh ? Math.max(0, (P.soc_now - (P.soc_min ?? 0)) / 100 * P.cap_kwh * (P.eta_d ?? 0.95)) : null;
+      const lim = P.legal.budget, now = bat == null ? lim : Math.min(lim, bat);
+      const by = bat == null ? '' : bat < 0.5 ? 'magazyn pusty' : lim < bat ? 'ogranicza limit z PV' : 'ogranicza stan magazynu';
+      const cls = bat != null && bat < 0.5 ? '' : lim < 0.5 || (bat != null && lim < bat) ? 'c-amber' : 'c-green';
+      return ctile(cls, 'Do sprzedaży teraz', f1(now), 'kWh',
+        `${by ? by + ' · ' : ''}limit z PV: ${f1(lim)} kWh (produkcja ${f1(P.legal.pv)} − oddane ${f1(P.legal.exp)} kWh, ostatnie ${P.legal.days} dni)` +
+        (bat != null ? ` · w magazynie do oddania: ${f1(bat)} kWh (SOC ${P.soc_now} %, min. ${P.soc_min} %, z uwzględnieniem strat)` : '') +
+        ` · plan liczy oba ograniczenia godzina po godzinie: limit rośnie o prognozę PV, magazyn o ładowanie` +
+        (P.legal.capped_hours ? ` · sprzedaż przycięta limitem w ${P.legal.capped_hours} godz.` : ''));
+    })() : '') +
     (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
       P.tarcza.active ? 'działa' : 'nie działa', '',
       esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
         ` (limit ${P.tarcza.cap.toFixed(2)} + marża ${(P.tarcza.margin ?? 0.098).toFixed(2)} + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż` +
         (P.reserve_price ? ` · rezerwa pod sprzedaż do ${P.tarcza_rezerwa} % (wyceniana ${P.reserve_price.toFixed(2)} zł/kWh)` : '') : '')) : '');
+  popTiles($('sttiles'));
   const ae = document.activeElement?.id;
   if (ae !== 'st-floor') $('st-floor').value = P.sell_floor ?? '';
   if (ae !== 'st-cap') $('st-cap').value = P.buy_cap ?? '';
@@ -1593,27 +1703,82 @@ async function loadStrategy() {
   if (ae !== 'st-sb') $('st-sb').value = P.standby_below_w ?? '';
   $('st-pc').placeholder = $('st-pd').placeholder = P.p_max_kw;
   const H = d.hours, labels = H.map(h => `${h.day} ${h.t}`);
-  const money = h => h.buy == null ? 0 : h.grid > 0 ? -h.grid * h.buy : -h.grid * h.sell;   // bez kosztu zuzycia baterii
+  // Wykres: lewa os SOC 0-100 %, prawa os cen LUSTRZANA (zero na srodku): sprzedaz w gore, zakup w dol.
+  // Linie = potencjalna cena w kazdej godzinie; slupki (od zera do linii ceny) tylko przy realnej transakcji:
+  // ciemnozielony - sprzedaz nadwyzki PV, jaskrawozielony - sprzedaz z magazynu, czerwony - rzeczywisty pobor
+  // (godziny przeszle), ciemnoczerwony - celowy zakup w planie (ladowanie z sieci), bladoczerwony - zwykly pobor domu
+  // w planie. Jasnosc slupka wg ilosci kWh. Ilosci i kwoty w podpowiedzi.
+  const expPv = h => h.grid < 0 && h.pv != null && h.load != null ? Math.min(-h.grid, Math.max(h.pv - h.load, 0)) : h.grid < 0 ? -h.grid : 0;
+  const expBat = h => h.grid < 0 ? Math.max(-h.grid - expPv(h), 0) : 0;
+  const imp = h => h.grid > 0 ? h.grid : 0;
+  const nowI = d.now_index || 0;
+  const KINDS = [
+    { k: 'pv', label: 'Sprzedaż PV', color: css('--s-sell') },
+    { k: 'bat', label: 'Sprzedaż z magazynu', color: '#39d353' },
+    { k: 'buy', label: 'Zakup (rzeczywisty)', color: css('--s-buy') },
+    { k: 'grid', label: 'Zakup celowy (plan)', color: '#9e1b1e' },
+    { k: 'home', label: 'Pobór domu (plan)', color: '#f19d9c' },
+  ];
+  const kindOf = (h, i) => {
+    if (expBat(h) > 0.005) return 'bat';
+    if (expPv(h) > 0.005) return 'pv';
+    if (imp(h) > 0.005) return i < nowI ? 'buy' : h.mode === 'grid' ? 'grid' : 'home';
+    return null;
+  };
+  const amt = h => h.grid < 0 ? -h.grid : imp(h);
+  const kinds = H.map(kindOf);
+  const maxExp = Math.max(0.3, ...H.map(h => h.grid < 0 ? -h.grid : 0)), maxImp = Math.max(0.3, ...H.map(imp));
+  const rgba = (hex, a) => { const c = hex.trim().replace('#', ''); const n = parseInt(c.length === 3 ? c.replace(/./g, x => x + x) : c, 16);
+    return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a.toFixed(2)})`; };
+  const barVal = (h, kd) => kd === 'pv' || kd === 'bat' ? (h.sell ?? 0) : -(h.buy ?? 0);
+  const M = Math.max(0.5, Math.ceil(Math.max(...H.map(h => Math.max(Math.abs(h.sell ?? 0), Math.abs(h.buy ?? 0))), P.sell_floor ?? 0) * 1.1 * 2) / 2);
   const sets = [
     { ...ds('SOC – plan', H.map(h => h.soc), css('--s-bat')), yAxisID: 'y' },
     { ...ds('SOC – bez strategii', H.map(h => h.base_soc), css('--muted')), yAxisID: 'y', borderDash: [4, 4] },
-    { ...ds('Cena zakupu', H.map(h => h.buy), css('--s-buy')), yAxisID: 'y1', stepped: true, borderWidth: 1.5 },
-    { ...ds('Cena sprzedaży', H.map(h => h.sell), css('--s-sell')), yAxisID: 'y1', stepped: true, borderWidth: 1.5 },
-    { ...ds('Zakup (−) / sprzedaż (+) – plan', H.map(money), css('--s-grid')), yAxisID: 'y2', type: 'bar', borderWidth: 0,
-      backgroundColor: H.map(h => money(h) < 0 ? css('--s-buy') : css('--s-sell')) },
+    { ...ds('Cena sprzedaży', H.map(h => h.sell), css('--s-sell')), yAxisID: 'y1', stepped: 'middle', borderWidth: 1.5, pointRadius: 0, $price: 'sell' },
+    { ...ds('Cena zakupu (w dół)', H.map(h => h.buy == null ? null : -h.buy), css('--s-buy')), yAxisID: 'y1', stepped: 'middle', borderWidth: 1.5, pointRadius: 0, $price: 'buy' },
+    ...(P.sell_floor != null ? [{ ...ds('Próg sprzedaży z magazynu', H.map(() => P.sell_floor), '#39d353'), yAxisID: 'y1',
+      borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, $skipTip: true }] : []),
+    { ...ds('0 zł', H.map(() => 0), css('--text-2')), yAxisID: 'y1', borderWidth: 1.2, pointRadius: 0, $skipTip: true, $hide: true },
+    ...KINDS.map(K => {
+      const data = H.map((h, i) => kinds[i] === K.k ? barVal(h, K.k) : null);
+      const a = H.map((h, i) => { const r = amt(h) / (h.grid < 0 ? maxExp : maxImp); return (K.k === 'home' ? 0.4 : 0.35) + 0.6 * Math.min(1, r); });
+      return { label: K.label, data, yAxisID: 'y2', type: 'bar', borderWidth: 0, stack: 'tx', $kind: K.k, $empty: data.every(v => v == null),
+        backgroundColor: a.map(x => rgba(K.color, x)), borderColor: K.color };
+    }),
   ];
+  const zl2 = v => v.toFixed(2).replace('.', ',');
   if (!cSt) {
     const o = baseOpts('%');
     o.scales.y.min = 0; o.scales.y.max = 100;
-    o.scales.y1 = { position: 'right', grid: { display: false }, ticks: { color: css('--muted'), callback: v => v.toFixed(2) + ' zł' } };
-    o.scales.y2 = { position: 'left', offset: false, grid: { display: false }, ticks: { display: false } };
-    o.plugins.tooltip.callbacks.label = c => c.dataset.yAxisID === 'y1' ? ` ${c.dataset.label}: ${c.parsed.y.toFixed(3)} zł/kWh`
-      : c.dataset.yAxisID === 'y2' ? ` ${c.parsed.y >= 0 ? 'sprzedaż' : 'zakup'}: ${Math.abs(c.parsed.y).toFixed(2)} zł` : ` ${c.dataset.label}: ${c.parsed.y.toFixed(0)} %`;
-    o.plugins.tooltip.callbacks.afterBody = it => { const h = cSt.$h[it[0].dataIndex]; return h ? [`plan: ${h.label}`, `sieć: ${h.grid >= 0 ? 'pobór ' + h.grid.toFixed(2) : 'oddanie ' + (-h.grid).toFixed(2)} kWh`] : []; };
+    o.scales.x = { ...(o.scales.x || {}), stacked: true };
+    o.scales.y1 = { position: 'right', grid: { display: false },
+      title: { display: true, text: '↑ sprzedaż · cena zł/kWh · zakup ↓', color: css('--muted') },
+      ticks: { color: css('--muted'), callback: v => Math.abs(v).toFixed(2).replace('.', ',') + ' zł' } };
+    o.scales.y2 = { display: false, stacked: true };
+    o.plugins.legend.labels.filter = (it, data) => { const x = data.datasets[it.datasetIndex]; return !x.$hide && !x.$empty; };
+    const genL = Chart.defaults.plugins.legend.labels.generateLabels;
+    o.plugins.legend.labels.generateLabels = ch => genL(ch).map(l => { const x = ch.data.datasets[l.datasetIndex]; if (x?.$kind) { l.fillStyle = l.strokeStyle = x.borderColor; } return l; });
+    o.plugins.tooltip.filter = it => !it.dataset.$skipTip && it.parsed.y != null && !(it.dataset.yAxisID === 'y2' && it.raw == null);
+    o.plugins.tooltip.callbacks.label = c => {
+      const h = cSt.$h[c.dataIndex], x = c.dataset;
+      if (x.yAxisID === 'y') return ` ${x.label}: ${c.parsed.y.toFixed(0)} %`;
+      if (x.$price === 'sell') return ` Cena sprzedaży: ${c.parsed.y.toFixed(3)} zł/kWh${c.parsed.y < 0 ? ' (ujemna!)' : ''}`;
+      if (x.$price === 'buy') return ` Cena zakupu: ${(-c.parsed.y).toFixed(3)} zł/kWh` + (h?.tarcza ? ` (z Tarczą; godzinowa ${h.buy_hour?.toFixed(3) ?? '–'})` : '');
+      if (!h) return '';
+      if (x.$kind === 'pv' || x.$kind === 'bat') {
+        const q = x.$kind === 'bat' ? expBat(h) : expPv(h), tot = -h.grid;
+        return [` ${x.label}: ${zl2(q)} kWh × ${zl2(h.sell)} zł = ${zl2(q * h.sell)} zł` + (h.sell < 0 ? ' – ujemna cena, płacisz za oddanie' : ''),
+          ...(x.$kind === 'bat' && expPv(h) > 0.005 ? [` w tym też sprzedaż PV: ${zl2(expPv(h))} kWh`] : []),
+          ...(x.$kind === 'bat' ? [` razem oddanie: ${zl2(tot)} kWh = ${zl2(tot * h.sell)} zł`] : [])];
+      }
+      return ` ${x.label}: ${zl2(imp(h))} kWh × ${zl2(h.buy)} zł = ${zl2(imp(h) * h.buy)} zł` + (h.tarcza ? ' (realny koszt z Tarczą)' : '') +
+        (h.buy < 0 ? ' – ujemna cena, dostajesz za pobór' : '');
+    };
+    o.plugins.tooltip.callbacks.afterBody = it => { const h = cSt.$h[it[0].dataIndex]; return h ? [`plan: ${h.label}`] : []; };
     cSt = new Chart($('cSt'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [nowLine] });
   } else { cSt.data = { labels, datasets: sets }; }
-  const mx = Math.max(0.5, ...H.map(h => Math.abs(money(h))));
-  cSt.options.scales.y2.min = -mx; cSt.options.scales.y2.max = mx;   // zero na srodku: zakup w dol, sprzedaz w gore
+  cSt.options.scales.y1.min = cSt.options.scales.y2.min = -M; cSt.options.scales.y1.max = cSt.options.scales.y2.max = M;
   cSt.$h = H; cSt.$nowIdx = d.now_index || null; cSt.update();
   const f = (v, k) => v == null ? '–' : v.toFixed(k);
   $('stbody').innerHTML = H.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? (h.fc ? '†' : '*') : ''}</td>` +
@@ -1631,7 +1796,7 @@ async function loadPrices() {
   let d;
   try { d = await (await fetch('/api/prices')).json(); } catch (e) { return; }
   const st = d.status;
-  $('prstatus').textContent = (st.error ? 'błąd: ' + st.error : 'PSE · ' + (d.tariff?.source || '')) + (d.pstryk ? ' · ceny Pstryka' : '');
+  $('prstatus').textContent = st.error ? 'błąd: ' + st.error : '';   // zrodla cen i taryf - w dymku przy tytule
   const T = d.today, J = d.tomorrow;
   const pts = [...T.points.map(p => ({ ...p, day: 'dziś' })), ...J.points.map(p => ({ ...p, day: 'jutro' }))];
   $('prempty').hidden = pts.length > 0;
@@ -1654,7 +1819,8 @@ async function loadPrices() {
     tile((jc.length ? 'Najtańsze godziny jutro' : 'Najtańsze godziny dziś') + (PS ? ' (Pstryk)' : ''),
       ch.length ? ch.map(c => c.hour.slice(0, 2)).join(', ') : null, '',
       ch.length ? ch.map(c => `${c.hour} ${c.buy.toFixed(3)} zł`).join(' · ') : '');
-  $('prformula').textContent = `Zakup = ${d.formula.zakup}. Sprzedaż = ${d.formula.sprzedaz}.`;
+  $('prformula').textContent = `Zakup = ${d.formula.zakup}. Sprzedaż = ${d.formula.sprzedaz}.` +
+    ` Źródła: ceny PSE${d.pstryk ? ' i Pstryk' : ''}${d.tariff?.source ? '; ' + d.tariff.source : ''}`;
   if (!pts.length) return;
   const labels = pts.map(p => `${p.day} ${p.t}`);
   const sets = [
@@ -1747,7 +1913,10 @@ async function loadSettings() {
       `<div class="al-n">${d.alarms_ts ? 'odczyt ' + new Date(d.alarms_ts * 1000).toLocaleTimeString('pl-PL') + ' · co 30 s · ' : ''}` +
       `sprawdzane: DC i sieć, upływ, izolacja, AFCI (wykrywanie łuku elektrycznego)</div></div>`;
   }
-  if (d.ts) $('settings').innerHTML = d.groups.map(g => `<div class="grp"><h3>${esc(g.group)}</h3><table><tbody>` +
+  if (d.ts) $('settings').innerHTML = d.groups.map(g => g.group.startsWith('Magazyn – granice SOC') ?
+    `<div class="grp socgrp"><h3>${esc(g.group)}</h3><div class="socrow">` + g.items.map(it => `<div class="soccell"><div class="t">${esc(it.name)}</div>` +
+      `<div class="v${it.value == null ? ' na' : ''}">${fmtVal(it)}</div><div class="w">działa: ${esc(it.when)}</div></div>`).join('') + '</div></div>' :
+    `<div class="grp" data-hide="${HIDEABLE_GRP[g.group] || ''}"${HIDEABLE_GRP[g.group] && !uiShow(HIDEABLE_GRP[g.group]) ? ' hidden' : ''}><h3>${esc(g.group)}</h3><table><tbody>` +
     g.items.map(it => `<tr><td>${esc(it.name)}<br><span class="w">działa: ${esc(it.when)}</span></td>` +
       `<td class="v${it.value == null ? ' na' : ''}">${fmtVal(it)}<br><span class="risk ${it.risk}">${RISK[it.risk]}</span></td></tr>`
     ).join('') + '</tbody></table></div>').join('');
@@ -2131,23 +2300,15 @@ async function loadVallox() {
   ['v-l-in', 'v-l-out'].forEach(id => { $(id).classList.toggle('on', on); });
   renderEl(d.shelly);
   $('v-eff').textContent = d.eff_sup == null ? '–' : `${Math.round(d.eff_sup)} % / ${d.eff_ext == null ? '–' : Math.round(d.eff_ext) + ' %'}`;
-  const yn = v => v == null ? '–' : v ? 'tak' : 'nie';
-  const row = (k, v) => `<span>${k}</span><span>${v ?? '–'}</span>`;
+  const vt = (t, v, unit, sub) => `<div class="tile"><div class="t">${t}</div><div class="v">${v ?? '–'}${v != null && unit ? ` <small>${unit}</small>` : ''}</div>` +
+    (sub ? `<div class="sub">${sub}</div>` : '') + '</div>';
+  const co2 = [d.co2_s0, d.co2_s1].filter(v => v != null);
   $('v-kv').innerHTML =
-    row('Profil', d.profile_txt) + row('Stan wymiennika', d.cell_state_txt) + row('Wentylacja', d.fan_pct != null ? d.fan_pct + ' %' : null) +
-    row('Przepływ nawiew / wywiew', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext} m³/h (${d.rpm_sup} / ${d.rpm_ext} obr/min)` : null) +
-    (d.model ? row('Model', `${esc(d.model.name || '–')}${d.model.source ? '<br><span class="status" style="display:inline;font-weight:400">' + esc(d.model.source) + '</span>' : ''}`) : '') +
-    (d.model ? row('Szacunek przepływu', `maks. ${d.model.flow_max.sup} / ${d.model.flow_max.ext} m³/h przy ${d.model.rpm_max.sup} obr/min (${d.model.rpm_source})`) : '') +
-    row('Moc odzyskana', d.p_rec_w != null ? Math.round(d.p_rec_w) + ' W' : null) +
-    row('Nawiew za wymiennikiem', fmtT(d.t_sup_cell)) +
-    row('CO₂ – ' + (d.co2_names?.co2_s0 || 'czujnik 1'), d.co2_s0 != null ? d.co2_s0 + ' ppm' : null) +
-    row('CO₂ – ' + (d.co2_names?.co2_s1 || 'czujnik 2'), d.co2_s1 != null ? d.co2_s1 + ' ppm' : null) +
-    row('Próg CO₂ (wentylacja w górę)', d.co2_threshold != null ? d.co2_threshold + ' ppm' + (d.co2_ctrl_home ? '' : ' (wył.)') : null) +
-    row('Wilgotność', d.rh != null ? d.rh + ' %' + (d.rh_basic_level != null ? ` (poziom bazowy ${d.rh_basic_level} %)` : '') : null) +
-    row('Temperatura w czujniku', fmtT(d.ms_temp)) +
-    row('Filtr – do wymiany', d.filter_days != null ? `${d.filter_days} z ${d.filter_interval} dni` : null) +
-    row('Bypass zablokowany', yn(d.bypass_locked)) + row('Odszranianie', yn(d.defrosting)) + row('Nagrzewnica', yn(d.heater)) +
-    row('Profile: Dom / Poza / Boost', d.home_speed != null ? `${d.home_speed} / ${d.away_speed} / ${d.boost_speed} %` : null);
+    vt('Stan wymiennika', d.cell_state_txt ? esc(d.cell_state_txt) : null, '', d.defrosting ? 'odszranianie' : d.bypass_locked ? 'bypass zablokowany' : '') +
+    vt('Przepływ', d.fan_pct, '%', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext} m³/h<br>nawiew / wywiew` : '') +
+    vt('CO₂ rek. / CO₂ ekstra', co2.length ? co2.join(' / ') : null, 'ppm',
+      d.co2_threshold != null ? `próg ${d.co2_threshold} ppm` + (d.co2_ctrl_home ? '' : ' (wył.)') : '') +
+    vt('Wilgotność', d.rh, '%', d.rh_basic_level != null ? `poziom bazowy ${d.rh_basic_level} %` : '');
 }
 const EL_MID = 50;   // W: do 50 zielony, do progu nagrzewnicy (Ustawienia) pomaranczowy, powyzej czerwony
 function renderEl(sh) {
@@ -2586,6 +2747,16 @@ fetch('/api/version').then(r => r.json()).catch(() => ({ pv: true, vallox: false
   if (location.hash === '#ustawienia' || (!MODS.pv && !MODS.vallox)) showTab('set');
   else if (MODS.vallox && (location.hash === '#rekuperacja' || !MODS.pv)) showTab('rek');
 });
+// ---- widocznosc rzadko uzywanych kart (zapamietana na urzadzeniu) ----
+const HIDEABLE = { przylacze: 'Ustawienia falownika – limity mocy na przyłączu', remote: 'Ustawienia falownika – zdalne sterowanie (Remote EMS)', regs: 'Odczyty falownika (rejestry)' };
+const HIDEABLE_GRP = { 'Limity mocy na przyłączu': 'przylacze', 'Zdalne sterowanie (Remote EMS)': 'remote' };
+function uiShow(k) { try { return localStorage.getItem('sigen_show_' + k) === '1'; } catch (e) { return false; } }
+function applyUiShow() { document.querySelectorAll('[data-hide]').forEach(el => { const k = el.dataset.hide; if (k) el.hidden = !uiShow(k); }); }
+function renderUiShow() {
+  $('uishow').innerHTML = Object.entries(HIDEABLE).map(([k, n]) => `<label><input type="checkbox" data-k="${k}"${uiShow(k) ? ' checked' : ''}> ${esc(n)}</label>`).join('');
+}
+$('uishow').onchange = e => { const k = e.target.dataset.k; if (!k) return; try { localStorage.setItem('sigen_show_' + k, e.target.checked ? '1' : '0'); } catch (x) {} applyUiShow(); };
+applyUiShow();
 </script>
 </body>
 </html>

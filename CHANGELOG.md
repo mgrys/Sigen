@@ -2,6 +2,28 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.22.0] - 2026-11-05
+
+### Zmieniono
+- Strategia – **nowy wykres**: oś cen lustrzana (zero na środku, sprzedaż w górę, zakup w dół), linie = potencjalna cena
+  w każdej godzinie, słupki od zera do linii ceny tylko przy realnej transakcji: ciemnozielony – sprzedaż PV,
+  jaskrawozielony – sprzedaż z magazynu, czerwony – rzeczywisty pobór (godziny przeszłe), ciemnoczerwony – celowy zakup
+  w planie (ładowanie z sieci), bladoczerwony – zwykły pobór domu w planie; jasność słupka wg ilości kWh; podpowiedź
+  kWh × cena = kwota. Przerywana linia progu sprzedaży z magazynu. Godziny przeszłe liczone po cenie realnie płaconej
+  (z Tarczą – stała cena), więc linia zakupu nie skacze na „teraz”.
+- Strategia: kafle jednakowej, niższej wysokości (opisy w ⓘ), „Teraz wg planu” – sama nazwa trybu; kafel **„Do sprzedaży
+  teraz”** = mniejsze z: limit z PV (produkcja − oddane, N dni) i energia w magazynie ponad minimum (po stratach);
+  ustawienia w ramkach („Pułapy i limity”, „Sterowanie falownikiem”, „Ręcznie”), bieżący tryb falownika w osobnej,
+  wyróżnionej ramce.
+- Przyciski w całej aplikacji wyglądają jak przyciski, pola i listy wyboru jak pola.
+- Instalacja PV: większe wartości i opisy na schemacie przepływu; prognoza – zwarte kafle z opisami w ⓘ, wyróżnione
+  prognozy na dziś i jutro; ceny energii i temperatury ogniw – objaśnienia (wzór, źródła cen i taryf) w dymku przy tytule.
+- Ustawienia falownika: granice SOC jako jeden podłużny kafel z trzema wartościami; grupy „Limity mocy na przyłączu”
+  i „Zdalne sterowanie (Remote EMS)” oraz karta „Odczyty falownika” ukryte – do włączenia w Ustawienia → Widoczność kart.
+- Rekuperacja: obok sprawności 4 kafle tej samej wielkości (stan wymiennika, przepływ, CO₂, wilgotność); na schemacie
+  mniejsza grafika, większe temperatury.
+- Prognoza PV z Open-Meteo na 3 dni (było 2) – plan strategii na pojutrze nie liczy PV = 0.
+
 ## [1.21.0] - 2026-11-04
 
 ### Dodano

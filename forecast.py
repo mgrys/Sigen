@@ -60,7 +60,7 @@ GROUPS = {"open_meteo": "Open-Meteo", "forecast_solar": "forecast.solar"}   # gr
 FS_API = "https://api.forecast.solar/estimate/{lat}/{lon}/{dec}/{az}/{kwp}"
 OM_API = ("https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
           "&minutely_15=global_tilted_irradiance&tilt={dec}&azimuth={az}&models={models}"
-          "&timezone=" + urllib.parse.quote(TZ) + "&forecast_days=2")
+          "&timezone=" + urllib.parse.quote(TZ) + "&forecast_days=3")   # 3 dni - plan strategii (Pradcast) siega do pojutrza
 
 state = {g: {"updated": None, "error": None} for g in GROUPS}
 _lock = threading.Lock()
