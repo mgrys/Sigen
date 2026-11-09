@@ -19,7 +19,8 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Dzień:** liczniki energii z falownika (produkcja, zużycie, pobór i oddanie do sieci, ładowanie/rozładowanie),
   autokonsumpcja, samowystarczalność, wykres mocy, tabela godzinowa, historia dowolnego dnia.
 - **Prognoza produkcji** na dziś i jutro dla każdej połaci dachu:
-  - Open-Meteo (4 modele pogodowe: ECMWF, ICON-EU, Météo-France i automatyczny),
+  - Open-Meteo (modele ECMWF, ICON-EU, automatyczny i ich średnia) oraz ensemble ECMWF ENS (50 przebiegów modelu:
+    mediana, P10 – pesymistyczna, P90 – optymistyczna) do oceny niepewności prognozy,
   - forecast.solar,
   - porównanie z rzeczywistą produkcją i tabela trafności prognoz ze **średnim odchyleniem** każdej prognozy
     (kWh/dzień i % produkcji) i kolorami – zielony najtrafniejsza, czerwony najmniej trafna; dni podbarwione wg błędu.
@@ -28,8 +29,10 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
   Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
 - **Temperatura ogniw magazynu** w czasie, z zakresem korzystnym dla ogniw LFP.
 - **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox: 096 / 110 / 145 / 245 MV i inne)** – zakładka Rekuperacja po wpisaniu IP i wyborze modelu w Ustawieniach:
-  temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą, obejście wymiennika
-  z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem, wykresy dnia i energia odzyskana.
+  temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą albo bilansem wzorcowym
+  (obserwacja odchyłek), obejście wymiennika z automatem letniego chłodzenia, nastawa temperatury nawiewu z automatem
+  (zimą wg temperatury zewnętrznej – krzywa uczona z historii), prędkość zimowa (mniejszy przepływ przy chłodzie),
+  sposób odszraniania wymiennika ze statystyką pracy nagrzewnicy, wykresy dnia i energia odzyskana.
   Pobór prądu i praca nagrzewnicy z gniazdka Shelly (Gen1/Plus) albo gniazdka SmartLife/Tuya (User Code + skan QR w Ustawieniach, bez adresu IP i bez konta deweloperskiego); inny miernik – patrz `meter.py`. Szczegóły i automaty: [Rekuperacja](#rekuperacja--vallox-seria-mv-opcjonalnie).
 - **Zaniki sieci (off-grid):** czerwony pasek i tło strony, gdy dom pracuje bez sieci, ostatni zanik na stronie
   głównej (pełna historia: `/api/grid_events`).
@@ -40,7 +43,9 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
   Bez klucza dashboard działa jak dotąd.
 - **Strategia osobista:** godzinowy plan magazynu na dziś i jutro (z kluczem Pradcast – do pojutrza): autokonsumpcja /
   standby / ładowanie z sieci w tanich godzinach / sprzedaż z magazynu w drogich, z pułapami cen, limitami mocy
-  (oszczędzanie baterii) i zmierzonymi stratami falownika przy małej mocy; szacowana oszczędność. Na stronie głównej,
+  (oszczędzanie baterii) i zmierzonymi stratami falownika przy małej mocy; szacowana oszczędność. Tryb cen **progi**
+  (pułapy sprzedaży / zakupu) albo **auto – zysk po kosztach** (min. zysk na kWh z magazynu, pułapy jako bezpieczniki);
+  profil zużycia prosty, wg dni tygodnia albo dni tygodnia + temperatura; magazyn nie stoi długo powyżej 90 % ani poniżej 15 %. Na stronie głównej,
   obok schematu przepływów, **„Strategia – teraz”** dużą czcionką. Plan może opcjonalnie sterować falownikiem –
   [szczegóły](#sterowanie-falownikiem-opcjonalnie-domyślnie-wyłączone); domyślnie to tylko symulacja.
 - **Sprawność falownika** w przedziałach mocy (dzień, 7/30 dni, cała historia).
@@ -63,7 +68,7 @@ dopóki nie przełączysz go na karcie *Strategia osobista*.
   |---|---|
   | autokonsumpcja | tryb 2 – maks. autokonsumpcja |
   | standby (dom z sieci, magazyn stoi) | tryb 1 |
-  | ładowanie z sieci | tryb 3, moc 40032 |
+  | ładowanie z sieci | tryb 4 (najpierw PV, reszta z sieci – PV nie jest obcinane), moc 40032 |
   | sprzedaż z magazynu | tryb 6 (najpierw magazyn, moc 40034); przy produkcji PV ≥ 0,5 kW tryb 5 |
 
 - **Moc:** energia z planu rozkładana na resztę godziny (z zapasem), nie więcej niż limit „Moc maks.”; ładowanie

@@ -29,7 +29,7 @@ TZ = config.get("instalacja", "strefa_czasowa", "Europe/Warsaw")
 POLACIE = config.planes()
 
 # Zrodlo w kafelkach: open_meteo (najlepsze dopasowanie Open-Meteo), om_srednia (srednia modeli),
-# om_ecmwf, om_icon_eu, om_meteofrance albo forecast_solar (UK Met Office i GFS usuniete w 1.20.0 - mniej trafne)
+# om_ecmwf, om_icon_eu albo forecast_solar (Meteo-France usuniete w 1.23.0) (UK Met Office i GFS usuniete w 1.20.0 - mniej trafne)
 GLOWNE_ZRODLO = config.get("prognoza", "glowne_zrodlo", "open_meteo")
 FORECAST_SOLAR = config.getb("prognoza", "forecast_solar", True)
 
@@ -38,8 +38,7 @@ OM_MODELS = {
     "open_meteo": "best_match",          # automatyczny wybor Open-Meteo
     "om_ecmwf": "ecmwf_ifs025",          # ECMWF IFS (Europa, 0,25°)
     "om_icon_eu": "icon_eu",             # DWD ICON-EU (7 km)
-    "om_meteofrance": "meteofrance_seamless",
-}
+}   # 1.23: Meteo-France usuniete - najwieksze zawyzanie w porownaniu trafnosci
 
 # Wspolczynnik korekty dla kazdego zrodla - tabela trafnosci na stronie podpowiada wartosc
 KOREKTA = config.corrections()
@@ -53,10 +52,17 @@ ODSWIEZANIE = 3600   # s - kazde zrodlo co godzine (forecast.solar: 3 zapytania/
 SOURCES = {
     "open_meteo": "Open-Meteo", "om_srednia": "Średnia modeli", "om_ecmwf": "ECMWF",
     "om_icon_eu": "ICON-EU",
-    "om_meteofrance": "Météo-France", "forecast_solar": "forecast.solar",
+    "forecast_solar": "forecast.solar",
+    "ens_p50": "ECMWF ENS – mediana", "ens_p10": "ECMWF ENS – P10 (pesymist.)", "ens_p90": "ECMWF ENS – P90 (optymist.)",
 }
 MODEL_SOURCES = [s for s in OM_MODELS if s != "open_meteo"]   # skladniki sredniej
-GROUPS = {"open_meteo": "Open-Meteo", "forecast_solar": "forecast.solar"}   # grupy pobierania
+GROUPS = {"open_meteo": "Open-Meteo", "ensemble": "Open-Meteo ENS", "forecast_solar": "forecast.solar"}   # grupy pobierania
+# 1.23: Open-Meteo Ensemble API - ECMWF IFS ENS 0,25° (50 czlonkow + kontrolny), co godzine; dla kazdego czlonka ten sam
+# model PV co w prognozie deterministycznej, potem w kazdej godzinie kwantyle 10 / 50 / 90 % - do porownania trafnosci
+ENS_MODEL = "ecmwf_ifs025"
+ENS_API = ("https://ensemble-api.open-meteo.com/v1/ensemble?latitude={lat}&longitude={lon}"
+           "&hourly=global_tilted_irradiance&tilt={dec}&azimuth={az}&models={model}"
+           "&timezone=" + urllib.parse.quote(TZ) + "&forecast_days=3")
 FS_API = "https://api.forecast.solar/estimate/{lat}/{lon}/{dec}/{az}/{kwp}"
 OM_API = ("https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
           "&minutely_15=global_tilted_irradiance&tilt={dec}&azimuth={az}&models={models}"
@@ -148,11 +154,65 @@ def fetch_open_meteo():
     return out
 
 
+def _quantile(xs, q):
+    xs = sorted(xs)
+    if not xs:
+        return 0.0
+    k = (len(xs) - 1) * q
+    i = int(k)
+    return xs[i] + (xs[min(i + 1, len(xs) - 1)] - xs[i]) * (k - i)
+
+
+def fetch_ensemble():
+    """ECMWF ENS: {"ens_p10" | "ens_p50" | "ens_p90": (moc {dzien: {minuta: W}}, polacie {dzien: {polac: Wh}})}.
+    GTI godzinowe = srednia z poprzedzajacej godziny -> 4 kwadranse tej godziny z ta sama moca."""
+    per, plane_w, times = {}, {}, None
+    for p in POLACIE:
+        j = _get_json(ENS_API.format(lat=LAT, lon=LON, dec=p["nachylenie"], az=p["azymut"], model=ENS_MODEL))
+        hr = j.get("hourly") or {}
+        if "error" in j or not hr:
+            raise ValueError(j.get("reason") or "brak danych ensemble")
+        times = hr["time"]
+        keys = [k for k in hr if k.startswith("global_tilted_irradiance")]
+        if not keys:
+            raise ValueError("ensemble bez global_tilted_irradiance")
+        for k in keys:
+            mem = k[len("global_tilted_irradiance"):] or "_control"
+            for t, g in zip(times, hr[k]):
+                if g is None:
+                    continue
+                w = max(g, 0) * p["kwp"] * PR
+                per[(t, mem)] = per.get((t, mem), 0.0) + w
+                plane_w[(t, mem, p["nazwa"])] = w
+    cap = MOC_FALOWNIKA * 1000
+    mems = sorted({m for _t, m in per})
+    out = {q: (defaultdict(lambda: defaultdict(float)), defaultdict(lambda: defaultdict(float))) for q in ("ens_p10", "ens_p50", "ens_p90")}
+    for t in times or []:
+        vals = [min(per[(t, m)], cap) for m in mems if (t, m) in per]
+        if not vals:
+            continue
+        d, hm = t.split("T")
+        h, mi = (int(x) for x in hm.split(":"))
+        end = h * 60 + mi
+        tot = sum(per[(t, m)] for m in mems if (t, m) in per) or 1.0
+        for q, frac in (("ens_p10", 0.1), ("ens_p50", 0.5), ("ens_p90", 0.9)):
+            w = _quantile(vals, frac)
+            moc, pp = out[q]
+            for k in range(4):
+                minute = end - 52.5 + 15 * k
+                if minute >= 0:
+                    moc[d][minute] = w
+            for pl in POLACIE:
+                share = sum(plane_w.get((t, m, pl["nazwa"]), 0.0) for m in mems) / tot
+                pp[d][pl["nazwa"]] += w * share
+    return out
+
+
 def fetch_forecast_solar_group():
     return {"forecast_solar": fetch_forecast_solar()}
 
 
-FETCHERS = {"open_meteo": fetch_open_meteo, "forecast_solar": fetch_forecast_solar_group}
+FETCHERS = {"open_meteo": fetch_open_meteo, "ensemble": fetch_ensemble, "forecast_solar": fetch_forecast_solar_group}
 
 
 # --- zapis / odczyt -------------------------------------------------------
@@ -189,7 +249,7 @@ def last_fetch(con, source):
     return r[0] if r and r[0] else None
 
 
-GROUP_SOURCES = {"open_meteo": list(OM_MODELS), "forecast_solar": ["forecast_solar"]}
+GROUP_SOURCES = {"open_meteo": list(OM_MODELS), "ensemble": ["ens_p10", "ens_p50", "ens_p90"], "forecast_solar": ["forecast_solar"]}
 if not FORECAST_SOLAR:                       # forecast.solar wylaczone w config.ini
     for _d in (FETCHERS, GROUP_SOURCES, GROUPS, state, SOURCES):
         _d.pop("forecast_solar", None)

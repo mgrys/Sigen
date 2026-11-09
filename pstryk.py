@@ -176,6 +176,18 @@ def backfill(key, con, days=BACKFILL_DAYS):
     return n
 
 
+FAST_PAUSE = 180
+on_new_prices = None     # funkcja bez argumentow - wolana raz, gdy pojawia sie ceny na jutro (app.py: przeliczenie planu)
+
+
+def _tomorrow_prices(con, today):
+    """Czy sa juz ceny Pstryka na jutro (min. 20 godzin z cena)."""
+    t0 = _midnight(today + dt.timedelta(days=1))
+    r = con.execute("SELECT COUNT(*) FROM pstryk_hour WHERE ts >= ? AND ts < ? AND price_gross IS NOT NULL",
+                    (t0, t0 + 25 * 3600)).fetchone()
+    return bool(r and (r[0] or 0) >= 20)
+
+
 def loop(get_key, db_connect):
     """get_key() -> klucz API lub '' (sprawdzany przy kazdej synchronizacji)."""
     backfilled = False
@@ -197,8 +209,19 @@ def loop(get_key, db_connect):
                 backfilled = True
             today = dt.date.today()
             # wczoraj (licznik doplywa z opoznieniem) .. koniec jutra (ceny na jutro po ok. 14:00)
+            had = _tomorrow_prices(con, today)
             n = sync_window(key, con, _midnight(today - dt.timedelta(days=1)), _midnight(today + dt.timedelta(days=2)))
             _set(ok=True, last=int(time.time()), error=None, hours=n)
+            have = _tomorrow_prices(con, today)
+            # 1.104: ceny na jutro pojawiaja sie ok. 14:00 - w oknie 13:30-16:00 czesciej (co 3 min), az beda
+            if not have and dt.time(13, 30) <= dt.datetime.now().time() <= dt.time(16, 0):
+                pause = FAST_PAUSE
+            if have and not had and on_new_prices:
+                _set(tomorrow_ts=int(time.time()))
+                try:
+                    on_new_prices()
+                except Exception as e:  # noqa: BLE001
+                    print(f"pstryk: on_new_prices: {e}")
         except PstrykError as e:
             _set(ok=False, error=str(e))
             if e.code == 429:

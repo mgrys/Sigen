@@ -36,6 +36,7 @@ import json
 import math
 import threading
 import time
+import traceback
 
 import config
 
@@ -384,6 +385,23 @@ def _steady(kw, mode, hour_ts):
     return kw
 
 
+def _grid_pv(kw):
+    """1.99: ladowanie z sieci przy dzialajacym PV. Tryb 3 (najpierw siec) bierze moc ladowania z sieci, a nadwyzki PV
+    nie ma gdzie podziac (bez limitu eksportu falownik nie oddaje) - PV jest obcinane. Wtedy tryb 4 (najpierw PV):
+    magazyn bierze najpierw PV, brakujaca czesc z sieci; limit nie mniejszy niz biezaca nadwyzka PV.
+    Zwraca (ems, kW, dopisek)."""
+    try:
+        pv = float(get_pv()) if get_pv else None
+        load = float(get_load()) if get_load else 0.0
+    except Exception:  # noqa: BLE001
+        pv, load = None, 0.0
+    # zawsze tryb 4: bez slonca dziala jak tryb 3 (calosc z sieci), a w trybie 3 odczyt PV jest juz obciety (nie da sie
+    # na nim opierac decyzji o przelaczeniu)
+    surplus = max(0.0, (pv or 0.0) - max(load or 0.0, 0.0))
+    kw2 = min(P_MAX, max(kw, math.ceil(surplus / 0.5) * 0.5))
+    return 4, kw2, (f", najpierw PV ({pv:.1f} kW), reszta z sieci" if pv and pv >= 0.1 else "")
+
+
 def decide(data, soc, soc_ts, now, limits):
     """(polecenie | None, powod). Polecenie: {"ems", "charge_kw", "discharge_kw", "hour", "plan", "target", "why"}."""
     if not data or not data.get("ok"):
@@ -409,8 +427,9 @@ def decide(data, soc, soc_ts, now, limits):
         else:
             kw = _pace((target - soc) / 100 * cap / ETA, now, h["ts"], p_chg) if cap and target is not None else p_chg
             kw = min(p_chg, _steady(kw, "grid", h["ts"]))
-            cmd.update(ems=3, charge_kw=kw, why=f"ładowanie z sieci do {target:.0f} % (teraz {soc:.0f} %), "
-                                                f"{kw:g} kW (limit {p_chg:g} kW)")
+            ems, kw2, note = _grid_pv(kw)
+            cmd.update(ems=ems, charge_kw=kw2, why=f"ładowanie z sieci do {target:.0f} % (teraz {soc:.0f} %), "
+                                                   f"{kw2:g} kW (limit {p_chg:g} kW){note}")
     elif mode == "pvchg":
         # Remote EMS 4 (wymuszone ladowanie, najpierw PV) z limitem = biezaca moc PV zaokraglona w dol do 0,5 kW:
         # magazyn bierze tylko energie ze slonca (bez dokupowania z sieci), dom zasila siec. Malo PV -> standby.
@@ -489,7 +508,8 @@ def _manual_cmd(m, soc, soc_ts, now):
             cmd.update(ems=1, why=f"ręcznie: ładowanie – osiągnięty SOC {m['soc_max']:g} %, standby" + left)
         else:
             kw = max(0.5, min(m["kw"], P_MAX, lim - load))          # pobor z sieci = dom + ladowanie <= przylacze
-            cmd.update(charge_kw=round(kw * 2) / 2, why=f"ręcznie: ładowanie z sieci {round(kw * 2) / 2:g} kW do {m['soc_max']:g} %" + left)
+            ems, kw2, note = _grid_pv(round(kw * 2) / 2)
+            cmd.update(ems=ems, charge_kw=kw2, why=f"ręcznie: ładowanie z sieci {kw2:g} kW do {m['soc_max']:g} %{note}" + left)
     elif m["tryb"] in ("auto", "auto_nodis"):
         # samozuzycie: PV najpierw do domu, nadwyzka do magazynu; auto_nodis - limit rozladowania 0 kW (40034),
         # brakujaca moc z sieci zamiast z magazynu
@@ -588,7 +608,9 @@ def _tick(get_plan=None, get_soc=None, get_limits=None, _fns={}):
             if cmd is None:
                 src = "brak danych"
     except Exception as e:  # noqa: BLE001
-        cmd, why, src = None, f"błąd planu: {type(e).__name__}: {e}", "błąd"
+        tb = traceback.extract_tb(e.__traceback__)
+        where = " ← ".join(f"{fr.filename.replace(chr(92), '/').rsplit('/', 1)[-1]}:{fr.lineno} {fr.name}" for fr in tb[-3:][::-1])
+        cmd, why, src = None, f"błąd planu: {type(e).__name__}: {e} ({where})", "błąd"
     if cmd:
         cmd["src"] = src
     state["hold"] = False

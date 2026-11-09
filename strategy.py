@@ -28,6 +28,11 @@ MODES = {
 }
 SELL_FLOOR = None   # zl/kWh - sprzedaz z magazynu tylko przy cenie sprzedazy >= pulap (None = bez sprzedazy z magazynu)
 BUY_CAP = None      # zl/kWh - ladowanie z sieci tylko przy cenie zakupu <= pulap (None = bez ograniczenia)
+# Tryb auto (1.89): sprzedaz z magazynu w kazdej godzinie, w ktorej plan po kosztach (sprawnosc, zuzycie baterii, wartosc
+# energii zostawionej / rezerwy) na tym zyskuje co najmniej AUTO_MARGIN zl na kWh oddana z magazynu do sieci.
+# SELL_FLOOR / BUY_CAP dzialaja wtedy jako bezpieczniki (nie sprzedawaj ponizej / nie kupuj powyzej), puste = bez.
+AUTO = False
+AUTO_MARGIN = 0.0
 P_CHARGE = None     # kW - maks. moc ladowania magazynu z sieci (None = p_max) - oszczedzanie baterii
 P_DISCHARGE = None  # kW - maks. moc rozladowania magazynu przy sprzedazy (None = p_max)
 # Sprawnosc rozladowania przy malej mocy (z pomiarow falownika): [(od kW, do kW, sprawnosc)]. Przy mocy kilkuset W
@@ -78,6 +83,12 @@ def _apply(stored, d, eta_c, eta_d, dur=1.0):
 
 
 WEAR = 0.0   # zl za kWh oddana z magazynu (zuzycie baterii) - ustawiane z aplikacji
+# 1.103: zywotnosc baterii - dlugie trzymanie bardzo wysokiego (> HOLD_HI) i bardzo niskiego (< HOLD_LO) stanu naladowania
+# kosztuje HOLD_COST zl za kWh ponad / ponizej progu za kazda godzine. Przy rownych cenach (Tarcza) plan dobija do 100 %
+# dopiero tuz przed sprzedaza i nie zostawia magazynu pustego na dlugo; tania noc nadal wygrywa z kilkoma godzinami czekania.
+HOLD_HI = None     # kWh (ustawiane z aplikacji: 90 % pojemnosci)
+HOLD_LO = None     # kWh (15 % pojemnosci)
+HOLD_COST = 0.05     # zl za kWh ponad 90 % / ponizej 15 % za godzine (test: dobija do 100 % ok. 1 h przed sprzedaza)
 
 
 def _cost(grid, buy, sell, d=0.0):
@@ -128,6 +139,8 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
             r = max(0.0, min(levels[i], RESERVE_KWH) - s_min) if RESERVE_KWH and RESERVE_PRICE else 0.0
             V[T][i][m] = -(r * (RESERVE_PRICE or 0.0) + (e - r) * terminal_price) * eta_d
     choice = [[[None] * M for _ in range(n + 1)] for _ in range(T)]
+    hold_pen = [HOLD_COST * (max(0.0, lv - HOLD_HI) if HOLD_HI is not None else 0.0)
+                + HOLD_COST * (max(0.0, HOLD_LO - lv) if HOLD_LO is not None else 0.0) for lv in levels]
 
     for t in range(T - 1, -1, -1):
         h = hours[t]
@@ -145,7 +158,7 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
             if top > surplus + 0.05 and (BUY_CAP is None or buy <= BUY_CAP):
                 for k in range(1, grid_levels + 1):
                     opts.append((2, surplus + (top - surplus) * k / grid_levels))
-            if SELL_FLOOR is not None and sell >= SELL_FLOOR:
+            if (SELL_FLOOR is not None and sell >= SELL_FLOOR) or (AUTO and SELL_FLOOR is None):
                 avail = min(p_dis, max(0.0, (s - s_min) * eta_d))     # maks. rozladowanie (dom + siec)
                 need = max(load - pv, 0.0)                              # tyle i tak zabralby dom
                 extra = avail - need
@@ -166,13 +179,15 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
             for mi, d in opts:
                 j = idx(_apply(s, d, eta_c, eta_d, dur))
                 grid = load - pv + d
-                c = _cost(grid, buy, sell, d)
+                c = _cost(grid, buy, sell, d) + hold_pen[j] * dur
                 if mi == 2:
                     c += TIE_EPS * (d - surplus) + SPREAD_EPS * (d - surplus) ** 2
                 elif mi == 4:
                     c += TIE_EPS * 0.7 * dur
                 elif mi == 3:
                     c += TIE_EPS * (-d) + SPREAD_EPS * d * d
+                    if AUTO_MARGIN:          # tryb auto: wymagany zysk na kWh z magazynu do sieci
+                        c += AUTO_MARGIN * max(0.0, -d - max(load - pv, 0.0))
                 elif mi == 1:
                     c += TIE_EPS * 0.5 * dur
                 elif mi == 5:
@@ -195,8 +210,20 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
     # tryb, w ktorym falownik pracuje teraz (sterowanie) - zmiana kosztuje SWITCH_COST, wiec plan nie przeskakuje
     # na koniec godziny (np. standby -> autokonsumpcja na ostatnie minuty) ani przy drobnych zmianach prognozy
     i, mp = idx(stored0), names.index(mode0) if mode0 in names else 0
+    nod = names.index("nodis")
     for t, h in enumerate(hours):
         mi, d, j = choice[t][i][mp]
+        # 1.98: standby w godzinie z PV -> samozuzycie bez rozladowania, gdy kWh w magazynie jest warta wiecej niz sprzedaz
+        # teraz (krańcowa wartosc z planu). Przy prognozie PV ponizej rzeczywistosci nadwyzka nie ucieka wtedy do sieci,
+        # a przy niedoborze oba tryby dzialaja tak samo (dom z PV i sieci, magazyn nie oddaje).
+        # (biezaca godzina z blokada trybu - bez zmiany: inaczej tryb przeskakiwal standby <-> samozuzycie co 5 min)
+        if names[mi] == "standby" and h["pv"] > 0.05 * h.get("dur", 1.0) and j < n and not (t == 0 and force0):
+            mv = (V[t + 1][j][nod] - V[t + 1][j + 1][nod]) / step          # zl za kWh zmagazynowana wiecej
+            if mv * eta_c > h["sell"] + 0.05:
+                room = max(0.0, (s_max - levels[i]) / eta_c)
+                d5 = min(max(h["pv"] - h["load"], 0.0), p_max, room)
+                j5 = idx(_apply(levels[i], d5, eta_c, eta_d, h.get("dur", 1.0)))
+                mi, d, j = nod, d5, j5
         grid = h["load"] - h["pv"] + d
         out.append({"mode": names[mi], "d": d, "grid": grid, "stored": levels[j],
                     "cost": _cost(grid, h["buy"], h["sell"], d)})

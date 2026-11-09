@@ -2,6 +2,45 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.23.0] - 2026-11-09
+
+### Poprawiono
+- Sterowanie falownikiem: **ładowanie z sieci nie obcina już PV** – zamiast trybu 3 („najpierw sieć”) tryb 4 („najpierw
+  PV”): magazyn bierze najpierw produkcję PV, brakującą część z sieci (bez słońca działa jak dotąd).
+- Strategia: limit „sprzedaż tylko energii z PV” przydzielany **najdroższym godzinom** – gdy limitu brakuje, ograniczana
+  jest najtańsza sprzedaż (wcześniej wcześniejsza, tańsza godzina zjadała limit droższej).
+- Tarcza Pstryk: średnia ceny liczona razem z opłatą za obsługę (jak na fakturze), a cena zakupu z Tarczą = limit +
+  dystrybucja zmienna + akcyza (opłata za obsługę mieści się w limicie; wcześniej była doliczana drugi raz).
+- Maks. moc ładowania / sprzedaży („puste = maks.”) = moc znamionowa falownika z rejestru 30540 (było na sztywno).
+- Komunikat „błąd planu” z miejscem błędu (plik:linia).
+
+### Dodano
+- Strategia: **tryb cen „auto – zysk po kosztach”** – plan sprzedaje i kupuje, gdy po wszystkich kosztach (sprawność,
+  zużycie baterii, wartość energii w magazynie) zysk na kWh oddanej z magazynu ≥ „min. zysk”; pułapy jako bezpieczniki,
+  rezerwa Tarczy wyceniana rynkiem (80 % ceny z najdroższych 25 % godzin ostatnich 14 dni).
+- Strategia: **profil zużycia** – prosty (14 dni), dni tygodnia (roboczy / sobota / niedziela-święto) albo dni tygodnia +
+  korekta wg prognozy temperatury (`load_model.py`); kafle „Horyzont planu” i „Profil zużycia”.
+- Strategia: **ochrona baterii** – plan unika długiego trzymania magazynu powyżej 90 % i poniżej 15 % (dobija do 100 %
+  tuż przed sprzedażą, gdy ceny zakupu są równe).
+- Strategia: w godzinie ze słońcem, gdy energia w magazynie jest warta więcej niż sprzedaż, zamiast standby –
+  samozużycie bez rozładowania (zaniżona prognoza PV nie wysyła nadwyżki do sieci); bieżąca godzina bez zmian.
+- Pstryk: ceny na jutro od 13:30 sprawdzane co 3 min, plan przeliczany od razu po ich pojawieniu się.
+- Pstryk: **szacunek faktury** – koszt − zniżka z Tarczy − depozyt prosumencki zarobiony w poprzednim miesiącu (z
+  przeniesieniem niewykorzystanej reszty); depozyt można poprawić wartością z aplikacji Pstryka.
+- Instalacja PV: **zużycie własne falownika i magazynu w miesiącu** (konwersja, czuwanie, bateria; średnio W, kWh, koszt).
+- Prognoza: źródła **ECMWF ENS** (Open-Meteo Ensemble API) – mediana, P10, P90 – do porównania w tabeli trafności.
+- Rekuperacja: nastawa nawiewu zimą **wg temperatury zewnętrznej** (krzywa uczona z historii zmian i pracy nagrzewnicy,
+  albo ręczna – 2 punkty), krok w mrozie ustawiany (domyślnie co 30 min).
+- Rekuperacja: **prędkość zimowa** – przy chłodzie prędkość „W domu” obniżana o 1 % co 30 min do zadanego przepływu;
+  sterowanie CO₂ / wilgotnością Vallox zostaje, a częste podbicia albo wilgotność ≥ progu podnoszą prędkość.
+- Rekuperacja: **odszranianie wymiennika** – podgląd i zmiana sposobu (obejście z dogrzewaniem nawiewu / zatrzymanie
+  wentylatora nawiewu) i temperatury nawiewu przy odszranianiu, statystyka pracy nagrzewnicy podczas odszraniania.
+- Rekuperacja: **bilans wzorcowy** – zapis ustawienia nawiew / wywiew jako wzorca i codzienne porównanie obrotów przy
+  tej samej prędkości (odchyłka > 5 % przez 3 dni – komunikat, np. zabrudzone filtry), tabela parametrów pracy ustawień.
+
+### Usunięto
+- Prognoza Météo-France (największe zawyżanie produkcji w porównaniu trafności).
+
 ## [1.22.0] - 2026-11-05
 
 ### Zmieniono

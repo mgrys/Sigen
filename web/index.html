@@ -203,6 +203,11 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .vtiles .tile { display: flex; flex-direction: column; justify-content: center; min-height: 92px; }
 .vtiles .tile .v { font-size: 24px; }
 .vtiles .tile .sub { font-size: 12px; color: var(--text-2); line-height: 1.35; margin-top: 2px; }
+.nw-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--border); }
+.nw-row > span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nwbox { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+:root { --nw: var(--s-load); }
 .spcol { display: flex; flex-direction: column; gap: 12px; }
 .spcol .fanbox h3 { margin-top: 0; }
 .socgrp { grid-column: 1 / -1; }
@@ -435,6 +440,13 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div class="tiles popn" id="sttiles"></div>
     <div class="stgrp"><div class="stgrp-h">Pułapy i limity</div>
     <div class="stgrid">
+      <span title="progi ręczne: sprzedaż z magazynu tylko przy cenie ≥ „Sprzedawaj od”, ładowanie z sieci tylko przy cenie ≤ „Ładuj do”. auto: plan sam sprzedaje i kupuje, gdy po wszystkich kosztach (sprawność ładowania i rozładowania, zużycie baterii, wartość energii zostawionej w magazynie) zysk na kWh oddanej z magazynu wynosi co najmniej „min. zysk”; pułapy działają wtedy jako bezpieczniki (puste = bez)">Tryb cen
+        <select id="st-pm" class="fs-btn"><option value="progi">progi ręczne</option><option value="auto">auto – zysk po kosztach</option></select></span>
+      <span title="Tylko tryb auto: o tyle zł musi być lepsza sprzedaż kWh z magazynu od zostawienia jej w magazynie (po kosztach). Większy = mniej, ale pewniejszych transakcji">min. zysk
+        <input class="bp-num" id="st-mg" type="number" min="0" max="3" step="0.05" style="width:70px"> zł/kWh</span>
+      <span title="prosty: średnia z 14 dni dla każdej godziny. dni tygodnia: osobno dzień roboczy, sobota, niedziela / święto (35 dni, nowsze ważniejsze). + temperatura: dodatkowo korekta wg prognozy temperatury, gdy zużycie wyraźnie zależy od temperatury (ogrzewanie)">Profil zużycia
+        <select id="st-prof" class="fs-btn"><option value="prosty">prosty (14 dni)</option><option value="dni">dni tygodnia</option><option value="dni_temp">dni tygodnia + temperatura</option></select></span>
+      <span class="status" id="st-pmnote" style="display:inline"></span>
       <span>Sprzedawaj z magazynu od <input class="bp-num" id="st-floor" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
       <span>Ładuj z sieci do <input class="bp-num" id="st-cap" type="number" min="0" max="20" step="0.05" style="width:80px"> zł/kWh</span>
       <span title="Oszczędzanie baterii: plan rozkłada ładowanie z sieci na więcej tanich godzin, a falownik dostaje moc potrzebną na daną godzinę – nie więcej niż limit. Puste = maks. moc z symulacji">Moc maks. ładowania z sieci <input class="bp-num" id="st-pc" type="number" min="0.5" max="30" step="0.5" style="width:64px"> kW</span>
@@ -530,6 +542,18 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <b>zużycie własne (czuwanie)</b> – pobór falownika i magazynu, gdy nic nie przetwarzają (PV i magazyn &lt; 30 W);
       <b>odchyłki regulacji</b> – energia pobrana z sieci, choć magazyn rozładowywał się i miał zapas, oraz oddana do sieci, choć magazyn się ładował i miał miejsce
       (to nie strata w falowniku, tylko niedokładność sterowania). Minuty z rozjechanymi odczytami są pomijane, więc sumy są przybliżone.</p></details>
+    <div class="card-sub" id="lm-box" style="margin:0 0 12px;border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;flex:1" id="lm-title">Zużycie własne falownika i magazynu – miesiąc</h3></div>
+      <div class="tiles" id="lm-tiles"></div>
+      <details><summary style="font-size:13px">Dzień po dniu i jak liczone</summary>
+        <p style="font-size:12px;color:var(--text-2);margin:6px 0"><b>Razem = falownik + bateria.</b> Falownik: straty konwersji (przetwarzanie PV, magazynu i AC)
+          i czuwanie (elektronika, gdy nic nie przetwarza) – z metody minutowej: wejście = moc DC stringów PV + rozładowanie, wyjście = AC + ładowanie.
+          Bateria: ładowanie − rozładowanie − zmiana zapasu (SOC × pojemność) z liczników – straty w ogniwach i BMS; pojedyncze dni bywają ujemne
+          (dokładność SOC), w sumie miesiąca to się wyrównuje. Uwaga: „zużycie domu” z falownika jest liczone po stronie AC i <b>zawiera</b> straty
+          i czuwanie falownika, więc rzeczywiste zużycie domu jest o tę wartość mniejsze. Koszt – po cenie zakupu w tym miesiącu
+          (przy Tarczy: stała cena za kWh, inaczej średnia z faktury Pstryka bez opłat stałych).</p>
+        <div id="lm-days" style="font-size:12px;overflow-x:auto"></div></details>
+    </div>
     <div class="chart"><canvas id="cPower"></canvas></div>
     <div class="empty" id="empty" hidden>Brak danych dla tego dnia.</div>
     <details>
@@ -737,6 +761,21 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <div id="fs-log" style="font-size:12px;color:var(--text-2)"></div>
       </div>
     </div>
+    <div class="nwbox" id="br-box" style="margin-top:10px">
+      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;flex:1">Bilans wzorcowy i parametry pracy</h3>
+        <label style="font-size:13px"><input type="checkbox" id="br-notify"> powiadom przy odchylce</label></div>
+      <div id="br-st" style="font-size:13px"></div>
+      <div class="row" style="margin-top:8px"><button class="fs-btn primary" id="br-save">Zapisz obecne ustawienie jako wzorcowe</button>
+        <button class="fs-btn" id="br-clear">Usuń wzorzec</button></div>
+      <div id="br-days" style="font-size:12px;margin-top:8px"></div>
+      <details style="margin-top:6px"><summary style="font-size:13px">Parametry pracy przy ustawieniach (nawiew / wywiew / prędkość)</summary>
+        <div id="br-sets" style="font-size:12px;overflow-x:auto"></div></details>
+      <p style="font-size:12px;color:var(--text-2);margin:6px 0 0">Zimą bilans temperatur jest przekłamany (wilgoć i kondensacja w wymienniku entalpicznym),
+        a obroty zmieniają prędkość zimowa i podbicia CO₂ – dlatego zamiast korekt co godzinę: ustawienie uznane za dobre zapisujesz jako wzorzec,
+        aplikacja zbiera ok. 12 h stabilnej pracy (bez zmian ustawień od 10 min, bez podbicia CO₂ / wilgotności, wymiennik w odzysku)
+        i potem codziennie porównuje obroty nawiewu, wywiewu i ich stosunek <b>przy tej samej prędkości</b>. Odchylka &gt; 5 % przez 3 dni z rzędu
+        – powiadomienie (zwykle zabrudzone filtry) z propozycją korekty o 1 %. Ustawień nic nie zmienia samo.</p>
+    </div>
     <p class="status" style="margin-top:6px">Przy zrównoważonych przepływach powietrze nawiewane ogrzewa się na wymienniku o tyle samo,
       o ile schładza się wywiewane, czyli ΔT dom ≈ ΔT zewnątrz. Różnica &gt; 0 oznacza przewagę nawiewu (nadciśnienie w domu),
       &lt; 0 – przewagę wywiewu (podciśnienie). Nawiew liczony za wymiennikiem (przed nagrzaniem przez wentylator).
@@ -771,7 +810,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <h2>Temperatura nawiewu (nastawa we wszystkich profilach)</h2>
-    <div class="bp-grid">
+    <div class="spcol">
       <div class="fanbox">
         <h3>Nastawa teraz</h3>
         <div class="bp-row"><span>W domu / Poza domem / Boost</span><b id="sp-cur">–</b></div>
@@ -783,18 +822,89 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
           Działa razem z obejściem wymiennika (karta wyżej).</p>
       </div>
       <div class="fanbox">
-        <label class="fs-auto"><input type="checkbox" id="sp-auto"> Automat nastawy nawiewu</label>
+        <h3>Automat nastawy</h3>
+        <label class="fs-auto"><input type="checkbox" id="sp-auto"> Automat nastawy nawiewu włączony</label>
         <div class="bp-row"><span>Lato (miesiące)</span><span><input class="bp-num" id="sp-months" style="width:120px" placeholder="5,6,7,8,9"></span></div>
         <div class="bp-row"><span>Lato i wywiew ≥ <input class="bp-num" id="sp-hot" type="number" step="0.5"> °C → nastawa</span><span><input class="bp-num" id="sp-st" type="number" step="1"> °C</span></div>
         <div class="bp-row"><span>Wywiew ≤ <input class="bp-num" id="sp-cold" type="number" step="0.5"> °C → nastawa</span><span><input class="bp-num" id="sp-nt" type="number" step="1"> °C</span></div>
+        <div class="nw-row" style="margin:6px 0">
+          <span title="Poza miesiącami letnimi nastawa w 1. kolejności wg temperatury na zewnątrz (średnia z 30 min): przy pierwszej temperaturze i niżej – pierwsza nastawa, przy drugiej – druga, pomiędzy liniowo (zaokrąglone do 1 °C). Powyżej drugiej temperatury (+1 °C histerezy) – nastawa normalna. Praca nagrzewnicy obniża nastawę dodatkowo o 1 °C (wiersz „nagrzewnica”), a gdy nagrzewnica nie pracuje przez 60 min – nastawa wraca o 1 °C w górę do krzywej."><label><input type="checkbox" id="sp-con"> Wg temperatury zewnętrznej:</label></span>
+          <span title="automatyczna: krzywa wyuczona z historii – dla każdej temperatury zewnętrznej najwyższa nastawa, przy której nagrzewnica prawie nie pracowała (ze zmian nastawy, temperatury i poboru rekuperatora z ostatnich 90 dni, przeliczana co godzinę). Bez danych – punkty ręczne.">krzywa
+            <select id="sp-cmode" class="fs-btn"><option value="auto">automatyczna (z historii)</option><option value="reczna">ręczna (2 punkty)</option></select></span>
+          <span class="spman">zewn. ≤ <input class="bp-num" id="sp-ct1" type="number" step="0.5" style="width:60px"> °C → <input class="bp-num" id="sp-cs1" type="number" step="1" style="width:52px"> °C</span>
+          <span class="spman">zewn. <input class="bp-num" id="sp-ct2" type="number" step="0.5" style="width:60px"> °C → <input class="bp-num" id="sp-cs2" type="number" step="1" style="width:52px"> °C</span>
+          <span class="status" style="display:inline">przy włączonej krzywej wiersz „Mróz” nie jest używany</span>
+          <div id="sp-curve" class="status" style="display:block;flex-basis:100%"></div></div>
         <div class="bp-row"><span>Mróz: zewn. ≤ <input class="bp-num" id="sp-fo" type="number" step="0.5"> °C (koniec ≥ <input class="bp-num" id="sp-fe" type="number" step="0.5"> °C)</span></div>
-        <div class="bp-row"><span>– nagrzewnica: pobór ≥ <input class="bp-num" id="sp-spike" type="number" step="10"> W przez ≥ <input class="bp-num" id="sp-smin" type="number" step="1"> min → −1 °C co godzinę, min.</span><span><input class="bp-num" id="sp-min" type="number" step="1"> °C</span></div>
+        <div class="bp-row"><span>– nagrzewnica: pobór ≥ <input class="bp-num" id="sp-spike" type="number" step="10"> W przez ≥ <input class="bp-num" id="sp-smin" type="number" step="1"> min → −1 °C co <input class="bp-num" id="sp-fstep" type="number" min="10" max="240" step="5" style="width:56px"> min, min.</span><span><input class="bp-num" id="sp-min" type="number" step="1"> °C</span></div>
         <div class="row" style="margin-top:8px"><button class="fs-btn" id="sp-save">Zapisz progi</button></div>
         <div id="sp-autost" style="font-size:13px;margin-top:8px"></div>
-        <div id="sp-changes" style="font-size:13px;margin-top:10px"></div>
         <p style="font-size:12px;color:var(--muted);margin:6px 0 0">Średnie temperatur z 30 min, histereza między progami wywiewu, zmiana najwyżej co 30 min
-          (w mrozie co godzinę). Praca nagrzewnicy z miernika poboru prądu (Ustawienia → Rekuperacja): średni pobór w każdej minucie (z licznika energii) przez podany czas bez przerwy –
-          krótkie piki kontrolne Vallox są pomijane.</p>
+          (w mrozie – co ustawiony odstęp, domyślnie 30 min). Praca nagrzewnicy z miernika poboru prądu (Ustawienia → Rekuperacja): średni pobór w każdej minucie (z licznika energii) przez podany czas bez przerwy –
+          krótkie piki kontrolne Vallox są pomijane; bez miernika – sygnał nagrzewnicy z rekuperatora.</p>
+      </div>
+      <div class="fanbox">
+        <div class="daynav" style="margin-bottom:0"><h3 style="margin:0;flex:1">Ostatnie zmiany automatu</h3>
+          <select id="sp-chn" class="fs-btn"><option value="5" selected>5 ostatnich</option><option value="15">15</option><option value="30">30</option></select></div>
+        <div id="sp-changes" style="font-size:13px;margin-top:4px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" >
+    <h2>Odszranianie wymiennika</h2>
+    <div class="spcol">
+      <div class="fanbox">
+        <h3>Ustawienie w rekuperatorze</h3>
+        <div class="bp-row"><span>Teraz</span><b id="df-cur">–</b></div>
+        <div class="nw-row" style="margin:6px 0">
+          <span>sposób <select id="df-mode" class="fs-btn"><option value="0">obejście wymiennika (nawiew dogrzewany)</option><option value="1">zatrzymanie wentylatora nawiewu</option></select></span>
+          <span id="df-trow" title="Tylko przy obejściu: do tej temperatury nagrzewnica dogrzewa nawiew, gdy wymiennik się rozmraża (zwykle kilka minut).">nawiew podczas odszraniania <input class="bp-num" id="df-temp" type="number" step="1" style="width:56px"> °C</span>
+          <button class="fs-btn primary" id="df-save">Zapisz w rekuperatorze</button>
+        </div>
+        <div id="df-msg" style="font-size:13px"></div>
+        <div class="nwbox" style="font-size:12px;color:var(--text-2)">
+          <b>Obejście wymiennika:</b> powietrze z zewnątrz omija wymiennik, a ciepły wywiew go rozmraża. Do domu idzie powietrze prosto z mrozu,
+          więc nagrzewnica grzeje je do podanej temperatury przez cały czas odszraniania – to zwykle największy pobór nagrzewnicy przy mrozie.<br>
+          <b>Zatrzymanie wentylatora nawiewu:</b> nawiew staje na kilka minut, wywiew rozmraża wymiennik – nagrzewnica nie grzeje.
+          W domu chwilowo lekkie podciśnienie (powietrze wchodzi nieszczelnościami) – <b>nie stosuj, gdy w domu jest kominek, piec lub inne urządzenie z kominem</b> (podciśnienie może cofać spaliny).<br>
+          Zmiana jest zapisywana w rekuperatorze i w dzienniku zmian; automaty jej nie ruszają.
+        </div>
+      </div>
+      <div class="fanbox">
+        <div class="daynav" style="margin-bottom:0"><h3 style="margin:0;flex:1">Odszranianie a nagrzewnica</h3>
+          <select id="df-days" class="fs-btn"><option value="7" selected>7 dni</option><option value="14">14 dni</option><option value="30">30 dni</option></select></div>
+        <div id="df-stats" style="font-size:13px;margin-top:6px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" >
+    <h2>Prędkość zimowa</h2>
+    <div class="spcol">
+      <div class="fanbox">
+        <h3>Automat prędkości zimowej</h3>
+        <label class="fs-auto"><input type="checkbox" id="ws-on"> Przy chłodzie zmniejszaj przepływ (prędkość „W domu”)</label>
+        <div class="nw-row" style="margin:6px 0">
+          <span title="Średnia temperatura na zewnątrz z 30 min. Poniżej progu automat zmniejsza prędkość, od progu +1 °C wraca do prędkości normalnej.">zewn. poniżej <input class="bp-num" id="ws-t" type="number" step="0.5" style="width:60px"> °C</span>
+          <span title="Szacowany przepływ nawiewu z obrotów wentylatora, liczony tylko z minut bez podbicia przez CO₂ / wilgotność. Prędkość schodzi o 1 % co 30 min, aż przepływ dojdzie do tej wartości.">min. przepływ <input class="bp-num" id="ws-flow" type="number" step="5" style="width:64px"> m³/h</span>
+          <span title="Średnia wilgotność z 30 min. Od tej wartości prędkość rośnie o 1 % (ochrona przed kondensacją).">wilgotność ≥ <input class="bp-num" id="ws-rh" type="number" step="1" style="width:56px"> % → +1 %</span>
+          <span title="Jaką część ostatniej godziny Vallox sam podnosił obroty ponad prędkość bazową (sterowanie CO₂ / wilgotnością). Gdy to za często – prędkość bazowa jest za niska: +1 %.">podbicie CO₂ / RH ≥ <input class="bp-num" id="ws-boost" type="number" step="5" style="width:56px"> % czasu → +1 %</span>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="fs-btn" id="ws-save">Zapisz</button></div>
+        <div id="ws-st" style="font-size:13px;margin-top:8px"></div>
+        <div class="nwbox" style="font-size:12px;color:var(--text-2)">
+          <b>Jak działa:</b> przy chłodzie mniejszy przepływ = dłuższy kontakt powietrza z wymiennikiem (wyższa sprawność, cieplejszy nawiew za wymiennikiem),
+          mniej m³ ciepłego powietrza wyrzucanego na zewnątrz, rzadsza praca nagrzewnicy i mniejszy pobór wentylatorów, a zimą mniej przesuszone powietrze.
+          Automat obniża prędkość „W domu” o 1 % co 30 min, aż szacowany przepływ nawiewu (bez podbić) zejdzie do minimum, nie niżej niż <span id="ws-minp">20</span> %.
+          Sterowanie CO₂ (próg w rekuperatorze, np. 900 ppm) i wilgotnością w Vallox <b>zostaje</b> – gdy ktoś jest w domu i CO₂ rośnie, rekuperator sam podnosi obroty.
+          Gdy robi to zbyt często albo wilgotność przekroczy próg – prędkość bazowa +1 %. Przy odszranianiu bez obniżania.
+          Od progu temperatury +1 °C albo po wyłączeniu automatu – powrót do prędkości sprzed obniżenia (zapamiętanej jako „normalna”).
+        </div>
+      </div>
+      <div class="fanbox">
+        <h3>Ostatnie zmiany prędkości</h3>
+        <div id="ws-changes" style="font-size:13px;margin-top:4px"></div>
       </div>
     </div>
   </section>
@@ -886,7 +996,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <label>Główne źródło<select data-k="prognoza.glowne_zrodlo">
           <option value="open_meteo">Open-Meteo</option><option value="om_srednia">Średnia modeli</option>
           <option value="om_ecmwf">ECMWF</option><option value="om_icon_eu">ICON-EU</option>
-          <option value="forecast_solar">forecast.solar</option></select></label>
+          <option value="ens_p50">ECMWF ENS – mediana</option><option value="forecast_solar">forecast.solar</option></select></label>
         <label>forecast.solar<select data-k="prognoza.forecast_solar"><option value="tak">włączone</option><option value="nie">wyłączone</option></select></label>
         <label>Korekta (np. open_meteo=1.05)<input data-k="prognoza.korekta"></label>
       </fieldset>
@@ -1164,6 +1274,7 @@ async function loadDay(date) {
   const d = await (await fetch('/api/day?date=' + date)).json();
   loadEff();
   loadPstryk(date);
+  loadLossMonth(date.slice(0, 7));
   const e = d.energy;
   $('tiles').innerHTML =
     tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
@@ -1199,6 +1310,25 @@ async function loadDay(date) {
     return `<tr><td>${String(h).padStart(2, '0')}:00</td><td>${avg(a, 'pv').toFixed(2)}</td><td>${avg(a, 'load').toFixed(2)}</td>` +
       `<td>${avg(a, 'bat').toFixed(2)}</td><td>${avg(a, 'grid').toFixed(2)}</td><td>${avg(a, 'loss').toFixed(3)}</td><td>${avg(a, 'soc').toFixed(0)}</td></tr>`;
   }).join('');
+}
+// ---- 1.98 zuzycie wlasne falownika i magazynu w miesiacu ----
+let lmMonth = null, lmTs = 0;
+async function loadLossMonth(month) {
+  if (month === lmMonth && Date.now() - lmTs < 600000) return;
+  lmMonth = month; lmTs = Date.now();
+  let r; try { r = await (await fetch('/api/losses_month?month=' + month)).json(); } catch (e) { return; }
+  const T = r.total || {}, f = (v, n = 1) => v == null ? null : v.toFixed(n).replace('.', ',');
+  $('lm-title').innerHTML = `Zużycie własne falownika i magazynu – ${r.label}`;
+  $('lm-tiles').innerHTML =
+    ctile('c-red', 'Razem w miesiącu (do dziś)', f(T.system, 1), 'kWh', `${r.days.length} dni · ${r.cost != null ? '≈ ' + f(r.cost, 2) + ' zł' : ''}`) +
+    tile('Średnio na dobę', f(r.avg_day_kwh, 2), 'kWh', r.avg_w != null ? `≈ ${r.avg_w} W bez przerwy (pełne dni: ${r.full_days})` : 'brak pełnych dni') +
+    tile('Szacunek na cały miesiąc', f(r.month_est_kwh, 0), 'kWh', r.month_est_cost != null ? `≈ ${f(r.month_est_cost, 0)} zł (${f(r.price, 3)} zł/kWh)` : '') +
+    tile('w tym bateria', f(T.bat_loss, 1), 'kWh', `ładowanie ${f(T.chg, 1)} − rozładowanie ${f(T.dis, 1)} − zmiana zapasu ${f(T.d_bat, 1)} kWh`) +
+    tile('w tym czuwanie', f(T.czuwanie, 1), 'kWh', T.h_czuwanie ? `${Math.round(T.h_czuwanie)} h bez przetwarzania` : 'falownik nic nie przetwarza') +
+    tile('w tym konwersja', f(T.konwersja, 1), 'kWh', 'przetwarzanie PV, magazynu i AC');
+  $('lm-days').innerHTML = '<table style="width:100%;border-collapse:collapse"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>razem</th><th>bateria</th><th>czuwanie</th><th>konwersja</th><th>PV</th><th>dom</th><th>ładow./rozład.</th></tr>' +
+    r.days.slice().reverse().map(x => `<tr style="border-top:1px solid var(--border)"><td>${x.date.slice(8, 10)}.${x.date.slice(5, 7)}</td><td><b>${f(x.system, 2)}</b></td>` +
+      `<td>${f(x.bat_loss, 2)}</td><td>${f(x.czuwanie, 2)}</td><td>${f(x.konwersja, 2)}</td><td>${f(x.pv, 1)}</td><td>${f(x.load, 1)}</td><td>${f(x.chg, 1)} / ${f(x.dis, 1)}</td></tr>`).join('') + '</table>';
 }
 function lossTiles(e) {
   const st = e.straty || {};
@@ -1338,7 +1468,7 @@ async function loadForecast() {
   const L = { pointStyle: 'line' };
   // wybor prognoz do wykresu (wielokrotny) - zapamietywany w przegladarce
   const SRC_COL = { open_meteo: '--s-fc', om_srednia: '--s-fc2', om_ecmwf: '--s-ecmwf', om_icon_eu: '--s-east', om_ukmo: '--s-west',
-    om_gfs: '--s-south', om_meteofrance: '--s-load', forecast_solar: '--s-grid' };
+    om_gfs: '--s-south', ens_p50: '--s-load', ens_p10: '--s-west', ens_p90: '--s-south', forecast_solar: '--s-grid' };
   const srcKeys = Object.keys(N).filter(k => S[k]?.today || S[k]?.tomorrow);
   if (!fcPick) { try { fcPick = JSON.parse(localStorage.getItem('fcPick') || 'null'); } catch (e) { fcPick = null; } }
   if (!Array.isArray(fcPick) || !fcPick.some(k => srcKeys.includes(k)))
@@ -1453,15 +1583,22 @@ async function loadPvMonthly() {
 
 // ---- Pstryk (opcjonalnie - tylko z kluczem API) ----
 const zl2 = v => v == null ? null : v.toFixed(2);
-// Tarcza Pstryk: sredni miesieczny koszt samej energii (brutto) nie wyzszy niz limit - rabat na fakturze
-const TARCZA = 0.61;
-const tarczaTile = M => {
-  if (!M.imp || M.energy_net == null) return '';
-  const avg = (M.energy_net + (M.excise || 0)) * 1.23 / M.imp, rabat = Math.max(0, avg - TARCZA) * M.imp;
-  return ctile(rabat > 0.005 ? 'c-green' : 'c-blue', 'Tarcza Pstryk', '≈' + rabat.toFixed(2), 'zł',
-    `średni koszt energii ≈ ${avg.toFixed(2)} zł/kWh · limit ${TARCZA.toFixed(2)} zł/kWh` +
-    (rabat > 0.005 ? ' – rabat na fakturze' : ' – poniżej limitu, bez rabatu'));
-};
+// 1.95: Tarcza i faktura liczone na serwerze (/api/pstryk -> invoice): srednia energii z oplata za obsluge ponad limit
+const MONTHN = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
+const monthName = (key, d = 0) => { const [y, m] = key.split('-').map(Number), i = (m - 1 + d + 12) % 12; return MONTHN[i]; };
+const tarczaTile = I => !I || I.tarcza_avg == null ? '' :
+  ctile((I.tarcza > 0.005 ? 'c-green' : 'c-blue') + '', 'Tarcza Pstryk', '≈' + I.tarcza.toFixed(2), 'zł',
+    `średni koszt energii z opłatą za obsługę ≈ ${I.tarcza_avg.toFixed(3)} zł/kWh · limit ${I.tarcza_cap.toFixed(2)} zł/kWh` +
+    (I.tarcza > 0.005 ? ' – zniżka na fakturze' : ' – poniżej limitu, bez zniżki'));
+const invoiceTiles = I => !I ? '' :
+  ctile('c-green', `Depozyt na fakturę (${monthName(I.month)})`, I.deposit.toFixed(2), 'zł',
+    `${I.deposit_src}` + (I.deposit_src.startsWith('wg') ? ` · z danych ${I.deposit_prev_calc.toFixed(2)} zł` : '') +
+    ` · zarobiony w ${monthName(I.month, -1)} · <a href="#" id="ps-depedit">wpisz wg Pstryka</a>`) +
+  ctile((I.to_pay > 0.005 ? 'c-red' : 'c-green') + '', `Faktura za ${monthName(I.month)} (szac.)`, I.to_pay > 0.005 ? I.to_pay.toFixed(2) : '0,00', 'zł',
+    `koszt ${I.cost.toFixed(2)} (energia ${I.parts.energy.toFixed(2)} + dystrybucja ${I.parts.dist.toFixed(2)} + obsługa ${I.parts.service.toFixed(2)})` +
+    ` − Tarcza ${I.tarcza.toFixed(2)} − depozyt ${I.deposit.toFixed(2)} zł` + (I.left > 0.005 ? ` · reszta ${I.left.toFixed(2)} zł depozytu przechodzi na ${monthName(I.month, 1)}` : '')) +
+  ctile('c-green', `Depozyt na ${monthName(I.month, 1)}`, (I.next_deposit + I.left).toFixed(2), 'zł', `oddanie w ${monthName(I.month)} ${I.next_deposit.toFixed(2)} zł` +
+    (I.left > 0.005 ? ` + reszta z faktury za ${monthName(I.month)} ${I.left.toFixed(2)} zł` : '') + ` – pomniejszy fakturę za ${monthName(I.month, 1)} (do teraz)`);
 // bilans = koszt - sprzedaz: dodatni (koszt > sprzedaz) czerwony, ujemny (sprzedaz > koszt) zielony
 const balTile = (t, b) => b == null ? ctile('c-blue', t, null, 'zł') :
   ctile('ps-bal ' + (b > 0.005 ? 'c-red' : b < -0.005 ? 'c-green' : 'c-blue'), t,
@@ -1490,7 +1627,16 @@ async function loadPstryk(date) {
   $('psmonth').innerHTML = !M.hours ? '<div class="empty">Brak danych w tym miesiącu.</div>' :
     ctile('c-red', 'Koszt miesiąca', zl2(M.cost), 'zł', `w tym stałe ok. ${zl2(M.fixed_gross)} zł`) +
     ctile('c-red', 'Pobór', M.imp.toFixed(2), 'kWh') + ctile('c-green', 'Oddanie', M.exp.toFixed(2), 'kWh') +
-    ctile('c-green', 'Sprzedaż', zl2(M.sold), 'zł') + balTile('Bilans miesiąca', M.balance) + tarczaTile(M);
+    tarczaTile(d.invoice) + invoiceTiles(d.invoice);
+  const de = $('ps-depedit');
+  if (de) de.onclick = async ev => {
+    ev.preventDefault();
+    const I = d.invoice, v = prompt(`Depozyt wg Pstryka na fakturę za ${monthName(I.month)} [zł] (puste – z danych):`, I.deposit_src.startsWith('wg') ? I.deposit.toFixed(2) : '');
+    if (v === null) return;
+    const r = await (await fetch('/api/pstryk/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: I.month, value: v.trim() || null }) })).json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+    if (!r.ok) alert('Błąd: ' + r.error);
+    loadPstryk(date);
+  };
   const rows = [['Energia (netto)', 'energy_net'], ['Dystrybucja zmienna (netto)', 'dist_var'], ['Dystrybucja stała (netto)', 'dist_fix'],
     ['Opłata handlowa (netto)', 'service'], ['Opłata mocowa (netto)', 'power_fee'], ['Akcyza', 'excise'], ['VAT', 'vat']];
   $('pscost').innerHTML = rows.map(([n, k]) => `<tr><td>${n}</td><td>${zl2(D[k]) ?? '–'}</td><td>${zl2(M[k]) ?? '–'}</td></tr>`).join('') +
@@ -1511,7 +1657,7 @@ $('st-save').onclick = async () => {
   let r;
   try {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
+      body: JSON.stringify({ price_mode: $('st-pm').value, auto_margin: $('st-mg').value, load_profile: $('st-prof').value, sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
         p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value, tarcza: $('st-tz').value, tarcza_mode: $('st-tzm').value,
         tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
@@ -1519,6 +1665,7 @@ $('st-save').onclick = async () => {
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
   if (r.ok) loadStrategy();
 };
+$('st-pm').onchange = () => { $('st-mg').disabled = $('st-pm').value !== 'auto'; $('st-pmnote').textContent = $('st-pm').value === 'auto' ? 'w trybie auto „Sprzedawaj od” i „Ładuj do” to tylko bezpieczniki (puste = bez)' : ''; };
 $('st-ctl').onchange = async () => {
   const t = $('st-ctl').value;
   if (t === 'wl' && !confirm('Włączyć sterowanie falownikiem wg planu strategii?\n\nFalownik dostanie tryb Remote EMS bieżącej godziny (ładowanie z sieci, sprzedaż z magazynu, standby, autokonsumpcja). Wyłączenie oddaje sterowanie falownikowi.')) { loadCtl(); return; }
@@ -1662,7 +1809,7 @@ async function loadStrategy() {
     tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? 'na: ' + esc(x.label) : 'bez zmian do końca jutra') +
     sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
     ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
-      `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · ` + (P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
+      `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · ` + (P.price_mode === 'auto' ? `tryb auto: sprzedaż z magazynu przy zysku po kosztach ≥ ${(P.auto_margin ?? 0).toFixed(2)} zł/kWh` + (P.sell_floor != null ? `, nie poniżej ${P.sell_floor.toFixed(2)} zł` : '') : P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
       (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFixed(2)} zł` : '') +
       ` · moc ładowania z sieci ≤ ${P.p_charge ?? P.p_max_kw} kW, sprzedaży ≤ ${P.p_discharge ?? P.p_max_kw} kW` +
       (P.standby_below_w ? ` · standby przy poborze < ${P.standby_below_w} W` : '') +
@@ -1671,6 +1818,27 @@ async function loadStrategy() {
       ((P.eta_c_curve || []).length ? ' · sprawność ładowania przy małej mocy: ' +
         P.eta_c_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : '') +
       (P.pvchg_min_kw != null && P.tarcza && P.tarcza.active ? ` · PV do magazynu od ${String(P.pvchg_min_kw).replace('.', ',')} kW` : '')) +
+    (P.horizon ? (() => {
+      const Z = P.horizon, f2 = v => v == null ? '–' : v.toFixed(2).replace('.', ',');
+      const endTxt = new Date(Z.end * 1000).toLocaleString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return ctile('c-blue', 'Horyzont planu', Z.hours, 'h',
+        `plan liczy ${Z.hours} godzin – do ${endTxt} (${Z.days.join(', ')}); dalej plan nie widzi cen. ` +
+        `Energia zostawiona na koniec (${Z.end_kwh ?? '–'} kWh ponad minimum) jest wyceniana założeniem: ` +
+        (Z.reserve_kwh ? `do ${Z.reserve_kwh} kWh (rezerwa Tarczy) po ${f2(Z.reserve_price)} zł/kWh – ${esc(Z.reserve_basis || '')}, reszta ` : '') +
+        `po ${f2(Z.terminal_price)} zł/kWh (średnia 6 najtańszych godzin zakupu z ostatniej doby planu). ` +
+        `Limit „sprzedaż tylko energii z PV – z ${P.legal_days ?? '–'} dni” to tylko bilans prawny, nie horyzont planu.` +
+        (P.market?.p75 ? ` · ceny sprzedaży z 14 dni: mediana ${f2(P.market.p50)}, 25 % najdroższych godzin od ${f2(P.market.p75)} zł` : ''));
+    })() : '') +
+    (P.profile ? (() => {
+      const Q = P.profile, T2 = Q.temp, dd = Object.entries(Q.days || {});
+      const nm = { 'dziś': 0 }, lbl = ['dziś', 'jutro', 'pojutrze'];
+      return ctile('c-blue', 'Profil zużycia', esc(Q.mode_txt || Q.mode), '',
+        dd.map(([d, v], i) => `${lbl[i] || d}: ${esc(v.type_txt)}${v.from && v.from !== v.type ? ' (z: ' + esc(v.from) + ')' : ''} – ${String(v.kwh).replace('.', ',')} kWh` +
+          (T2?.applied?.[d] ? ` (temp. ${String(T2.applied[d].t_fc).replace('.', ',')} °C vs ${String(T2.applied[d].t_ref).replace('.', ',')} °C → ${T2.applied[d].kwh >= 0 ? '+' : ''}${String(T2.applied[d].kwh).replace('.', ',')} kWh)` : '')).join(' · ') +
+        (T2 ? ` · zależność od temperatury: ${T2.slope != null ? String(T2.slope).replace('.', ',') + ' kWh/dobę na 1 °C, R² ' + String(T2.r2).replace('.', ',') : 'za mało danych'} (${T2.n} dni ≤ 16 °C)` +
+          (T2.used ? ' – korekta włączona' : ' – korekta NIE stosowana (za słaba zależność, za mało dni albo brak prognozy)') : '') +
+        (Q.error ? ' · błąd: ' + esc(Q.error) + ' (użyty profil prosty)' : ''));
+    })() : '') +
     (P.legal && P.legal.budget != null ? (() => {
       // do sprzedazy teraz = mniejsze z: limit prawny (PV - oddane, N dni) i energia w magazynie ponad min. SOC (po stratach)
       const f1 = v => v.toFixed(1).replace('.', ',');
@@ -1687,7 +1855,7 @@ async function loadStrategy() {
     (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
       P.tarcza.active ? 'działa' : 'nie działa', '',
       esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
-        ` (limit ${P.tarcza.cap.toFixed(2)} + marża ${(P.tarcza.margin ?? 0.098).toFixed(2)} + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż` +
+        ` (limit ${P.tarcza.cap.toFixed(2)} – obejmuje też opłatę za obsługę – + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż` +
         (P.reserve_price ? ` · rezerwa pod sprzedaż do ${P.tarcza_rezerwa} % (wyceniana ${P.reserve_price.toFixed(2)} zł/kWh)` : '') : '')) : '');
   popTiles($('sttiles'));
   const ae = document.activeElement?.id;
@@ -1698,6 +1866,11 @@ async function loadStrategy() {
   if (ae !== 'st-tzm') $('st-tzm').value = TZ.mode || 'auto';
   if (ae !== 'st-rez') $('st-rez').value = P.tarcza_rezerwa ?? '';
   if (ae !== 'st-legal') $('st-legal').value = P.legal_days ?? '';
+  if (ae !== 'st-pm') $('st-pm').value = P.price_mode || 'progi';
+  if (ae !== 'st-mg') $('st-mg').value = P.auto_margin ?? 0.2;
+  if (ae !== 'st-prof') $('st-prof').value = P.load_profile || 'prosty';
+  $('st-mg').disabled = $('st-pm').value !== 'auto';
+  $('st-pmnote').textContent = $('st-pm').value === 'auto' ? 'w trybie auto „Sprzedawaj od” i „Ładuj do” to tylko bezpieczniki (puste = bez)' : '';
   if (ae !== 'st-pc') $('st-pc').value = P.p_charge ?? '';
   if (ae !== 'st-pd') $('st-pd').value = P.p_discharge ?? '';
   if (ae !== 'st-sb') $('st-sb').value = P.standby_below_w ?? '';
@@ -2085,6 +2258,7 @@ function renderBalance(d) {
   const on = d.ok && (d.fan_pct || 0) > 0;
   ['b-l-in1', 'b-l-in2', 'b-l-out1', 'b-l-out2'].forEach(id => $(id).classList.toggle('on', on));
   renderFans(d, b);
+  renderBalRef(d);
 }
 
 // ---- ustawienia wentylatorow (tylko odczyt + propozycja) ----
@@ -2154,16 +2328,16 @@ $('fs-save').onclick = async () => {
 async function loadFanLog() {
   let rows;
   try { rows = await (await fetch('/api/vallox/log')).json(); } catch (e) { return; }
-  const BPN = { bp_bypass: 'obejście', bp_partial: 'częściowe obejście', bp_cooling: 'chłodzenie', supply_temp: 'nastawa nawiewu' };
+  const BPN = { bp_bypass: 'obejście', bp_partial: 'częściowe obejście', bp_cooling: 'chłodzenie', supply_temp: 'nastawa nawiewu', defrost_mode: 'odszranianie', defrost_sup_temp: 'nawiew przy odszranianiu' };
   const bp = rows.filter(r => BPN[r.param]);
   $('bp-log').innerHTML = bp.length ? bp.slice(0, 6).map(r =>
     `<div>${new Date(r.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ` +
-    `${BPN[r.param]} ${r.param === 'supply_temp' ? r.old + ' → ' + r.new + ' °C' : (+r.new ? 'zał.' : 'wył.')} · ${r.source}` +
+    `${BPN[r.param]} ${r.param === 'supply_temp' || r.param === 'defrost_sup_temp' ? r.old + ' → ' + r.new + ' °C' : r.param === 'defrost_mode' ? (+r.new ? 'zatrzymanie nawiewu' : 'obejście') : (+r.new ? 'zał.' : 'wył.')} · ${r.source}` +
     (r.ok ? '' : ` · <span style="color:var(--eff-bad)">błąd: ${r.msg}</span>`) + '</div>').join('') : 'brak';
   rows = rows.filter(r => !BPN[r.param]);
   $('fs-log').innerHTML = rows.length ? rows.slice(0, 6).map(r =>
     `<div>${new Date(r.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ` +
-    `${r.param === 'supp_base' ? 'nawiew' : 'wywiew'} ${r.old} → ${r.new} % · ${r.source}` +
+    `${r.param === 'supp_base' ? 'nawiew' : r.param === 'home_speed' ? 'prędkość „W domu”' : 'wywiew'} ${r.old} → ${r.new} % · ${r.source}` +
     (r.ok ? '' : ` · <span style="color:var(--eff-bad)">błąd: ${r.msg}</span>`) + '</div>').join('') : 'brak';
 }
 function renderFans(d, b) {
@@ -2212,13 +2386,17 @@ function renderSupply(d) {
   if (document.activeElement !== $('sp-auto')) $('sp-auto').checked = !!A.enabled;
   keep('sp-months', (A.summer_months || []).join(',')); keep('sp-hot', A.ext_hot); keep('sp-st', A.summer_target);
   keep('sp-cold', A.ext_cold); keep('sp-nt', A.normal_target); keep('sp-fo', A.frost_out); keep('sp-fe', A.frost_exit);
-  keep('sp-spike', A.spike_w); keep('sp-smin', A.spike_min); keep('sp-min', A.frost_min);
+  keep('sp-spike', A.spike_w); keep('sp-smin', A.spike_min); keep('sp-min', A.frost_min); keep('sp-fstep', A.frost_step_min); keep('sp-ct1', A.curve_t1); keep('sp-cs1', A.curve_s1); keep('sp-ct2', A.curve_t2); keep('sp-cs2', A.curve_s2);
+  if (document.activeElement !== $('sp-con')) $('sp-con').checked = A.curve_on !== false;
+  if (document.activeElement !== $('sp-cmode')) $('sp-cmode').value = A.curve_mode || 'auto';
+  spCurveUi(A);
   $('sp-autost').innerHTML = !A.enabled ? '' : `Średnio z 30 min: wywiew <b>${A.avg_t_ext ?? '–'} °C</b>, zewnątrz <b>${A.avg_t_out ?? '–'} °C</b>` +
     (A.frost ? ' · <b style="color:var(--s-fc)">tryb mrozowy</b>' : '') +
+    (A.curve_on !== false && A.curve ? ' · <b style="color:var(--nw)">nastawa wg krzywej temperatury zewn.</b>' : '') +
     `<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
   const ch = A.changes || [];
-  $('sp-changes').innerHTML = !ch.length ? (A.enabled ? '<span style="color:var(--muted)">Ostatnie zmiany automatu: jeszcze brak.</span>' : '') :
-    '<b>Ostatnie zmiany automatu</b>' + ch.map(c => {
+  $('sp-changes').innerHTML = !ch.length ? '<span style="color:var(--muted)">Jeszcze brak zmian automatu.</span>' :
+    ch.slice(0, +$('sp-chn').value || 5).map(c => {
       const t = new Date(c.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">` +
         `<span style="color:var(--muted)">${t}</span> · <b>${c.old} → ${c.new} °C</b>` +
@@ -2227,6 +2405,19 @@ function renderSupply(d) {
         (c.t_out != null ? ` (zewn. ${c.t_out} °C, wywiew ${c.t_ext} °C)` : '') + '</span></div>';
     }).join('');
 }
+$('sp-chn').onchange = () => { if (lastVallox) renderSupply(lastVallox); };
+function spCurveUi(A) {
+  const auto = $('sp-cmode').value === 'auto', L = A.learned;
+  document.querySelectorAll('.spman').forEach(e => e.style.opacity = auto ? .45 : 1);
+  if (!auto) { $('sp-curve').innerHTML = 'Krzywa ręczna: przy pierwszej temperaturze i niżej – pierwsza nastawa, przy drugiej – druga, pomiędzy liniowo; powyżej drugiej (+1 °C) – nastawa normalna.'; return; }
+  if (!L || !L.points) { $('sp-curve').innerHTML = 'Krzywa automatyczna: <b>za mało danych w historii</b> (' + (L?.hours ?? 0) + ' h) – do czasu nauczenia działają punkty ręczne obok (wyszarzone). Uczy się sama z każdej zmiany nastawy i pracy nagrzewnicy.'; return; }
+  const ts = Object.keys(L.bins).map(Number).filter(t => t >= -12 && t <= 12).sort((a, b) => a - b);
+  const lrn = L.learned || {};
+  $('sp-curve').innerHTML = `Krzywa automatyczna z ${L.hours} h historii (${L.points} temperatur z danymi${L.exit_t != null ? `, nastawa normalna bez nagrzewnicy od ${L.exit_t} °C` : ''}):` +
+    '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' + ts.map(t => `<span title="${lrn[t] != null ? 'z danych' : 'interpolacja / wartość skrajna'}" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;${lrn[t] != null ? 'font-weight:700;border-color:var(--nw)' : 'opacity:.7'}">${t > 0 ? '+' : ''}${t}° → ${L.bins[t]}°</span>`).join('') + '</div>' +
+    '<span style="font-size:11px">pogrubione – wyuczone z danych, pozostałe – interpolacja; powyżej krzywej nastawa normalna</span>';
+}
+$('sp-cmode').onchange = () => { if (lastVallox) spCurveUi(lastVallox.supply_ctl?.auto || {}); };
 async function spPost(url, body) {
   const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
     .json().catch(() => ({ ok: false, error: 'brak połączenia' }));
@@ -2245,8 +2436,116 @@ $('sp-auto').onchange = async e => {
 $('sp-save').onclick = () => spPost('/api/vallox/supply_auto', {
   summer_months: $('sp-months').value.split(/[,; ]+/).filter(Boolean).map(Number),
   ext_hot: +$('sp-hot').value, summer_target: +$('sp-st').value, ext_cold: +$('sp-cold').value, normal_target: +$('sp-nt').value,
-  frost_out: +$('sp-fo').value, frost_exit: +$('sp-fe').value, spike_w: +$('sp-spike').value, spike_min: +$('sp-smin').value, frost_min: +$('sp-min').value });
+  frost_out: +$('sp-fo').value, frost_exit: +$('sp-fe').value, spike_w: +$('sp-spike').value, spike_min: +$('sp-smin').value, frost_min: +$('sp-min').value, frost_step_min: +$('sp-fstep').value,
+  curve_on: $('sp-con').checked, curve_mode: $('sp-cmode').value, curve_t1: +$('sp-ct1').value, curve_s1: +$('sp-cs1').value, curve_t2: +$('sp-ct2').value, curve_s2: +$('sp-cs2').value });
 
+// ---- 1.93 predkosc zimowa ----
+function renderSpeed(d) {
+  const A = d.speed_ctl || {}, S = A.stats || {};
+  const keep = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v ?? ''; };
+  if (document.activeElement !== $('ws-on')) $('ws-on').checked = !!A.enabled;
+  keep('ws-t', A.t_on); keep('ws-flow', A.flow_min); keep('ws-rh', A.rh_max); keep('ws-boost', A.boost_max);
+  $('ws-minp').textContent = A.min_pct ?? 20;
+  $('ws-st').innerHTML = `Prędkość „W domu” teraz: <b>${d.home_speed ?? '–'} %</b> (przepływ ok. <b>${d.flow_sup ?? '–'} / ${d.flow_ext ?? '–'} m³/h</b>)` +
+    (A.normal ? ` · normalna: ${A.normal} %` : '') + (A.enabled && A.active ? ' · <b style="color:var(--nw)">tryb zimowy</b>' : '') +
+    (A.enabled ? `<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>` : '');
+  const ch = A.changes || [];
+  $('ws-changes').innerHTML = !ch.length ? '<span style="color:var(--muted)">Jeszcze brak zmian automatu.</span>' : ch.slice(0, 5).map(c => {
+    const t = new Date(c.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"><span style="color:var(--muted)">${t}</span> · <b>${c.old} → ${c.new} %</b>` +
+      (c.ok ? '' : ` <span style="color:var(--err)">nieudane: ${esc(c.error || '')}</span>`) + `<br><span style="color:var(--text-2)">${esc(c.why || '')}` +
+      (c.t_out != null ? ` (zewn. ${c.t_out} °C${c.flow != null ? ', przepływ ' + c.flow + ' m³/h' : ''})` : '') + '</span></div>';
+  }).join('');
+}
+async function wsPost(body) {
+  const r = await (await fetch('/api/vallox/speed_auto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
+    .json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+  $('ws-st').insertAdjacentHTML('afterbegin', r.ok ? '<span style="color:var(--ok)">zapisano</span><br>' : `<span style="color:var(--err)">błąd: ${esc(r.error)}</span><br>`);
+  setTimeout(() => { loadVallox(); loadFanLog(); }, 600);
+  return r.ok;
+}
+$('ws-on').onchange = async e => {
+  if (e.target.checked && !confirm('Włączyć automat prędkości zimowej? Będzie zmieniał prędkość „W domu” w rekuperatorze.')) { e.target.checked = false; return; }
+  if (!await wsPost({ enabled: e.target.checked })) e.target.checked = !e.target.checked;
+};
+$('ws-save').onclick = () => wsPost({ t_on: +$('ws-t').value, flow_min: +$('ws-flow').value, rh_max: +$('ws-rh').value, boost_max: +$('ws-boost').value });
+// ---- 1.97 bilans wzorcowy ----
+function renderBalRef(d) {
+  const B = d.balref; if (!B) return;
+  const R = B.ref, pct = x => x == null ? '–' : (x > 0 ? '+' : '') + x.toFixed(1) + ' %';
+  const cur = B.current ? B.current.split('/') : [];
+  if (document.activeElement !== $('br-notify')) $('br-notify').checked = B.notify !== false;
+  let h = '';
+  if (!R) h = `Brak wzorca. Teraz: nawiew <b>${d.supp_base ?? '–'} %</b> / wywiew <b>${d.extr_base ?? '–'} %</b> – gdy to ustawienie jest dobre, zapisz je jako wzorcowe.`;
+  else {
+    h = `Wzorzec: nawiew <b>${R.supp_base} %</b> / wywiew <b>${R.extr_base} %</b> (od ${new Date(R.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`;
+    h += R.pending ? ` · <b style="color:var(--nw)">zbieram dane: ${Math.round(R.min / 60 * 10) / 10} / ${R.need / 60} h stabilnej pracy</b>` : ' · gotowy';
+    if (cur.length && (+cur[0] !== R.supp_base || +cur[1] !== R.extr_base)) h += `<br><span style="color:var(--eff-mid)">⚠ teraz ${cur[0]} / ${cur[1]} % – inne niż wzorcowe, porównanie wstrzymane</span>`;
+    const hb = Object.entries(R.by_home || {});
+    if (hb.length) h += '<br><span style="color:var(--text-2)">wzorzec przy prędkościach: ' + hb.map(([hs, a]) => `${hs} %: ${Math.round(a.rpm_sup)} / ${Math.round(a.rpm_ext)} obr/min (${a.flow_sup ?? '–'} / ${a.flow_ext ?? '–'} m³/h, ${Math.round(a.min / 60 * 10) / 10} h)`).join(' · ') + '</span>';
+    if (B.today) h += `<br>Dziś względem wzorca: obroty nawiewu <b>${pct(B.today.sup)}</b>, wywiewu <b>${pct(B.today.ext)}</b>, stosunek <b>${pct(B.today.ratio)}</b> (${B.today.min} min)`;
+  }
+  if (B.msg) h += `<br><span style="color:var(--text-2)">${esc(B.msg)}</span>`;
+  $('br-st').innerHTML = h;
+  $('br-days').innerHTML = (B.dev_days || []).length ? '<b>Ostatnie dni:</b> ' + B.dev_days.map(x =>
+    `<span style="${x.bad ? 'color:var(--eff-bad);font-weight:700' : ''}">${x.day.slice(8, 10)}.${x.day.slice(5, 7)}: ${pct(x.sup)} / ${pct(x.ext)} / ${pct(x.ratio)}</span>`).join(' · ') +
+    ` <span style="color:var(--muted)">(nawiew / wywiew / stosunek; próg ±${B.dev_limit} %)</span>` : '';
+  const S = B.settings || [];
+  $('br-sets').innerHTML = !S.length ? '<span style="color:var(--muted)">Jeszcze brak stabilnych minut.</span>' :
+    '<table style="width:100%;border-collapse:collapse;margin-top:4px"><tr style="color:var(--muted);text-align:left"><th>ustawienie</th><th>czas</th><th>obroty naw./wyw.</th><th>przepływ m³/h</th><th>stosunek</th><th>ΔT bilans</th><th>sprawność</th><th>wyrzut</th><th>zewn.</th></tr>' +
+    S.map(x => { const [a, b, c] = x.key.split('/'); const isRef = R && +a === R.supp_base && +b === R.extr_base;
+      return `<tr style="border-top:1px solid var(--border);${isRef ? 'font-weight:700' : ''}"><td>${a} / ${b} % · ${c} %</td><td>${Math.round(x.min / 6) / 10} h</td>` +
+        `<td>${x.rpm_sup != null ? Math.round(x.rpm_sup) + ' / ' + Math.round(x.rpm_ext) : '–'}</td><td>${x.flow_sup != null ? Math.round(x.flow_sup) + ' / ' + Math.round(x.flow_ext) : '–'}</td>` +
+        `<td>${x.ratio ?? '–'}</td><td>${x.diff != null ? (x.diff > 0 ? '+' : '') + x.diff.toFixed(2) + ' °C' : '–'}</td><td>${x.eff_sup != null ? Math.round(x.eff_sup) + ' %' : '–'}</td>` +
+        `<td>${x.t_exh != null ? x.t_exh.toFixed(1) + ' °C' : '–'}</td><td>${x.t_out != null ? x.t_out.toFixed(1) + ' °C' : '–'}</td></tr>`; }).join('') + '</table>';
+}
+async function brPost(body) {
+  const r = await (await fetch('/api/vallox/balref', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+  if (!r.ok) alert('Błąd: ' + r.error);
+  loadVallox();
+}
+$('br-save').onclick = () => { if (confirm('Zapisać obecne ustawienie nawiewu / wywiewu jako bilans wzorcowy?')) brPost({ action: 'save' }); };
+$('br-clear').onclick = () => { if (confirm('Usunąć bilans wzorcowy?')) brPost({ action: 'clear' }); };
+$('br-notify').onchange = e => brPost({ notify: e.target.checked });
+// ---- 1.94 odszranianie ----
+let dfStatsTs = 0;
+function renderDefrost(d) {
+  const M = d.defrost_modes || {}, R = d.defrost_temp_range || [10, 25];
+  $('df-cur').innerHTML = d.defrost_mode == null ? '–' : esc(M[d.defrost_mode] || ('tryb ' + d.defrost_mode)) +
+    (d.defrost_mode === 0 && d.defrost_sup_temp != null ? `, nawiew ${Math.round(d.defrost_sup_temp)} °C` : '') +
+    (d.cell_state === 3 ? ' · <b style="color:var(--nw)">odszranianie teraz</b>' : '');
+  if (document.activeElement !== $('df-mode') && !$('df-mode').dataset.dirty) $('df-mode').value = String(d.defrost_mode ?? 0);
+  if (document.activeElement !== $('df-temp') && !$('df-temp').dataset.dirty) $('df-temp').value = d.defrost_sup_temp != null ? Math.round(d.defrost_sup_temp) : '';
+  $('df-temp').min = R[0]; $('df-temp').max = R[1];
+  $('df-trow').style.opacity = $('df-mode').value === '0' ? 1 : .45;
+  if (Date.now() - dfStatsTs > 600000) loadDefrostStats();
+}
+async function loadDefrostStats() {
+  dfStatsTs = Date.now();
+  let r; try { r = await (await fetch('/api/vallox/defrost_stats?days=' + $('df-days').value)).json(); } catch (e) { return; }
+  const T = r.total || {}, kwh = wh => (wh / 1000).toFixed(2).replace('.', ',');
+  const all = (T.heat_def_wh || 0) + (T.heat_oth_wh || 0);
+  $('df-stats').innerHTML = `Odszranianie: <b>${Math.round(T.defrost_min || 0)} min</b> · nagrzewnica (≥ ${r.spike_w} W): ` +
+    `<b>${Math.round(T.heat_def_min || 0)} min / ${kwh(T.heat_def_wh || 0)} kWh</b> podczas odszraniania, ` +
+    `${Math.round(T.heat_oth_min || 0)} min / ${kwh(T.heat_oth_wh || 0)} kWh poza nim` +
+    (all > 0 ? ` (<b>${Math.round(100 * (T.heat_def_wh || 0) / all)} %</b> energii nagrzewnicy na odszranianie)` : '') +
+    '<table style="width:100%;margin-top:6px;font-size:12px;border-collapse:collapse"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>min. zewn.</th><th>odszr.</th><th>grzanie przy odszr.</th><th>grzanie poza</th></tr>' +
+    (r.days || []).slice().reverse().filter(x => x.defrost_min || x.heat_def_min || x.heat_oth_min || (x.t_min != null && x.t_min < 5)).map(x =>
+      `<tr style="border-top:1px solid var(--border)"><td>${x.date.slice(8, 10)}.${x.date.slice(5, 7)}</td><td>${x.t_min ?? '–'} °C</td><td>${Math.round(x.defrost_min)} min</td>` +
+      `<td>${Math.round(x.heat_def_min)} min · ${kwh(x.heat_def_wh)} kWh</td><td>${Math.round(x.heat_oth_min)} min · ${kwh(x.heat_oth_wh)} kWh</td></tr>`).join('') + '</table>';
+}
+$('df-days').onchange = loadDefrostStats;
+['df-mode', 'df-temp'].forEach(id => $(id).addEventListener('input', () => { $(id).dataset.dirty = 1; $('df-trow').style.opacity = $('df-mode').value === '0' ? 1 : .45; }));
+$('df-save').onclick = async () => {
+  const body = { defrost_mode: +$('df-mode').value };
+  if ($('df-temp').value !== '') body.defrost_sup_temp = +$('df-temp').value;
+  if (!confirm('Zapisać ustawienie odszraniania w rekuperatorze?')) return;
+  const r = await (await fetch('/api/vallox/defrost', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
+    .json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+  $('df-msg').innerHTML = r.ok ? '<span style="color:var(--ok)">zapisano</span>' : `<span style="color:var(--err)">błąd: ${esc(r.error)}</span>`;
+  delete $('df-mode').dataset.dirty; delete $('df-temp').dataset.dirty;
+  await loadVallox(); loadFanLog();
+};
 // ---- obejscie wymiennika (bypass) ----
 function renderBypass(d) {
   const B = d.bypass_ctl || {}, A = B.auto || {};
@@ -2293,7 +2592,7 @@ async function loadVallox() {
   try { d = await (await fetch('/api/vallox/live')).json(); } catch (e) { return; }
   if (d.model) { $('vname').textContent = d.model.name || 'Rekuperator Vallox'; $('v-model').textContent = d.model.name ? d.model.name + (d.model.detected ? ' · wykryty' : '') : ''; }
   $('vstatus').textContent = d.ok ? '· ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') : '· błąd: ' + d.error;
-  lastVallox = d; renderBalance(d); renderBypass(d); renderSupply(d);
+  lastVallox = d; renderBalance(d); renderBypass(d); renderSupply(d); renderSpeed(d); renderDefrost(d);
   $('v-tout').textContent = fmtT(d.t_out); $('v-tsup').textContent = fmtT(d.t_sup);
   $('v-text').textContent = fmtT(d.t_ext); $('v-texh').textContent = fmtT(d.t_exh);
   const on = d.ok && (d.fan_pct || 0) > 0;

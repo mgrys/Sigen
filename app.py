@@ -7,6 +7,7 @@ Podglad:                 http://localhost:8000  (z telefonu: http://<IP-komputer
 Konfiguracja:            config.ini (tworzony przy pierwszym starcie) albo zakladka "Ustawienia".
 """
 import datetime as dt
+import json
 import os
 import sys
 import threading
@@ -24,6 +25,7 @@ import prices
 import pradcast
 import pstryk
 import strategy
+import load_model
 import registers
 import access
 import gridwatch
@@ -32,7 +34,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.22.0"
+__version__ = "1.23.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -987,6 +989,101 @@ def efficiency_loop():
         time.sleep(EFF_INTERVAL)
 
 
+# --- 1.23: zuzycie wlasne falownika i magazynu w miesiacu ------------------------------------------------------------
+# Falownik: konwersja + czuwanie z metody minutowej (wejscie = moc DC stringow PV + rozladowanie, wyjscie = AC + ladowanie).
+# Bateria: ladowanie - rozladowanie - zmiana zapasu (SOC x pojemnosc) z licznikow. "Zuzycie domu" Sigena liczone po stronie
+# AC zawiera straty falownika, wiec sam bilans licznikow ich nie pokazuje. Zamkniete dni - pamiec podreczna (losses_daily.json).
+LOSS_CACHE = config.DATA_DIR / "losses_daily.json"
+_loss_cache = {"data": None}
+
+
+def _loss_day(con, d, cap):
+    start, end = day_range(d)
+    e = merge_energy(energy(day_rows(con, start, end)), counter_energy(con, d.isoformat()))
+    acc, n, split = eff_compute_day(con, d, split=True)
+    if not n:
+        return None
+    s0 = con.execute("SELECT soc FROM samples WHERE ts >= ? AND ts < ? AND soc IS NOT NULL ORDER BY ts LIMIT 1", (start, end)).fetchone()
+    s1 = con.execute("SELECT soc FROM samples WHERE ts >= ? AND ts < ? AND soc IS NOT NULL ORDER BY ts DESC LIMIT 1", (start, end)).fetchone()
+    dsoc = (s1[0] - s0[0]) if s0 and s1 else 0.0
+    d_bat = dsoc / 100 * cap if cap else 0.0
+    r = {k: round(float(e.get(k) or 0), 3) for k in ("pv", "load", "imp", "exp", "chg", "dis")}
+    r["d_bat"] = round(d_bat, 3)
+    r["balance"] = round(r["pv"] + r["imp"] - r["exp"] - r["load"] - d_bat, 3)      # bilans licznikow (~ tylko bateria:
+    #   "zuzycie domu" Sigena jest wyliczane po stronie AC, wiec zawiera juz straty i czuwanie falownika)
+    r["bat_loss"] = round(r["chg"] - r["dis"] - d_bat, 3)                           # bateria (ogniwa, BMS)
+    r["konwersja"], r["czuwanie"] = split.get("konwersja"), split.get("czuwanie")
+    r["h_czuwanie"] = split.get("h_czuwanie")
+    r["hours"] = round(n * 5 / 3600, 1) if n else 0
+    return r
+
+
+@app.get("/api/losses_month")
+def api_losses_month(month: str | None = None):
+    """Zuzycie wlasne falownika i magazynu - dzien po dniu i suma miesiaca (kWh, sredni pobor W, koszt)."""
+    today = dt.date.today()
+    m0 = dt.date.fromisoformat((month or today.strftime("%Y-%m")) + "-01")
+    m1 = (m0 + dt.timedelta(days=32)).replace(day=1)
+    if _loss_cache["data"] is None:
+        try:
+            _loss_cache["data"] = json.loads(LOSS_CACHE.read_text(encoding="utf-8")) if LOSS_CACHE.exists() else {}
+        except Exception:  # noqa: BLE001
+            _loss_cache["data"] = {}
+    cache = _loss_cache["data"]
+    with lock:
+        regs = dict(registers_state["values"])
+    cap = float(STRAT["cap_kwh"] or regs.get("cap_ess") or regs.get("cap_bat") or 0)
+    days, changed = [], False
+    con = db_connect()
+    try:
+        d = m0
+        while d < m1 and d <= today:
+            key = d.isoformat()
+            r = cache.get(key) if d < today else None
+            if r is None:
+                r = _loss_day(con, d, cap)
+                if r is not None and d < today:
+                    cache[key] = r
+                    changed = True
+            if r:
+                x = {"date": key, **r}
+                # razem = falownik (konwersja + czuwanie, metoda minutowa z mocy DC stringow) + bateria (liczniki)
+                x["system"] = round((x.get("konwersja") or 0) + (x.get("czuwanie") or 0) + (x.get("bat_loss") or 0), 3)
+                days.append(x)
+            d += dt.timedelta(days=1)
+    finally:
+        con.close()
+    if changed:
+        try:
+            LOSS_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+        except OSError:
+            pass
+    keys = ("pv", "load", "imp", "exp", "chg", "dis", "d_bat", "system", "balance", "bat_loss", "konwersja", "czuwanie", "h_czuwanie")
+    tot = {k: round(sum((x.get(k) or 0) for x in days), 2) for k in keys}
+    full = [x for x in days if x["date"] < today.isoformat()]
+    nd = len(full)
+    avg_day = round(sum(x["system"] for x in full) / nd, 2) if nd else None
+    try:
+        tz = tarcza_info(strat_limits())
+        price = tz["eff_buy"] if tz.get("active") else None
+    except Exception:  # noqa: BLE001
+        price = None
+    if price is None:
+        con = db_connect()
+        try:
+            pm = pstryk.summary(pstryk.load(con, day_range(m0)[0], day_range(m1)[0])) if pstryk.enabled() else {}
+        finally:
+            con.close()
+        if pm.get("imp"):
+            price = round(((pm.get("energy_net") or 0) + (pm.get("service") or 0) + (pm.get("dist_var") or 0) + (pm.get("excise") or 0)) * 1.23 / pm["imp"], 3)
+    dim = (m1 - m0).days
+    return {"month": m0.strftime("%Y-%m"), "label": f"{MONTHS[m0.month - 1]} {m0.year}", "days": days, "total": tot,
+            "full_days": nd, "avg_day_kwh": avg_day, "avg_w": round(avg_day * 1000 / 24) if avg_day is not None else None,
+            "month_est_kwh": round(avg_day * dim, 1) if avg_day is not None else None,
+            "price": price, "cost": round(tot["system"] * price, 2) if price else None,
+            "month_est_cost": round(avg_day * dim * price, 2) if price and avg_day is not None else None, "cap_kwh": cap}
+
+
 @app.get("/api/efficiency")
 def efficiency(date: str | None = None, days: int = 1):
     """Sprawnosc falownika w przedzialach mocy przetwarzanej (z tabeli efficiency_daily).
@@ -1112,11 +1209,109 @@ def api_pstryk(date: str | None = None):
     finally:
         con.close()
     ds = pstryk.summary(hours)
+    ms_sum = pstryk.summary(month)
+    pm0 = (m0 - dt.timedelta(days=1)).replace(day=1)
+    con = db_connect()
+    try:
+        prev = pstryk.summary(pstryk.load(con, day_range(pm0)[0], ms))
+    finally:
+        con.close()
     # porownanie tylko dla godzin, ktore operator juz przekazal (dzis dane doplywaja z opoznieniem)
     return {"enabled": True, "status": st, "date": d.isoformat(), "hours": hours, "day": ds,
-            "month": {**pstryk.summary(month), "label": f"{MONTHS[d.month - 1]} {d.year}",
+            "month": {**ms_sum, "label": f"{MONTHS[d.month - 1]} {d.year}",
                       "days": len({r["day"] for r in month if r.get("imp") is not None})},
+            "invoice": pstryk_invoice(m0, ms_sum, prev),
             "sigen": {"imp": e.get("imp"), "exp": e.get("exp")}}
+
+
+# --- 1.23: faktura Pstryka - depozyt prosumencki z miesiaca M pomniejsza fakture za miesiac M+1 ----------------------
+DEPOSIT_FILE = config.DATA_DIR / "pstryk_deposit.json"     # {"2026-11": 188.29} - depozyt wg Pstryka na fakture za dany miesiac
+
+
+def _deposit_load():
+    try:
+        return json.loads(DEPOSIT_FILE.read_text(encoding="utf-8")) if DEPOSIT_FILE.exists() else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _month_shift(m0, k):
+    y, m = divmod(m0.year * 12 + m0.month - 1 + k, 12)
+    return dt.date(y, m + 1, 1)
+
+
+def _deposit_for(m0, depth=0):
+    """Depozyt dostepny na fakture za miesiac m0 = oddanie (sprzedaz) z poprzedniego miesiaca + niewykorzystana reszta
+    depozytu z faktury za poprzedni miesiac (Pstryk przenosi ja dalej). Wartosc wpisana wg Pstryka ma pierwszenstwo
+    (i konczy liczenie wstecz). Zwraca (kwota, zrodlo, przeniesiona reszta)."""
+    manual = _deposit_load().get(m0.strftime("%Y-%m"))
+    if manual is not None:
+        return float(manual), "wg Pstryka (wpisany)", None
+    pm = _month_shift(m0, -1)
+    con = db_connect()
+    try:
+        prev = pstryk.summary(pstryk.load(con, day_range(pm)[0], day_range(m0)[0]))
+    finally:
+        con.close()
+    if not prev.get("hours"):
+        return 0.0, "brak danych z poprzedniego miesiąca", None
+    carry = 0.0
+    if depth < 12:          # reszta z faktury za poprzedni miesiac
+        pdep, _src, _c = _deposit_for(pm, depth + 1)
+        cap = strat_limits().get("tarcza") or 0.61
+        imp = prev.get("imp") or 0
+        avg = ((prev.get("energy_net") or 0) + (prev.get("service") or 0)) * 1.23 / imp if imp > 0.5 else None
+        tz = max(0.0, avg - cap) * imp if avg is not None and strat_limits().get("tarcza_mode", "auto") != "nie" else 0.0
+        carry = round(max(0.0, pdep - ((prev.get("cost") or 0) - tz)), 2)
+    dep = round((prev.get("sold") or 0) + carry, 2)
+    return dep, "z oddania w poprzednim miesiącu" + (f" + reszta {carry:.2f} zł" if carry > 0.005 else ""), carry
+
+
+def pstryk_invoice(m0, cur, prev):
+    """Szacunek faktury za miesiac m0: koszt (energia + dystrybucja + oplata za obsluge + akcyza, z VAT)
+    - zniżka z Tarczy (srednia energii z oplata za obsluge ponad limit x pobor) - depozyt zarobiony w poprzednim miesiacu."""
+    key = m0.strftime("%Y-%m")
+    cap = strat_limits().get("tarcza") or 0.61
+    imp = cur.get("imp") or 0
+    avg = ((cur.get("energy_net") or 0) + (cur.get("service") or 0)) * 1.23 / imp if imp > 0.5 else None
+    mode = strat_limits().get("tarcza_mode", "auto")
+    tarcza = round(max(0.0, avg - cap) * imp, 2) if avg is not None and mode != "nie" else 0.0
+    dep, src, carry = _deposit_for(m0)
+    gross = {"energy": round(((cur.get("energy_net") or 0) + (cur.get("excise") or 0)) * 1.23, 2),
+             "dist": round(((cur.get("dist_var") or 0) + (cur.get("dist_fix") or 0) + (cur.get("power_fee") or 0)) * 1.23, 2),
+             "service": round((cur.get("service") or 0) * 1.23, 2)}
+    cost = round(cur.get("cost") or 0, 2)
+    total = round(cost - tarcza - dep, 2)
+    return {"month": key, "cost": cost, "parts": gross, "tarcza": tarcza, "tarcza_avg": None if avg is None else round(avg, 4),
+            "tarcza_cap": cap, "deposit": round(dep, 2), "deposit_src": src, "deposit_carry": carry,
+            "deposit_prev_calc": round(prev.get("sold") or 0, 2), "to_pay": max(0.0, total), "left": round(max(0.0, -total), 2),
+            "next_deposit": round(cur.get("sold") or 0, 2)}
+
+
+@app.post("/api/pstryk/deposit")
+def api_pstryk_deposit(payload: dict = Body(...)):
+    """Depozyt wg Pstryka na fakture za miesiac: {"month": "2026-11", "value": 188.29} (value null - z danych)."""
+    key = str(payload.get("month") or "")
+    try:
+        dt.date.fromisoformat(key + "-01")
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "miesiąc w formacie RRRR-MM"}, status_code=400)
+    d = _deposit_load()
+    v = payload.get("value")
+    if v in (None, ""):
+        d.pop(key, None)
+    else:
+        try:
+            v = round(float(str(v).replace(",", ".")), 2)
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "kwota musi być liczbą"}, status_code=400)
+        if not 0 <= v <= 100000:
+            return JSONResponse({"ok": False, "error": "kwota poza zakresem"}, status_code=400)
+        d[key] = v
+    DEPOSIT_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"ok": True, "deposit": d}
+
+
 
 
 # --- strategia osobista (plan; wykonanie przez inverter_ctl.py tylko po wlaczeniu na stronie) -----------------
@@ -1131,12 +1326,33 @@ _strat_cache = {"ts": 0, "data": None}
 LIMIT_KEYS = {"sell_floor": "sprzedaz_z_magazynu_od", "buy_cap": "ladowanie_z_sieci_do",
               "p_charge": "moc_ladowania_z_sieci_maks_kw", "p_discharge": "moc_sprzedazy_maks_kw",
               "standby_below_w": "standby_ponizej_w", "tarcza": "tarcza_limit_zl_kwh",
-              "tarcza_rezerwa": "tarcza_rezerwa_proc", "legal_days": "sprzedaz_tylko_z_pv_dni"}
+              "tarcza_rezerwa": "tarcza_rezerwa_proc", "legal_days": "sprzedaz_tylko_z_pv_dni",
+              "auto_margin": "tryb_auto_min_zysk_zl_kwh"}
 LIMIT_RANGE = {"p_charge": (0.5, 30, "moc 0,5–30 kW"), "p_discharge": (0.5, 30, "moc 0,5–30 kW"),
                "standby_below_w": (0, 3000, "próg 0–3000 W"), "tarcza": (0, 5, "limit tarczy 0–5 zł/kWh"),
-               "tarcza_rezerwa": (0, 100, "rezerwa 0–100 %"), "legal_days": (0, 366, "okres 0–366 dni")}
-LIMIT_DEFAULTS = {"tarcza": "0.61", "tarcza_rezerwa": "60", "legal_days": "7"}
+               "tarcza_rezerwa": (0, 100, "rezerwa 0–100 %"), "legal_days": (0, 366, "okres 0–366 dni"),
+               "auto_margin": (0, 3, "minimalny zysk 0–3 zł/kWh")}
+LIMIT_DEFAULTS = {"tarcza": "0.61", "tarcza_rezerwa": "60", "legal_days": "7", "auto_margin": "0.20"}
+AUTO_MARGIN_DEFAULT = 0.20
+# 1.23: tryb cen strategii - "progi" (sprzedaz / zakup wg pulapow) albo "auto" (zysk po kosztach, pulapy jako bezpieczniki)
+PRICE_MODES = {"progi": "progi ręczne", "auto": "auto – zysk po kosztach"}
 RESERVE_FACTOR = 0.8   # rezerwa pod sprzedaz wyceniana na 80 % pulapu sprzedazy (sprzedaz w przyszlosci niepewna)
+def _market_sell_stats(con, today, days=14):
+    """Ceny sprzedazy z ostatnich `days` dni (po sell_factor): mediana i 75. percentyl [zl/kWh] - do wyceny rezerwy w trybie auto."""
+    xs = []
+    for k in range(1, days + 1):
+        try:
+            p, _src = _hourly_prices(con, today - dt.timedelta(days=k))
+        except Exception:  # noqa: BLE001
+            continue
+        xs += [(v[1] or 0.0) * STRAT["sell_factor"] for v in p.values() if v and v[1] is not None]
+    if len(xs) < 48:
+        return {"n": len(xs)}
+    xs.sort()
+    q = lambda f: round(xs[min(len(xs) - 1, int(f * len(xs)))], 3)  # noqa: E731
+    return {"n": len(xs), "p50": q(0.5), "p75": q(0.75), "p90": q(0.9)}
+
+
 def legal_budget(days):
     """Limit sprzedazy (arbitraz zgodny z prawem): produkcja PV - energia oddana do sieci w ostatnich `days` dniach
     (dzis wlacznie), z licznikow falownika (tabela counters: pv_total, exp_total). {"pv", "exp", "budget"} [kWh]."""
@@ -1158,15 +1374,22 @@ def legal_budget(days):
 
 def _legal_caps(hours, pl, budget):
     """Godziny sprzedazy z magazynu ponad limit: limit rosnie o prognozowana produkcje PV i maleje o oddawanie do sieci.
+    1.106: gdy limitu brakuje, ograniczana jest NAJTANSZA sprzedaz z magazynu do tej chwili (wczesniej - ta, w ktorej
+    limit sie skonczyl, przez co np. 12:00 po 3,58 zl zjadala limit, a 14:00-15:00 po 4,35 zl zostawalo bez sprzedazy).
     Zwraca {indeks godziny: maks. energia z magazynu do sieci [kWh]} albo {}, gdy plan miesci sie w limicie."""
+    exp = [max(0.0, -p["d"] - max(h["load"] - h["pv"], 0.0)) if p["mode"] == "export" else 0.0 for h, p in zip(hours, pl)]
     caps, b = {}, budget
     for t, (h, p) in enumerate(zip(hours, pl)):
         b += max(h["pv"], 0.0)
         b -= max(-p["grid"], 0.0)
-        if b < -0.01 and p["mode"] == "export":
-            bat_exp = max(0.0, -p["d"] - max(h["load"] - h["pv"], 0.0))
-            cut = min(-b, bat_exp)
-            caps[t] = max(0.0, bat_exp - cut)
+        while b < -0.01:
+            cands = [k for k in range(t + 1) if exp[k] > 0.005]
+            if not cands:
+                break
+            k = min(cands, key=lambda x: hours[x]["sell"])
+            cut = min(-b, exp[k])
+            exp[k] -= cut
+            caps[k] = exp[k]
             b += cut
     return caps
 
@@ -1185,6 +1408,10 @@ def strat_limits():
         except ValueError:
             out[k] = None
     out["tarcza_mode"] = cp.get("strategia", "tarcza_tryb", fallback="auto").strip().lower() or "auto"   # auto | tak | nie
+    pm = cp.get("strategia", "tryb_cen", fallback="progi").strip().lower()
+    out["price_mode"] = pm if pm in PRICE_MODES else "progi"
+    lp = cp.get("strategia", "profil_zuzycia", fallback="prosty").strip().lower()
+    out["load_profile"] = lp if lp in load_model.MODES else "prosty"
     return out
 
 
@@ -1212,7 +1439,8 @@ def tarcza_info(lim, now=None):
         con.close()
     imp = sum(r.get("imp") or 0 for r in month)
     if imp > 0.5:
-        out["avg"] = round(sum(r.get("energy_net") or 0 for r in month) * 1.23 / imp, 3)
+        # 1.23: srednia jak na fakturze Pstryka - energia + oplata za obsluge (marza 0,08 zl/kWh netto), z VAT
+        out["avg"] = round(sum((r.get("energy_net") or 0) + (r.get("service") or 0) for r in month) * 1.23 / imp, 3)
         out["month_kwh"] = round(imp, 1)
     rimp = sum(r.get("imp") or 0 for r in recent)
     if rimp > 0.5:
@@ -1220,7 +1448,9 @@ def tarcza_info(lim, now=None):
         out["rest"] = round(sum((r.get("dist_var") or 0) + (r.get("excise") or 0) for r in recent) * 1.23 / rimp, 4)
     margin = out["margin"] if out["margin"] is not None else TARCZA_MARGIN_DEFAULT
     rest = out["rest"] if out["rest"] is not None else 0.10
-    out["eff_buy"] = round(cap + margin + rest, 4)
+    # 1.23: limit Tarczy obejmuje tez oplate za obsluge (sprawdzone na fakturze) - marzy nie doliczamy
+    out["eff_buy"] = round(cap + rest, 4)
+    out["margin_in_cap"] = round(margin, 4)
     out["active"] = mode == "tak" or (out["avg"] is not None and out["avg"] > cap)
     out["reason"] = ("włączona ręcznie" if mode == "tak" else
                      f"średnia energii {out['avg']:.2f} zł > limit {cap:.2f} zł" if out["active"] else
@@ -1405,7 +1635,14 @@ def compute_strategy():
     DAY_TXT = {0: "dziś", 1: "jutro", 2: "pojutrze"}
     con = db_connect()
     try:
-        prof, nprof = _load_profile(con, now)
+        lim0 = strat_limits()
+        try:
+            profs, prof_info = load_model.profiles(con, now, days, lim0.get("load_profile"), forecast.LAT, forecast.LON)
+            nprof = prof_info.get("rows")
+        except Exception as e:  # noqa: BLE001 - awaryjnie profil prosty
+            prof, nprof = _load_profile(con, now)
+            profs, prof_info = {d: prof for d in days}, {"mode": "prosty", "mode_txt": "prosty (14 dni)", "error": str(e)}
+        mkt = _market_sell_stats(con, today)
         pv = {d: _hourly_pv(con, d) for d in days}
         pr, srcs = {}, set()
         for d in days:
@@ -1451,9 +1688,9 @@ def compute_strategy():
             continue
         sell = (sell or 0.0) * STRAT["sell_factor"] * (EST_SELL if est else 1.0)   # szacowana cena - ostrozniej
         hours.append({"ts": ts, "day": DAY_TXT.get((d - today).days, d.isoformat()), "t": time.strftime("%H:00", lt),
-                      "fc": est and ts in fc,
-                      "load": prof[lt.tm_hour] * frac, "pv": pv.get(d, [0] * 24)[lt.tm_hour] * frac,
-                      "buy": buy, "sell": sell, "est": est, "dur": frac})
+                      "fc": est and ts in fc, "dur": frac,
+                      "load": profs.get(d, next(iter(profs.values())))[lt.tm_hour] * frac, "pv": pv.get(d, [0] * 24)[lt.tm_hour] * frac,
+                      "buy": buy, "sell": sell, "est": est})
     if not hours:
         return {"ok": False, "error": "brak cen energii na dziś (PSE / Pstryk)"}
     # Tarcza Pstryk: w miesiacu, w ktorym dziala, zakup energii kosztuje tyle samo o kazdej godzinie
@@ -1472,15 +1709,26 @@ def compute_strategy():
     st0 = min(max(float(soc) / 100 * cap, smin), smax)
     last = sorted(h["buy"] for h in hours[-24:])
     terminal = sum(last[:6]) / max(1, len(last[:6]))
-    args = (smin, smax, STRAT["p_max_kw"], STRAT["eta_c"], STRAT["eta_d"])
+    args = (smin, smax, p_max_kw(), STRAT["eta_c"], STRAT["eta_d"])
     strategy.WEAR = STRAT["wear"]
+    strategy.HOLD_HI, strategy.HOLD_LO = 0.90 * cap, 0.15 * cap     # 1.23: bez dlugiego trzymania > 90 % i < 15 %
     strategy.SELL_FLOOR, strategy.BUY_CAP = lim["sell_floor"], lim["buy_cap"]
+    auto = lim.get("price_mode") == "auto"
+    strategy.AUTO = auto
+    strategy.AUTO_MARGIN = (lim.get("auto_margin") if lim.get("auto_margin") is not None else AUTO_MARGIN_DEFAULT) if auto else 0.0
     strategy.P_CHARGE, strategy.P_DISCHARGE = lim["p_charge"], lim["p_discharge"]
     strategy.MIN_DISCHARGE = lim["standby_below_w"] / 1000 if lim.get("standby_below_w") else None
     rez = lim.get("tarcza_rezerwa")
-    if tz.get("active") and rez and lim.get("sell_floor"):
+    res_basis = None
+    if tz.get("active") and rez and auto and mkt.get("p75"):
+        # tryb auto: rezerwa wyceniana rynkiem - 80 % ceny sprzedazy, ktora w ostatnich 14 dniach przekroczylo 25 % godzin
+        strategy.RESERVE_KWH = rez / 100 * cap
+        strategy.RESERVE_PRICE = mkt["p75"] * RESERVE_FACTOR
+        res_basis = f"80 % ceny sprzedaży z najdroższych 25 % godzin ostatnich 14 dni ({mkt['p75']:.2f} zł)"
+    elif tz.get("active") and rez and lim.get("sell_floor"):
         strategy.RESERVE_KWH = rez / 100 * cap
         strategy.RESERVE_PRICE = lim["sell_floor"] * RESERVE_FACTOR
+        res_basis = f"80 % pułapu sprzedaży ({lim['sell_floor']:.2f} zł)"
     else:
         strategy.RESERVE_KWH = strategy.RESERVE_PRICE = None
     curve = _eta_curve()
@@ -1581,7 +1829,7 @@ def compute_strategy():
             "now": cur, "next": nxt, "now_index": len(past), "price_source": " + ".join(sorted(srcs)) or "–",
             "pradcast": pc_info, "pradcast_status": pradcast.status() if use_pc else None,
             "params": {"cap_kwh": round(cap, 2), "soc_min": round(100 * smin / cap), "soc_max": round(100 * smax / cap),
-                       "p_max_kw": STRAT["p_max_kw"], "eta_c": STRAT["eta_c"], "eta_d": STRAT["eta_d"],
+                       "p_max_kw": p_max_kw(), "eta_c": STRAT["eta_c"], "eta_d": STRAT["eta_d"],
                        "sell_factor": STRAT["sell_factor"], "wear": STRAT["wear"], "terminal_price": round(terminal, 3),
                        "profile_hours": nprof, "soc_now": soc, "sell_floor": lim["sell_floor"], "buy_cap": lim["buy_cap"],
                        "p_charge": lim["p_charge"], "p_discharge": lim["p_discharge"],
@@ -1589,7 +1837,14 @@ def compute_strategy():
                        "pvchg_min_kw": strategy.PVCHG_MIN_KW, "tarcza_rezerwa": lim.get("tarcza_rezerwa"),
                        "reserve_price": strategy.RESERVE_PRICE and round(strategy.RESERVE_PRICE, 2),
                        "tarcza": tz, "legal": legal, "legal_days": lim.get("legal_days"),
-                       "hour_lock": dict(_hour_lock) if _hour_lock.get("ts") == h0 else None}}
+                       "hour_lock": dict(_hour_lock) if _hour_lock.get("ts") == h0 else None,
+                       "price_mode": lim.get("price_mode"), "price_mode_txt": PRICE_MODES.get(lim.get("price_mode")),
+                       "auto_margin": strategy.AUTO_MARGIN if auto else lim.get("auto_margin"),
+                       "load_profile": lim.get("load_profile"), "profile": prof_info, "market": mkt,
+                       "horizon": {"hours": len(hours), "end": day_range(days[-1])[1], "days": [DAY_TXT.get(k, "") for k in range(len(days))],
+                                   "terminal_price": round(terminal, 3), "reserve_kwh": strategy.RESERVE_KWH and round(strategy.RESERVE_KWH, 1),
+                                   "reserve_price": strategy.RESERVE_PRICE and round(strategy.RESERVE_PRICE, 2), "reserve_basis": res_basis,
+                                   "end_kwh": round(pl[-1]["stored"] - smin, 1) if pl else None}}}
     _strat_cache.update(ts=now, data=data)
     return data
 
@@ -1628,9 +1883,31 @@ def _soc_now():
         return (latest.get("soc"), latest.get("ts")) if latest.get("ok") else (None, None)
 
 
+def p_max_kw():
+    """1.23: maks. moc ladowania / rozladowania = moc znamionowa falownika z rejestru 30540 (np. Sigen Hybrid 10.0 -> 10 kW);
+    bez odczytu - STRAT["p_max_kw"]. Puste pole limitu w strategii = ta wartosc."""
+    with lock:
+        r = registers_state["values"].get("rated_p")
+    try:
+        r = float(r)
+    except (TypeError, ValueError):
+        r = None
+    return r if r and 3 <= r <= 30 else STRAT["p_max_kw"]
+
+
+def _on_new_prices():
+    """1.23: Pstryk podal ceny na jutro (ok. 14:00) - plan przeliczany od razu (nie po 5 min)."""
+    _strat_cache.update(ts=0, data=None)
+    threading.Thread(target=compute_strategy, daemon=True).start()
+
+
+pstryk.on_new_prices = _on_new_prices
+
+
 def _ctl_limits():
     """(maks. moc ladowania z sieci, maks. moc rozladowania przy sprzedazy) [kW] - pulapy uzytkownika <= p_max."""
-    lim, pm = strat_limits(), STRAT["p_max_kw"]
+    lim, pm = strat_limits(), p_max_kw()
+    inverter_ctl.P_MAX = pm
     return (min(pm, lim["p_charge"]) if lim["p_charge"] else pm, min(pm, lim["p_discharge"]) if lim["p_discharge"] else pm)
 
 
@@ -1654,6 +1931,16 @@ def api_strategy_limits(payload: dict = Body(...)):
         if tm not in ("auto", "tak", "nie"):
             return JSONResponse({"ok": False, "error": "tarcza: auto / tak / nie"}, status_code=400)
         vals["tarcza_tryb"] = tm
+    if "price_mode" in payload:
+        pm = str(payload.get("price_mode") or "progi").lower()
+        if pm not in PRICE_MODES:
+            return JSONResponse({"ok": False, "error": "tryb cen: progi / auto"}, status_code=400)
+        vals["tryb_cen"] = pm
+    if "load_profile" in payload:
+        lp = str(payload.get("load_profile") or "prosty").lower()
+        if lp not in load_model.MODES:
+            return JSONResponse({"ok": False, "error": "profil zużycia: prosty / dni / dni_temp"}, status_code=400)
+        vals["profil_zuzycia"] = lp
     for k, key in LIMIT_KEYS.items():
         if k not in payload:                     # brak pola = bez zmian
             continue
@@ -1828,6 +2115,38 @@ def api_vallox_supply_auto(payload: dict = Body(...)):
     except (TypeError, ValueError) as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return {"ok": True, "auto": a}
+
+
+@app.post("/api/vallox/speed_auto")
+def api_vallox_speed_auto(payload: dict = Body(...)):
+    """1.93 Predkosc zimowa: {"enabled": true, "t_on": 10, "flow_min": 120, "rh_max": 60, "boost_max": 50} (dowolne z pol)."""
+    try:
+        a = vallox.speed_auto_set(**payload)
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return {"ok": True, "auto": a}
+
+
+@app.post("/api/vallox/defrost")
+def api_vallox_defrost(payload: dict = Body(...)):
+    """1.94 Odszranianie: {"defrost_mode": 0|1, "defrost_sup_temp": 18} (dowolne z pol)."""
+    r = vallox.set_defrost(payload, "ręcznie", db_connect, db)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.get("/api/vallox/defrost_stats")
+def api_vallox_defrost_stats(days: int = 7):
+    """Odszranianie a praca nagrzewnicy (dzien po dniu)."""
+    return vallox.defrost_stats(db_connect, db, max(1, min(int(days), 90)))
+
+
+@app.post("/api/vallox/balref")
+def api_vallox_balref(payload: dict = Body(...)):
+    """1.97 Bilans wzorcowy: {"action": "save" | "clear" | "", "notify": true}."""
+    try:
+        return {"ok": True, "balref": vallox.balref_set(str(payload.get("action") or ""), payload.get("notify"))}
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.post("/api/vallox/bypass_auto")

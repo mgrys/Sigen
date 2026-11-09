@@ -31,3 +31,5 @@ pradcast_hist.json
 inverter_ctl.ini
 inverter_ctl_log.json
 inverter_ctl_state.json
+pstryk_deposit.json
+losses_daily.json
