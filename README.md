@@ -39,7 +39,8 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
 - **Alarmy falownika i instalacji**, w tym **AFCI** (wykrywanie łuku elektrycznego), z historią zmian.
 - **Opcjonalnie dla klientów [Pstryka](https://pstryk.pl/):** po wpisaniu klucza API (aplikacja Pstryk → Integracje)
   w zakładce Ustawienia pojawia się licznik operatora (pobór i oddanie, porównanie z licznikami Sigena),
-  rzeczywiste koszty dnia i miesiąca z rozbiciem oraz ceny godzinowe Pstryka na wykresie cen.
+  rzeczywiste koszty dnia i miesiąca z rozbiciem oraz ceny godzinowe Pstryka na wykresie cen, a także porównanie miesiąc
+  po miesiącu ze sprzedawcą z ceną taryfową wg stref wybranej taryfy (u niego depozyt pokrywa tylko koszt energii).
   Bez klucza dashboard działa jak dotąd.
 - **Strategia osobista:** godzinowy plan magazynu na dziś i jutro (z kluczem Pradcast – do pojutrza): autokonsumpcja /
   standby / ładowanie z sieci w tanich godzinach / sprzedaż z magazynu w drogich, z pułapami cen, limitami mocy

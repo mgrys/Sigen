@@ -17,6 +17,11 @@ import math
 TIE_EPS = 0.003   # zl/kWh - rozstrzyganie remisow na korzysc prostszego planu
 SPREAD_EPS = 0.001  # zl/kWh^2 - przy rownych cenach rozklada ladowanie / sprzedaz rowno (mniejsza moc = lagodniej)
 SWITCH_COST = 0.03  # zl - "koszt" zmiany trybu (mniej przelaczen)
+# 1.107: lagodne ladowanie z sieci - kazda kWh ladowana z moca powyzej RATE_SOFT_KW kosztuje RATE_COST zl. Gdy jest czas
+# (kilka godzin o podobnej cenie), plan rozklada ladowanie na dluzej mniejszym pradem (np. 10 kWh w 3 h zamiast w 1 h);
+# gdy tania jest tylko jedna godzina (roznica cen > RATE_COST), nadal laduje szybko.
+RATE_SOFT_KW = 3.5   # kW (app.py: 0,2 C pojemnosci magazynu, min. 2 kW)
+RATE_COST = 0.04     # zl za kWh ponad lagodna moc
 
 MODES = {
     "auto": ("autokonsumpcja", 2),
@@ -58,6 +63,8 @@ def eta_at(p, default):
         for lo, hi, e in ETA_D_CURVE:
             if lo <= p < hi:
                 return min(e, default)
+        if p < ETA_D_CURVE[0][0]:          # 1.111: ponizej najnizszego zmierzonego przedzialu - nie lepiej niz on
+            return min(ETA_D_CURVE[0][2], default)
     return default
 
 
@@ -67,6 +74,8 @@ def eta_c_at(p, default):
         for lo, hi, e in ETA_C_CURVE:
             if lo <= p < hi:
                 return min(e, default)
+        if p < ETA_C_CURVE[0][0]:          # 1.111: ponizej najnizszego zmierzonego przedzialu - nie lepiej niz on
+            return min(ETA_C_CURVE[0][2], default)
     return default
 
 
@@ -155,7 +164,9 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
             opts = [(1, 0.0)] if low else [(0, _auto_d(load, pv, s, s_min, s_max, p_max, eta_c, eta_d, dur)), (1, 0.0)]
             room = max(0.0, (s_max - s) / eta_c)
             top = min(p_chg, room)
-            if top > surplus + 0.05 and (BUY_CAP is None or buy <= BUY_CAP):
+            # 1.108: w godzinach z Tarcza pulap zakupu nie obowiazuje (cena tarczy waha sie o grosze w ciagu miesiaca, a o
+            # oplacalnosci decyduje plan: sprzedaz od progu / min. zysk w trybie auto); bez Tarczy - pulap jak dotad
+            if top > surplus + 0.05 and (BUY_CAP is None or buy <= BUY_CAP or h.get("tarcza")):
                 for k in range(1, grid_levels + 1):
                     opts.append((2, surplus + (top - surplus) * k / grid_levels))
             if (SELL_FLOOR is not None and sell >= SELL_FLOOR) or (AUTO and SELL_FLOOR is None):
@@ -182,6 +193,8 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
                 c = _cost(grid, buy, sell, d) + hold_pen[j] * dur
                 if mi == 2:
                     c += TIE_EPS * (d - surplus) + SPREAD_EPS * (d - surplus) ** 2
+                    if RATE_COST and RATE_SOFT_KW is not None:
+                        c += RATE_COST * max(0.0, d - surplus - RATE_SOFT_KW * dur)
                 elif mi == 4:
                     c += TIE_EPS * 0.7 * dur
                 elif mi == 3:

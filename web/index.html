@@ -52,6 +52,12 @@ h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-2); font-weight: 600; 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .live { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
 @media (max-width: 760px) { .live { grid-template-columns: 1fr; } }
+/* 1.24: na telefonie tabele bez mniej waznych kolumn - klasa mhN chowa N-ta kolumne; wiersz z colspan nie rozpycha tabeli */
+@media (max-width: 640px) { .mh2 tr > :nth-child(2), .mh3 tr > :nth-child(3), .mh4 tr > :nth-child(4), .mh5 tr > :nth-child(5), .mh6 tr > :nth-child(6), .mh7 tr > :nth-child(7), .mh8 tr > :nth-child(8), .mh9 tr > :nth-child(9) { display: none; }
+  table[class*="mh"] td[colspan] { max-width: 1px; white-space: normal; }
+  .sttab tr > :nth-child(10) { display: none; } .sttab td .stm { white-space: normal; display: inline-block; line-height: 1.3; }
+  .sttab td, .sttab th { padding-left: 4px; padding-right: 4px; } .sttab td:nth-child(6), .sttab th:nth-child(6) { text-align: left; }
+  .sttab td:first-child, .sttab td:nth-child(8) { white-space: nowrap; } }
 svg.flow { width: 100%; height: auto; display: block; }
 .node circle { fill: var(--surface); stroke-width: 2.5; }
 .icon { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -455,7 +461,8 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span title="Tylko z Pstrykiem. Gdy Tarcza działa (średnia cena energii w miesiącu powyżej limitu), każda kWh z sieci kosztuje tyle samo – plan nie rozładowuje magazynu do domu, ładuje go z PV (tryb „PV do magazynu”) i trzyma energię na sprzedaż w drogich godzinach">Tarcza Pstryk: limit <input class="bp-num" id="st-tz" type="number" min="0" max="5" step="0.01" style="width:70px"> zł/kWh
         <select id="st-tzm" class="fs-btn"><option value="auto">auto (wg średniej w miesiącu)</option><option value="tak">zawsze</option><option value="nie">wyłączona</option></select></span>
       <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">Rezerwa pod sprzedaż (Tarcza) do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
-      <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. 0 / puste = bez limitu">Sprzedaż tylko energii z PV – z ostatnich <input class="bp-num" id="st-legal" type="number" min="0" max="366" step="1" style="width:56px"> dni</span>
+      <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. Puste = 7 dni">Sprzedaż tylko energii z PV – z ostatnich <input class="bp-num" id="st-legal" type="number" min="1" max="366" step="1" style="width:56px"> dni</span>
+      <label title="Odznaczone (domyślnie) – plan zawsze ogranicza sprzedaż z magazynu limitem z PV. Zaznaczone – sprzedaż bez tego limitu"><input type="checkbox" id="st-illegal"> Niezgodny z prawem arbitraż</label>
     </div>
     <div class="stgrp-act"><span class="status" id="st-msg"></span><button class="fs-btn primary" id="st-save" type="button">Zapisz pułapy</button></div>
     </div>
@@ -494,8 +501,9 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div class="empty" id="stempty" hidden></div>
     <details>
       <summary>Plan godzinowy</summary>
-      <div style="overflow-x:auto"><table><thead><tr><th>Godz.</th><th>Cena zakupu</th><th>Cena sprzedaży</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
+      <div style="overflow-x:auto"><table class="sttab mh2 mh4 mh5 mh7 mh9"><thead><tr><th>Godz.</th><th>Cena zakupu</th><th>Cena sprzedaży</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
         <th>Z sieci kWh</th><th>SOC plan</th><th>SOC bez strategii</th><th>Koszt plan / bez</th></tr></thead><tbody id="stbody"></tbody></table></div>
+      <div id="stnotes" class="status" style="display:block;font-size:12px;margin-top:4px"></div>
     </details>
     <details>
       <summary>Jak to działa</summary>
@@ -558,7 +566,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div class="empty" id="empty" hidden>Brak danych dla tego dnia.</div>
     <details>
       <summary>Tabela godzinowa (średnie kW)</summary>
-      <table><thead><tr><th>Godz.</th><th>PV</th><th>Dom</th><th>Magazyn</th><th>Sieć</th><th>Straty</th><th>SOC %</th></tr></thead>
+      <table class="mh6"><thead><tr><th>Godz.</th><th>PV</th><th>Dom</th><th>Magazyn</th><th>Sieć</th><th>Straty</th><th>SOC %</th></tr></thead>
       <tbody id="tbody"></tbody></table>
     </details>
   </section>
@@ -571,13 +579,23 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div class="tiles" id="pstiles"></div>
     <h3 class="pssub" id="psmtitle"></h3>
     <div class="tiles" id="psmonth"></div>
+    <details id="cmpbox" hidden><summary>Porównanie ze sprzedawcą z ceną taryfową – miesiąc po miesiącu</summary>
+      <p class="status" style="display:block;margin:6px 0">Ten sam pobór z licznika operatora i ta sama sprzedaż (depozyt). Strefy i dystrybucja – z taryfy wybranej
+        w Ustawieniach (<span id="cmp-tariff"></span>); dystrybucja jak na fakturze Pstryka (Pstryk refakturuje dystrybucję operatora). Różni się tylko cena energii,
+        Tarcza i opłata za obsługę. <b>U sprzedawcy taryfowego depozyt pokrywa tylko koszt energii</b> – dystrybucja i opłaty stałe zawsze do zapłaty,
+        nadwyżka depozytu przechodzi dalej. „Ładowanie w najtańszej strefie” – cały pobór po cenie najtańszej strefy (tyle dałaby strategia dopasowana do taryfy).</p>
+      <div class="bp-row" id="cmp-prices" style="flex-wrap:wrap;gap:6px 12px;justify-content:flex-start"></div>
+      <div class="status" id="cmp-msg" style="display:block;font-size:12px"></div>
+      <div style="overflow-x:auto"><table class="mh2 mh6"><thead><tr><th>Miesiąc</th><th>Pobór kWh</th><th>Pstryk</th><th>Taryfa – te same godziny</th>
+        <th>Taryfa – ładowanie w najtańszej strefie</th><th>Depozyt niewykorzystany</th></tr></thead><tbody id="cmprows"></tbody></table></div>
+    </details>
     <details>
       <summary>Rozbicie kosztów (dzień i miesiąc)</summary>
       <table><thead><tr><th>Składnik</th><th>Dzień</th><th>Miesiąc</th></tr></thead><tbody id="pscost"></tbody></table>
     </details>
     <details>
       <summary>Tabela godzinowa z licznika operatora</summary>
-      <table><thead><tr><th>Godz.</th><th>Pobór kWh</th><th>Oddanie kWh</th><th>Koszt zł</th><th>Sprzedaż zł</th><th>Cena zakupu zł/kWh</th><th>Cena sprzedaży zł/kWh</th></tr></thead>
+      <table class="mh6 mh7"><thead><tr><th>Godz.</th><th>Pobór kWh</th><th>Oddanie kWh</th><th>Koszt zł</th><th>Sprzedaż zł</th><th>Cena zakupu zł/kWh</th><th>Cena sprzedaży zł/kWh</th></tr></thead>
       <tbody id="pshours"></tbody></table>
     </details>
     <p class="status" style="margin-top:10px">Dane z licznika zdalnego odczytu operatora przez API Pstryka – to te wartości trafiają na rachunek.
@@ -598,7 +616,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <label class="status" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="effhide"> ukryj przedziały z * (&lt; 15 min danych)</label>
     </div>
     <div style="overflow-x:auto">
-    <table><thead><tr><th>Moc przetwarzana</th><th>Czas [h]</th><th>Śr. moc [kW]</th><th>Energia wej. [kWh]</th>
+    <table class="mh3 mh4 mh5"><thead><tr><th>Moc przetwarzana</th><th>Czas [h]</th><th>Śr. moc [kW]</th><th>Energia wej. [kWh]</th>
       <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
       <tbody id="effbody"></tbody></table>
     </div>
@@ -607,9 +625,18 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       (PV → magazyn, sieć → magazyn). Sprawność = energia do magazynu (i AC) ÷ energia wejściowa. Strategia liczy ładowanie przy małej mocy
       z tą sprawnością, a tryb „PV do magazynu” (Tarcza) włącza dopiero od mocy, przy której sprawność ≥ 80 % (min. 0,5 kW).</p>
     <div style="overflow-x:auto">
-    <table><thead><tr><th>Moc ładowania</th><th>Czas [h]</th><th>Śr. moc ład. [kW]</th><th>Energia wej. [kWh]</th>
+    <table class="mh3 mh4 mh5"><thead><tr><th>Moc ładowania</th><th>Czas [h]</th><th>Śr. moc ład. [kW]</th><th>Energia wej. [kWh]</th>
       <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
       <tbody id="effchgbody"></tbody></table>
+    </div>
+    <h3 style="margin:14px 0 4px;font-size:14px">Rozładowanie magazynu wg mocy rozładowania</h3>
+    <p class="status" style="display:block;margin:0 0 6px">Minuty, w których co najmniej 70 % energii wejściowej falownika pochodzi z magazynu
+      (magazyn → dom / sieć). Strategia liczy rozładowanie przy małej mocy z tą sprawnością. Świt i zmierzch z samym słabym PV (&lt; 0,25 kW)
+      są w tabeli ogólnej osobnym wierszem – stałe zużycie falownika nie jest wtedy widoczne w pomiarach, więc wynik jest niemiarodajny.</p>
+    <div style="overflow-x:auto">
+    <table class="mh3 mh4 mh5"><thead><tr><th>Moc rozładowania</th><th>Czas [h]</th><th>Śr. moc wej. [kW]</th><th>Energia wej. [kWh]</th>
+      <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
+      <tbody id="effdisbody"></tbody></table>
     </div>
     <p class="status" style="margin-top:10px">Moc przetwarzana = PV + rozładowanie magazynu + pobór AC z sieci przez falownik.
       Sprawność = energia wyjściowa (ładowanie + AC) ÷ energia wejściowa. Wejście PV = moc DC stringów (napięcie × prąd),
@@ -932,7 +959,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <div class="daynav" style="margin-top:6px"><span class="status" id="veffsum"></span>
         <select id="veffdays" class="fs-btn"><option value="30" selected>30 dni</option><option value="90">90 dni</option>
           <option value="182">pół roku</option><option value="365">rok</option></select></div>
-      <div class="tscroll"><table><thead><tr><th>Dzień</th><th>Efektywność</th><th>Temp. zewn. śr. / min</th><th>Wyrzut min</th>
+      <div class="tscroll"><table class="mh5 mh7"><thead><tr><th>Dzień</th><th>Efektywność</th><th>Temp. zewn. śr. / min</th><th>Wyrzut min</th>
         <th>Wyrzut &lt; 0 °C</th><th>Odszranianie</th><th>Godz. z danymi</th></tr></thead><tbody id="veffrows"></tbody></table></div></details>
     <p class="status" style="margin-top:10px">Sprawność <b>chwilowa</b> liczona z temperatur: nawiew = (za wymiennikiem − zewn.) ÷ (wywiew − zewn.),
       wywiew = (wywiew − wyrzut) ÷ (wywiew − zewn.). Przy różnicy temperatur &lt; 3 °C nie jest liczona. Odczyt co 60 s, wykres – średnie 5-minutowe.
@@ -981,6 +1008,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
           <option value="energa">Energa</option><option value="stoen">Stoen</option></select></label>
         <label>Taryfa<select data-k="ceny.taryfa"><option>G11</option><option>G12</option><option>G12w</option>
           <option>G12as</option><option>G13</option><option>G13s</option></select></label>
+        <div class="status" id="cfg-tariff" style="display:block;grid-column:1/-1;font-size:12px"></div>
         <label>Marża sprzedawcy netto [zł/kWh]<input data-k="ceny.marza_zl_kwh"></label>
         <label>Akcyza [zł/kWh]<input data-k="ceny.akcyza_zl_kwh"></label>
         <label>VAT<input data-k="ceny.vat"></label>
@@ -1280,7 +1308,8 @@ async function loadDay(date) {
     tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
     tile('Pobór z sieci', e.imp, 'kWh', srcNote(e, 'imp')) + tile('Oddane do sieci', e.exp, 'kWh', srcNote(e, 'exp')) +
     tile('Ładowanie mag.', e.chg, 'kWh', srcNote(e, 'chg')) + tile('Rozładowanie mag.', e.dis, 'kWh', srcNote(e, 'dis')) +
-    tile('Autokonsumpcja', e.autokonsumpcja, '%') + tile('Samowystarczalność', e.samowystarczalnosc, '%') +
+    tile('Autokonsumpcja', e.autokonsumpcja, '%', e.exp_pv != null ? `PV zużyte w domu i magazynie (do sieci z PV ${e.exp_pv.toFixed(1)} kWh, bez sprzedaży z magazynu)` : '') +
+    tile('Samowystarczalność', e.samowystarczalnosc, '%', e.imp_home != null ? `dom bez prądu z sieci (dom z sieci ${e.imp_home.toFixed(1)} kWh, bez ładowania magazynu z sieci)` : '') +
     lossTiles(e);
 
   const s = d.series;
@@ -1326,7 +1355,7 @@ async function loadLossMonth(month) {
     tile('w tym bateria', f(T.bat_loss, 1), 'kWh', `ładowanie ${f(T.chg, 1)} − rozładowanie ${f(T.dis, 1)} − zmiana zapasu ${f(T.d_bat, 1)} kWh`) +
     tile('w tym czuwanie', f(T.czuwanie, 1), 'kWh', T.h_czuwanie ? `${Math.round(T.h_czuwanie)} h bez przetwarzania` : 'falownik nic nie przetwarza') +
     tile('w tym konwersja', f(T.konwersja, 1), 'kWh', 'przetwarzanie PV, magazynu i AC');
-  $('lm-days').innerHTML = '<table style="width:100%;border-collapse:collapse"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>razem</th><th>bateria</th><th>czuwanie</th><th>konwersja</th><th>PV</th><th>dom</th><th>ładow./rozład.</th></tr>' +
+  $('lm-days').innerHTML = '<table class="mh6 mh7 mh8" style="width:100%;border-collapse:collapse"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>razem</th><th>bateria</th><th>czuwanie</th><th>konwersja</th><th>PV</th><th>dom</th><th>ładow./rozład.</th></tr>' +
     r.days.slice().reverse().map(x => `<tr style="border-top:1px solid var(--border)"><td>${x.date.slice(8, 10)}.${x.date.slice(5, 7)}</td><td><b>${f(x.system, 2)}</b></td>` +
       `<td>${f(x.bat_loss, 2)}</td><td>${f(x.czuwanie, 2)}</td><td>${f(x.konwersja, 2)}</td><td>${f(x.pv, 1)}</td><td>${f(x.load, 1)}</td><td>${f(x.chg, 1)} / ${f(x.dis, 1)}</td></tr>`).join('') + '</table>';
 }
@@ -1604,7 +1633,41 @@ const balTile = (t, b) => b == null ? ctile('c-blue', t, null, 'zł') :
   ctile('ps-bal ' + (b > 0.005 ? 'c-red' : b < -0.005 ? 'c-green' : 'c-blue'), t,
     (b < -0.005 ? '+' : b > 0.005 ? '−' : '') + Math.abs(b).toFixed(2), 'zł',
     b > 0.005 ? 'koszt większy od sprzedaży – do zapłaty' : b < -0.005 ? 'sprzedaż większa od kosztu – nadwyżka' : 'koszt = sprzedaż');
+// 1.24: porownanie Pstryka ze sprzedawca z cena taryfowa (strefy i dystrybucja z wybranej taryfy; depozyt tylko na energie)
+let cmpTs = 0;
+async function loadCmp(force) {
+  if (!force && Date.now() - cmpTs < 600000) return;
+  cmpTs = Date.now();
+  let r; try { r = await (await fetch('/api/porownanie?months=6')).json(); } catch (e) { return; }
+  if (!r.enabled || !(r.months || []).length) return;
+  $('cmpbox').hidden = false;
+  const T = r.tariff || {}, z = v => v.toFixed(2).replace('.', ',');
+  $('cmp-tariff').textContent = `${(T.operator || '').toUpperCase()} ${T.taryfa || ''}`;
+  if (document.activeElement?.closest?.('#cmp-prices') == null)
+    $('cmp-prices').innerHTML = (T.zones || []).map(Z => `<label title="${esc(Z.hours || 'cała doba')} · dystrybucja ${Z.dist.toFixed(3)} zł/kWh">Energia – ${esc(Z.label)} ` +
+      `<input class="bp-num" data-zone="${esc(Z.key)}" type="number" min="0" max="5" step="0.0001" style="width:80px" value="${r.prices[Z.key] ?? ''}"> zł/kWh brutto</label>`).join('') +
+      '<button class="fs-btn" id="cmp-save" type="button">Zapisz ceny</button>';
+  $('cmp-msg').textContent = r.default_tauron ? 'Domyślnie ceny TAURON Sprzedaż 2026 (brutto, z akcyzą) – wpisz ceny swojego sprzedawcy, jeśli są inne.' :
+    (Object.values(r.prices).some(v => v == null) ? 'Wpisz ceny energii (brutto) swojego sprzedawcy z cennika taryfowego dla każdej strefy.' : '');
+  const sv = $('cmp-save');
+  if (sv) sv.onclick = async () => {
+    const pr = {}; document.querySelectorAll('#cmp-prices input').forEach(i => pr[i.dataset.zone] = i.value);
+    const x = await (await fetch('/api/porownanie/ceny', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prices: pr }) })).json().catch(() => ({ ok: false, error: 'brak połączenia' }));
+    $('cmp-msg').textContent = x.ok ? 'zapisano' : 'błąd: ' + x.error;
+    if (x.ok) loadCmp(true);
+  };
+  const best = m => { const a = [['p', m.pstryk.to_pay]]; if (m.same) a.push(['s', m.same.to_pay], ['n', m.night.to_pay]); return a.reduce((x, y) => y[1] < x[1] ? y : x)[0]; };
+  $('cmprows').innerHTML = r.months.map(m => {
+    const b = best(m), c = (k, v, t) => `<td title="${t}"${b === k ? ' style="color:var(--ok);font-weight:700"' : ''}>${z(v)} zł</td>`;
+    return `<tr><td>${m.label}${m.partial ? ` (${m.days} dni)` : ''}</td><td>${m.imp.toFixed(0)}</td>` +
+      c('p', m.pstryk.to_pay, `koszt ${z(m.pstryk.cost)} − Tarcza ${z(m.pstryk.tarcza)} − depozyt ${z(m.pstryk.deposit)} zł`) +
+      (m.same ? c('s', m.same.to_pay, `energia ${z(m.same.energy)} − depozyt ${z(m.same.deposit_used)} + dystrybucja ${z(m.same.dist)} + stałe ${z(m.same.fixed)} zł`) +
+        c('n', m.night.to_pay, `strefa ${m.night.zone}: energia ${z(m.night.energy)} − depozyt ${z(m.night.deposit_used)} + dystrybucja ${z(m.night.dist)} + stałe ${z(m.night.fixed)} zł`) +
+        `<td>${z(m.night.deposit_left)} zł</td>` : '<td colspan="3">brak cen energii taryfowej</td>') + '</tr>';
+  }).join('');
+}
 async function loadPstryk(date) {
+  loadCmp();
   let d;
   try { d = await (await fetch('/api/pstryk?date=' + date)).json(); } catch (e) { return; }
   $('pscard').hidden = !d.enabled;
@@ -1659,7 +1722,7 @@ $('st-save').onclick = async () => {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ price_mode: $('st-pm').value, auto_margin: $('st-mg').value, load_profile: $('st-prof').value, sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
         p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value, tarcza: $('st-tz').value, tarcza_mode: $('st-tzm').value,
-        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value }) })).json();
+        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value, illegal_arb: $('st-illegal').checked }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
   $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
@@ -1850,12 +1913,14 @@ async function loadStrategy() {
         `${by ? by + ' · ' : ''}limit z PV: ${f1(lim)} kWh (produkcja ${f1(P.legal.pv)} − oddane ${f1(P.legal.exp)} kWh, ostatnie ${P.legal.days} dni)` +
         (bat != null ? ` · w magazynie do oddania: ${f1(bat)} kWh (SOC ${P.soc_now} %, min. ${P.soc_min} %, z uwzględnieniem strat)` : '') +
         ` · plan liczy oba ograniczenia godzina po godzinie: limit rośnie o prognozę PV, magazyn o ładowanie` +
-        (P.legal.capped_hours ? ` · sprzedaż przycięta limitem w ${P.legal.capped_hours} godz.` : ''));
-    })() : '') +
+        (P.legal.capped_hours ? ` · sprzedaż przycięta limitem w ${P.legal.capped_hours} godz.${P.legal.cut_kwh ? ` (przekroczony arbitraż o ${f1(P.legal.cut_kwh)} kWh – żółte słupki na wykresie)` : ''}` : ''));
+    })() : P.illegal_arb ? ctile('c-red', 'Limit z PV', 'wyłączony', '', 'zaznaczony „Niezgodny z prawem arbitraż” – plan sprzedaje z magazynu bez limitu z produkcji PV') : '') +
     (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
       P.tarcza.active ? 'działa' : 'nie działa', '',
-      esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
-        ` (limit ${P.tarcza.cap.toFixed(2)} – obejmuje też opłatę za obsługę – + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż` +
+      esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? (P.tarcza.eff_buy_zones ? ` · zakup w tym miesiącu: limit ${P.tarcza.cap.toFixed(2)} zł (obejmuje też opłatę za obsługę) + dystrybucja strefy taryfy i akcyza = ` +
+          Object.entries(P.tarcza.eff_buy_zones).map(([k, v]) => `${v.toFixed(2)} zł (${esc(k)})`).join(' · ') + ' – plan ładuje z sieci w najtańszej strefie, pod sprzedaż'
+        : ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
+        ` (limit ${P.tarcza.cap.toFixed(2)} – obejmuje też opłatę za obsługę – + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż`) +
         (P.reserve_price ? ` · rezerwa pod sprzedaż do ${P.tarcza_rezerwa} % (wyceniana ${P.reserve_price.toFixed(2)} zł/kWh)` : '') : '')) : '');
   popTiles($('sttiles'));
   const ae = document.activeElement?.id;
@@ -1866,6 +1931,7 @@ async function loadStrategy() {
   if (ae !== 'st-tzm') $('st-tzm').value = TZ.mode || 'auto';
   if (ae !== 'st-rez') $('st-rez').value = P.tarcza_rezerwa ?? '';
   if (ae !== 'st-legal') $('st-legal').value = P.legal_days ?? '';
+  if (ae !== 'st-illegal') $('st-illegal').checked = !!P.illegal_arb;
   if (ae !== 'st-pm') $('st-pm').value = P.price_mode || 'progi';
   if (ae !== 'st-mg') $('st-mg').value = P.auto_margin ?? 0.2;
   if (ae !== 'st-prof') $('st-prof').value = P.load_profile || 'prosty';
@@ -1919,6 +1985,10 @@ async function loadStrategy() {
       return { label: K.label, data, yAxisID: 'y2', type: 'bar', borderWidth: 0, stack: 'tx', $kind: K.k, $empty: data.every(v => v == null),
         backgroundColor: a.map(x => rgba(K.color, x)), borderColor: K.color };
     }),
+    // 1.24: zolty - sprzedaz z magazynu, ktora by sie oplacala, ale wstrzymal ja limit arbitrazu (energia z PV)
+    (() => { const data = H.map(h => (h.legal_cut || 0) > 0.05 ? (h.sell ?? 0) : null);
+      return { label: 'Sprzedaż wstrzymana – limit arbitrażu', data, yAxisID: 'y2', type: 'bar', borderWidth: 0, stack: 'cut', $kind: 'cut',
+        $empty: data.every(v => v == null), backgroundColor: H.map(h => rgba('#facc15', 0.45 + 0.5 * Math.min(1, (h.legal_cut || 0) / maxExp))), borderColor: '#facc15' }; })(),
   ];
   const zl2 = v => v.toFixed(2).replace('.', ',');
   if (!cSt) {
@@ -1939,6 +2009,8 @@ async function loadStrategy() {
       if (x.$price === 'sell') return ` Cena sprzedaży: ${c.parsed.y.toFixed(3)} zł/kWh${c.parsed.y < 0 ? ' (ujemna!)' : ''}`;
       if (x.$price === 'buy') return ` Cena zakupu: ${(-c.parsed.y).toFixed(3)} zł/kWh` + (h?.tarcza ? ` (z Tarczą; godzinowa ${h.buy_hour?.toFixed(3) ?? '–'})` : '');
       if (!h) return '';
+      if (x.$kind === 'cut') return [` Przekroczony arbitraż o ${zl2(h.legal_cut)} kWh`,
+        ` tyle plan sprzedałby po ${zl2(h.sell)} zł (≈ ${zl2(h.legal_cut * h.sell)} zł), ale limit sprzedaży energii z PV jest wyczerpany`];
       if (x.$kind === 'pv' || x.$kind === 'bat') {
         const q = x.$kind === 'bat' ? expBat(h) : expPv(h), tot = -h.grid;
         return [` ${x.label}: ${zl2(q)} kWh × ${zl2(h.sell)} zł = ${zl2(q * h.sell)} zł` + (h.sell < 0 ? ' – ujemna cena, płacisz za oddanie' : ''),
@@ -1957,9 +2029,10 @@ async function loadStrategy() {
   $('stbody').innerHTML = H.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? (h.fc ? '†' : '*') : ''}</td>` +
     `<td${P.sell_floor != null && h.sell >= P.sell_floor ? ' style="color:var(--s-sell);font-weight:600"' : ''}>${f(h.sell, 3)}</td><td>${f(h.load, 2)}</td><td>${f(h.pv, 2)}</td>` +
     `<td><span class="stm ${h.mode}">${esc(h.label)}</span></td><td>${f(Math.max(h.grid, 0), 2)}</td><td>${h.soc == null ? '–' : f(h.soc, 0) + ' %'}</td><td>${h.base_soc == null ? '–' : f(h.base_soc, 0) + ' %'}</td>` +
-    `<td>${f(h.cost, 2)} / ${f(h.base_cost, 2)}</td></tr>`).join('') +
-    (H.some(h => h.est && !h.fc) ? '<tr><td colspan="10" class="status">* brak cen na jutro – przyjęto ceny z dziś z tej samej godziny</td></tr>' : '') +
-    (H.some(h => h.fc) ? `<tr><td colspan="10" class="status">† prognoza cen Pradcast (rynek RDN) przeliczona na ceny zakupu i sprzedaży – ${esc(d.pradcast?.model || '')}; sprzedaż liczona ostrożniej (× 0,9)</td></tr>` : '');
+    `<td>${f(h.cost, 2)} / ${f(h.base_cost, 2)}</td></tr>`).join('');
+  $('stnotes').innerHTML = (H.some(h => h.est && !h.fc) ? '<div>* brak cen na jutro – przyjęto ceny z dziś z tej samej godziny</div>' : '') +
+    (H.some(h => h.tarcza) ? '<div>‡ Tarcza Pstryk działa w tym miesiącu – zakup = limit (z opłatą za obsługę) + dystrybucja strefy wybranej taryfy i akcyza</div>' : '') +
+    (H.some(h => h.fc) ? `<div>† prognoza cen Pradcast (rynek RDN) przeliczona na ceny zakupu i sprzedaży – ${esc(d.pradcast?.model || '')}; sprzedaż liczona ostrożniej (× 0,9)</div>` : '');
 }
 
 // ---- ceny energii ----
@@ -2034,11 +2107,16 @@ async function loadEff() {
       return `<span class="effbar" style="width:${Math.max(4, Math.min(90, (b.sprawnosc - 50) * 1.8))}px;background:var(${c})"></span>` +
         `<span style="color:var(${c});font-weight:600">${b.sprawnosc.toFixed(1)} %</span>`; })()}</td></tr>`;
   $('effbody').innerHTML = bins.length ? bins.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
+  const W = d.slabe_pv;
+  if (W) $('effbody').innerHTML = `<tr style="color:var(--text-2)" title="tylko słabe PV (&lt; 0,25 kW), magazyn nie pracuje – stałe zużycie falownika pokrywane jest wtedy poza mierzonymi mocami, więc wynik nie pokazuje rzeczywistej sprawności"><td>świt / zmierzch – PV &lt; 0,25 kW</td><td>${W.godzin.toFixed(2)}</td><td>${W.moc_sr_kw.toFixed(2)}</td><td>${W.e_in.toFixed(2)}</td>` +
+    `<td>${W.kwh.toFixed(3)}</td><td>${W.sr_w}</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFixed(1) + ' % (niemiarodajne)'}</td></tr>` + $('effbody').innerHTML;
   const I = d.czuwanie;
   if (I) $('effbody').innerHTML = `<tr style="color:var(--text-2)" title="falownik nic nie przetwarza – zużycie własne systemu z sieci"><td>czuwanie (bez przetwarzania)</td><td>${I.godzin.toFixed(2)}</td><td>–</td><td>–</td>` +
     `<td>${I.kwh.toFixed(3)}</td><td>${I.sr_w}</td><td>–</td></tr>` + $('effbody').innerHTML;
   const cb = (d.ladowanie || []).filter(b => !hide || !b.mala_probka);
   $('effchgbody').innerHTML = cb.length ? cb.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych ładowania w tym okresie.</td></tr>';
+  const db_ = (d.rozladowanie || []).filter(b => !hide || !b.mala_probka);
+  $('effdisbody').innerHTML = db_.length ? db_.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych rozładowania w tym okresie.</td></tr>';
 }
 $('effdays').onchange = loadEff;
 $('effhide').onchange = loadEff;
@@ -2492,7 +2570,7 @@ function renderBalRef(d) {
     ` <span style="color:var(--muted)">(nawiew / wywiew / stosunek; próg ±${B.dev_limit} %)</span>` : '';
   const S = B.settings || [];
   $('br-sets').innerHTML = !S.length ? '<span style="color:var(--muted)">Jeszcze brak stabilnych minut.</span>' :
-    '<table style="width:100%;border-collapse:collapse;margin-top:4px"><tr style="color:var(--muted);text-align:left"><th>ustawienie</th><th>czas</th><th>obroty naw./wyw.</th><th>przepływ m³/h</th><th>stosunek</th><th>ΔT bilans</th><th>sprawność</th><th>wyrzut</th><th>zewn.</th></tr>' +
+    '<table class="mh3 mh6 mh9" style="width:100%;border-collapse:collapse;margin-top:4px"><tr style="color:var(--muted);text-align:left"><th>ustawienie</th><th>czas</th><th>obroty naw./wyw.</th><th>przepływ m³/h</th><th>stosunek</th><th>ΔT bilans</th><th>sprawność</th><th>wyrzut</th><th>zewn.</th></tr>' +
     S.map(x => { const [a, b, c] = x.key.split('/'); const isRef = R && +a === R.supp_base && +b === R.extr_base;
       return `<tr style="border-top:1px solid var(--border);${isRef ? 'font-weight:700' : ''}"><td>${a} / ${b} % · ${c} %</td><td>${Math.round(x.min / 6) / 10} h</td>` +
         `<td>${x.rpm_sup != null ? Math.round(x.rpm_sup) + ' / ' + Math.round(x.rpm_ext) : '–'}</td><td>${x.flow_sup != null ? Math.round(x.flow_sup) + ' / ' + Math.round(x.flow_ext) : '–'}</td>` +
@@ -2728,7 +2806,15 @@ function planeRow(v) {
   tr.querySelector('button').onclick = () => tr.remove();
   $('cfg-planes').appendChild(tr);
 }
+// 1.24: podglad taryfy dystrybucyjnej uzywanej teraz (strefy, godziny, dystrybucja zmienna brutto)
+async function loadTariffInfo() {
+  let t; try { t = await (await fetch('/api/tariff')).json(); } catch (e) { return; }
+  $('cfg-tariff').innerHTML = `Używana teraz: <b>${esc((t.operator || '').toUpperCase())} ${esc(t.taryfa || '')}</b> (${esc(t.source || '')}) – ` +
+    (t.zones || []).map(Z => `${esc(Z.label)}: ${esc(Z.hours || 'cała doba')}, dystrybucja ${Z.dist.toFixed(3)} zł/kWh`).join(' · ') +
+    '. Strefy i stawki wpływają na ceny zakupu, Tarczę (plan ładuje w najtańszej strefie) i porównanie ze sprzedawcą taryfowym; zmiana po „Zapisz i uruchom ponownie”.';
+}
 async function loadConfig() {
+  loadTariffInfo();
   let r;
   try { r = await (await fetch('/api/config')).json(); } catch (e) { return; }
   cfgData = r.config;

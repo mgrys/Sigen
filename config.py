@@ -111,6 +111,7 @@ DEFAULTS = {
         "miernik_ip": "",                # adres IP gniazdka Shelly; SmartLife go nie uzywa
         "nagrzewnica_w": "150",          # pobor [W], od ktorego kafel pokazuje "prawdopodobnie grzalka"
     },
+    "porownanie": {},                    # 1.24: ceny energii sprzedawcy taryfowego wg stref (porownanie z Pstrykiem)
     "ceny": {
         "operator": "tauron",            # operator dystrybucyjny (taryfy z davo22/polish-electricity-tariffs)
         "taryfa": "G11",

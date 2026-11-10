@@ -2,6 +2,29 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.24.0] - 2026-11-10
+
+### Dodano
+- Strategia: **Tarcza wg stref taryfy** – cena zakupu z Tarczą w każdej godzinie = limit + dystrybucja zmienna strefy
+  wybranej taryfy (Pstryk refakturuje dystrybucję operatora) + akcyza; przy taryfie strefowej (np. G13) plan ładuje z sieci
+  w najtańszej strefie (noc, weekend, 13–16), przy G11 bez zmian. Kafel Tarczy pokazuje ceny w strefach.
+- Strategia: **łagodne ładowanie z sieci** – gdy jest kilka godzin o podobnej cenie, plan rozkłada ładowanie na dłużej
+  mniejszą mocą (ok. 0,2 C); gdy czasu brak (np. sprzedaż za godzinę) – nadal ładuje pełną mocą.
+- Strategia: checkbox **„Niezgodny z prawem arbitraż”** – odznaczony (domyślnie) limit sprzedaży energii z PV działa zawsze
+  (puste dni = 7); na wykresie planu **żółte słupki** – sprzedaż, którą plan by wykonał, gdyby nie limit („Przekroczony arbitraż o X kWh”).
+- Pstryk: **porównanie ze sprzedawcą z ceną taryfową** miesiąc po miesiącu – ten sam pobór i sprzedaż, strefy i dystrybucja
+  z wybranej taryfy, ceny energii sprzedawcy wg stref do wpisania (domyślnie TAURON 2026 dla G11 / G13); u sprzedawcy
+  taryfowego depozyt pokrywa tylko koszt energii.
+- Ustawienia → Ceny energii: podgląd używanej taryfy (strefy, godziny, dystrybucja zmienna brutto).
+- Sprawność falownika: tabela **rozładowania magazynu wg mocy rozładowania** – z niej strategia bierze sprawność przy małej mocy.
+- Telefon: tabele bez mniej ważnych kolumn (plan godzinowy: godzina, cena sprzedaży, plan, SOC), przypisy pod tabelą.
+
+### Poprawiono
+- Sprawność falownika: świt / zmierzch z samym słabym PV (< 0,25 kW) w osobnym wierszu – zawyżał przedział 0–0,25 kW
+  (stałe zużycie falownika niewidoczne w pomiarach); poniżej najniższego zmierzonego przedziału plan nie przyjmuje 95 %.
+- Autokonsumpcja i samowystarczalność bez arbitrażu (sprzedaż z magazynu i ładowanie z sieci dawały wartości ujemne).
+- Strategia: przy Tarczy pułap „ładuj z sieci do” nie blokuje ładowania pod sprzedaż (cena z Tarczą waha się o grosze).
+
 ## [1.23.0] - 2026-11-09
 
 ### Poprawiono
