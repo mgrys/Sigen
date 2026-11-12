@@ -1216,7 +1216,7 @@ wheels = [
 
 [[package]]
 name = "sigen-pv-monitor"
-version = "1.24.0"
+version = "1.26.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

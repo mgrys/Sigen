@@ -11,7 +11,7 @@ hidden = (collect_submodules("uvicorn") + collect_submodules("pymodbus.client") 
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
-    datas=[(os.path.join(ROOT, "web"), "web")],
+    datas=[(os.path.join(ROOT, "web"), "web"), (os.path.join(ROOT, "tariffs"), "tariffs")],
     hiddenimports=hidden,
     excludes=["tkinter", "pytest", "numpy", "pandas", "matplotlib", "PIL"],
     noarchive=False,

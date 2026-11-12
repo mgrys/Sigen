@@ -1,0 +1,231 @@
+{
+  "schema": 4,
+  "operator": "tauron",
+  "operator_name": "TAURON",
+  "distributor": "TAURON Dystrybucja S.A.",
+  "default_seller": "TAURON Sprzedaż sp. z o.o.",
+  "default_energy_product": "tauron-urzad",
+  "region": {
+    "id": "tauron-all",
+    "name": "Cały obszar TAURON Dystrybucja (taryfa jednolita)",
+    "note": "Stawki sieciowe dla grup G są JEDNOLITE w całym obszarze TAURON Dystrybucja — potwierdzone w oficjalnych taryfach URE na 2024, 2025 i 2026 (jedna tabela, bez podziału na regiony). Historyczny podział na obszary (Enion/EnergiaPro) został ujednolicony do ~2022. Dane obowiązują dla wszystkich odbiorców TAURON Dystrybucja."
+  },
+  "source": "Dystrybucja: taryfy TAURON Dystrybucja S.A. zatwierdzone przez Prezesa URE (2024 — DRE.WRE.4211.62.11.2023; 2025 — DRE.WRE.4211.47.9.2024; 2026 — DRE.WRE.4211.54.8.2025). Energia: taryfa TAURON Sprzedaż jako sprzedawcy z urzędu (DRE.WRE.4211.53.10.2025 z 17.12.2025) oraz oferty rynkowe wg cenników TAURON. W latach 2023–2025 energia była objęta ustawowym mrożeniem (cena maksymalna, jednolita dla wszystkich grup i stref).",
+  "source_url": "https://bip.ure.gov.pl/bip/taryfy-i-inne-decyzje-b/energia-elektryczna",
+  "updated": "2026-10-02",
+  "currency": "PLN",
+  "vat": 0.23,
+  "net_metering_factor": 0.8,
+  "notes": "Stawki netto (bez VAT). MODEL: dystrybucja (regulowana) jest w 'tariffs' per grupa/strefa; energia jest ODDZIELNIE w 'energy_products' (sprzedawca × oferta). Użytkownik wybiera grupę taryfową ORAZ produkt energii (domyślnie default_energy_product). Składniki ogólnosystemowe (jakościowa/OZE/kogeneracja + opłaty stałe systemowe) są wspólne — w 'system_components'. Koszt poboru za kWh w strefie = (energia + distribution_variable_net[strefa] + quality_net + oze_net + cogeneration_net) × (1+VAT). Opust (net-metering) = net_metering_factor × Σ(opust_components) × (1+VAT). ROZWIĄZANIE CENY ENERGII z wybranego produktu dla (grupa, strefa, data): weź okres produktu z valid_from<=data<=valid_to, a w nim: (1) jeśli jest flat_price_net → ta liczba (dotyczy wszystkich grup/stref, np. mrożenie); (2) jeśli type=urzad_plus → cena z produktu 'reference' + delta_net; (3) jeśli type=dynamic → cena rynkowa godzinowa (RCE) + margin_net (brak stałej liczby); (4) w przeciwnym razie prices_net[grupa][strefa]; (5) brak wpisu = null → ustaw z własnej umowy. Opłaty stałe nie wpływają na koszt za kWh.",
+  "energy_products": [
+    {
+      "id": "tauron-urzad",
+      "seller": "TAURON Sprzedaż",
+      "name": "Sprzedawca z urzędu (taryfa regulowana URE)",
+      "type": "regulated",
+      "default": true,
+      "source": "Taryfa TAURON Sprzedaż (sprzedawca z urzędu) — decyzja URE DRE.WRE.4211.53.10.2025 z 17.12.2025; 2023–2025 ustawowa cena maksymalna (mrożenie).",
+      "periods": [
+        {
+          "valid_from": "2026-01-01",
+          "valid_to": null,
+          "confidence": "high",
+          "prices_net": {
+            "G11": { "all": 0.4970 },
+            "G12": { "day": 0.5430, "night": 0.4130 },
+            "G12w": { "peak": 0.6220, "offpeak": 0.4130 },
+            "G13": { "morning_peak": 0.4668, "afternoon_peak": 0.7780, "off_peak": 0.4210 }
+          },
+          "note": "Sprzedawca z urzędu nie publikuje ceny energii dla G12as/G13s/G14dynamic — tam użyj oferty rynkowej lub ceny z umowy."
+        },
+        { "valid_from": "2024-07-01", "valid_to": "2025-12-31", "confidence": "high", "flat_price_net": 0.5050, "note": "Ustawowa cena maksymalna (mrożenie) — jednolita dla wszystkich grup i stref." },
+        { "valid_from": "2023-01-01", "valid_to": "2024-06-30", "confidence": "high", "flat_price_net": 0.4140, "note": "Ustawowa cena z tarczy (mrożenie) — jednolita." }
+      ]
+    },
+    {
+      "id": "tauron-gwarancja-ceny",
+      "seller": "TAURON Sprzedaż",
+      "name": "TAURON — gwarancja stałej ceny energii",
+      "type": "fixed",
+      "commercial_fee_net": 7.75,
+      "source": "Oferta/komunikaty TAURON (2026). UWAGA: ceny ofert rynkowych są zmienne i promocyjne — zweryfikuj w aktualnym cenniku lub kalkulatorze tauron.pl.",
+      "periods": [
+        {
+          "valid_from": "2026-01-01",
+          "valid_to": "2027-12-31",
+          "confidence": "medium",
+          "prices_net": { "G11": { "all": 0.4990 } },
+          "note": "Gwarancja stałej ceny do 31.12.2027 (G11 0,4990 netto = 0,6138 brutto), opłata handlowa 7,75 zł/mc. Ceny dla G12/G12w/G13 niezweryfikowane — uzupełnij z cennika."
+        }
+      ]
+    },
+    {
+      "id": "example-urzad-plus",
+      "seller": "(dowolny sprzedawca)",
+      "name": "Przykład: oferta „cena z urzędu + marża”",
+      "type": "urzad_plus",
+      "reference": "tauron-urzad",
+      "delta_net": 0.0050,
+      "enabled": false,
+      "source": "Wzorzec modelu urzad_plus — wiele ofert to cena sprzedawcy z urzędu powiększona o stałą marżę. Ustaw delta_net i enabled=true, albo nadpisz we własnej konfiguracji.",
+      "note": "Wpis przykładowy (enabled=false) pokazujący jak modelować ofertę jako narzut nad ceną regulowaną."
+    }
+  ],
+  "system_components": [
+    {
+      "valid_from": "2026-01-01",
+      "valid_to": null,
+      "quality_net": 0.0331,
+      "oze_net": 0.0073,
+      "cogeneration_net": 0.0030,
+      "subscription_net": { "1m": 2.28, "6m": 0.76, "12m": 0.38 },
+      "capacity_fee_net_by_annual_kwh": [
+        { "max_kwh": 500, "net": 4.29 },
+        { "max_kwh": 1200, "net": 10.31 },
+        { "max_kwh": 2800, "net": 17.18 },
+        { "max_kwh": null, "net": 24.05 }
+      ],
+      "note": "Stawka jakościowa 0,0331 od 01.01.2026; od 01.02.2026 Taryfa OSP podniosła ją do 0,0332. Opłata przejściowa (KDT) już nie występuje."
+    },
+    {
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-12-31",
+      "quality_net": 0.0321,
+      "oze_net": 0.0035,
+      "cogeneration_net": 0.0030,
+      "subscription_net": { "1m": 2.28, "6m": 0.76, "12m": 0.38 },
+      "transition_fee_net_by_annual_kwh": [
+        { "max_kwh": 500, "net": 0.02 },
+        { "max_kwh": 1200, "net": 0.10 },
+        { "max_kwh": null, "net": 0.33 }
+      ],
+      "capacity_fee_net_by_annual_kwh": [
+        { "max_kwh": 500, "net": 2.86 },
+        { "max_kwh": 1200, "net": 6.86 },
+        { "max_kwh": 2800, "net": 11.44 },
+        { "max_kwh": null, "net": 16.01 }
+      ]
+    },
+    {
+      "valid_from": "2024-07-01",
+      "valid_to": "2024-12-31",
+      "quality_net": 0.0314,
+      "oze_net": 0.0000,
+      "cogeneration_net": 0.00618,
+      "subscription_net": { "1m": 2.28, "6m": 0.76, "12m": 0.38 },
+      "transition_fee_net_by_annual_kwh": [
+        { "max_kwh": 500, "net": 0.02 },
+        { "max_kwh": 1200, "net": 0.10 },
+        { "max_kwh": null, "net": 0.33 }
+      ],
+      "capacity_fee_net_by_annual_kwh": [
+        { "max_kwh": 500, "net": 2.66 },
+        { "max_kwh": 1200, "net": 6.39 },
+        { "max_kwh": 2800, "net": 10.64 },
+        { "max_kwh": null, "net": 14.90 }
+      ],
+      "note": "Opłata OZE w 2024 zawieszona (0,00)."
+    },
+    { "valid_from": "2024-01-01", "valid_to": "2024-06-30", "quality_net": 0.0095, "oze_net": 0.0000, "cogeneration_net": 0.00618, "note": "Okres mrożenia dystrybucji — jakościowa na poziomie 2023. OZE zawieszona." },
+    { "valid_from": "2023-01-01", "valid_to": "2023-12-31", "quality_net": 0.0095, "oze_net": 0.0000, "cogeneration_net": 0.00496, "note": "OZE zawieszona." }
+  ],
+  "tariffs": {
+    "G11": {
+      "name": "G11 — jednostrefowa (całodobowa)",
+      "zones": { "all": { "label": "Całodobowo" } },
+      "opust_components": ["energy", "distribution_variable", "quality"],
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "all": 0.2464 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.38, "3ph": 10.86 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "all": 0.2541 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } },
+        { "valid_from": "2024-07-01", "valid_to": "2024-12-31", "confidence": "high", "distribution_variable_net": { "all": 0.2573 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } },
+        { "valid_from": "2024-01-01", "valid_to": "2024-06-30", "confidence": "high", "distribution_variable_net": { "all": 0.1824 }, "fixed_monthly_net": { "network_fixed": { "1ph": 3.82, "3ph": null } }, "note": "Dystrybucja pod mrożeniem (poziom 2023)." },
+        { "valid_from": "2023-01-01", "valid_to": "2023-12-31", "confidence": "high", "distribution_variable_net": { "all": 0.1824 }, "fixed_monthly_net": { "network_fixed": { "1ph": 3.82, "3ph": null } } }
+      ]
+    },
+    "G12": {
+      "name": "G12 — dwustrefowa (dzień/noc)",
+      "zones": {
+        "day": { "label": "Dzień (T1)", "hours": "06:00-13:00, 15:00-22:00" },
+        "night": { "label": "Noc (T2)", "hours": "22:00-06:00, 13:00-15:00" }
+      },
+      "opust_components": ["energy", "distribution_variable", "quality"],
+      "note": "Dane G12 od 01.07.2024.",
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "day": 0.2841, "night": 0.0558 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.38, "3ph": 10.86 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "day": 0.2899, "night": 0.0609 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } },
+        { "valid_from": "2024-07-01", "valid_to": "2024-12-31", "confidence": "high", "distribution_variable_net": { "day": 0.2934, "night": 0.0618 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } }
+      ]
+    },
+    "G12w": {
+      "name": "G12w — dwustrefowa weekendowa (tańsze noce + całe weekendy)",
+      "zones": {
+        "peak": { "label": "Szczyt", "hours": "pon-pt 06:00-13:00, 15:00-22:00" },
+        "offpeak": { "label": "Pozaszczyt", "hours": "pon-pt 13:00-15:00, 22:00-06:00 + całe soboty, niedziele i święta" }
+      },
+      "opust_components": ["energy", "distribution_variable", "quality"],
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "peak": 0.3298, "offpeak": 0.0512 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.38, "3ph": 10.86 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "peak": 0.3271, "offpeak": 0.0518 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } },
+        { "valid_from": "2024-07-01", "valid_to": "2024-12-31", "confidence": "high", "distribution_variable_net": { "peak": 0.3314, "offpeak": 0.0527 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } }, "note": "I poł. 2024 (mrożona) nieujęta." }
+      ]
+    },
+    "G12as": {
+      "name": "G12as — dwustrefowa antysmogowa (dzień/noc, tańsza noc ponad bazę roczną)",
+      "zones": {
+        "day": { "label": "Dzień", "hours": "06:00-22:00" },
+        "night": { "label": "Noc", "hours": "22:00-06:00" }
+      },
+      "opust_components": ["energy", "distribution_variable", "quality"],
+      "note": "W strefie nocnej dwie stawki dystrybucyjne: night_within_baseline do wolumenu z analogicznego okresu roku poprzedniego, tańsza night_above_baseline ponad ten wolumen. Energia: sprzedawca z urzędu nie oferuje G12as — użyj oferty rynkowej.",
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "day": 0.2464, "night_within_baseline": 0.2464, "night_above_baseline": 0.0246 }, "fixed_monthly_net": { "network_fixed": { "1ph": 14.76, "3ph": 21.72 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "day": 0.2541, "night_within_baseline": 0.2541, "night_above_baseline": 0.0254 }, "fixed_monthly_net": { "network_fixed": { "1ph": 14.04, "3ph": 20.68 } } },
+        { "valid_from": "2024-07-01", "valid_to": "2024-12-31", "confidence": "high", "distribution_variable_net": { "day": 0.2573, "night_within_baseline": 0.2573, "night_above_baseline": 0.0257 }, "fixed_monthly_net": { "network_fixed": { "1ph": 14.04, "3ph": 20.68 } } }
+      ]
+    },
+    "G13": {
+      "name": "G13 — trzystrefowa (szczyt przedpołudniowy / popołudniowy / pozostałe)",
+      "zones": {
+        "morning_peak": { "label": "Szczyt przedpołudniowy", "hours": "lato 07:00-13:00; zima 07:00-13:00" },
+        "afternoon_peak": { "label": "Szczyt popołudniowy", "hours": "lato 19:00-22:00; zima 16:00-21:00" },
+        "off_peak": { "label": "Pozostałe godziny doby", "hours": "pozostałe godziny + całe dni wolne" }
+      },
+      "opust_components": ["energy", "distribution_variable", "quality"],
+      "note": "Godziny stref są sezonowe (lato 01.04–30.09; zima 01.10–31.03); stawki per strefa są stałe.",
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "morning_peak": 0.2203, "afternoon_peak": 0.3898, "off_peak": 0.0392 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.38, "3ph": 10.86 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "morning_peak": 0.1883, "afternoon_peak": 0.3332, "off_peak": 0.0349 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } },
+        { "valid_from": "2024-07-01", "valid_to": "2024-12-31", "confidence": "high", "distribution_variable_net": { "morning_peak": 0.1922, "afternoon_peak": 0.3401, "off_peak": 0.0356 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } }, "note": "I poł. 2024 (mrożona) nieujęta." }
+      ]
+    },
+    "G13s": {
+      "name": "G13s — trzystrefowa sezonowa (stawki zależne od pory roku i rodzaju dnia)",
+      "zones": {
+        "day_offpeak": { "label": "Dzienna pozaszczytowa", "hours": "lato 09:00-17:00; zima 10:00-15:00" },
+        "day_peak": { "label": "Dzienna szczytowa", "hours": "lato 07:00-09:00,17:00-21:00; zima 07:00-10:00,15:00-21:00" },
+        "night": { "label": "Nocna", "hours": "21:00-07:00" }
+      },
+      "opust_components": ["energy", "distribution_variable", "quality"],
+      "note": "distribution_variable_net zagnieżdżone: {sezon_rodzajdnia: {day_offpeak, day_peak, night}}, sezon=summer/winter, rodzaj=workday/holiday. Energia: brak u sprzedawcy z urzędu — użyj oferty rynkowej. Taryfa od 2025.",
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "summer_workday": { "day_offpeak": 0.1000, "day_peak": 0.2842, "night": 0.1094 }, "summer_holiday": { "day_offpeak": 0.0400, "day_peak": 0.1176, "night": 0.1094 }, "winter_workday": { "day_offpeak": 0.1999, "day_peak": 0.3332, "night": 0.1094 }, "winter_holiday": { "day_offpeak": 0.1200, "day_peak": 0.1960, "night": 0.1094 } }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.38, "3ph": 10.86 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "summer_workday": { "day_offpeak": 0.100, "day_peak": 0.290, "night": 0.110 }, "summer_holiday": { "day_offpeak": 0.040, "day_peak": 0.120, "night": 0.110 }, "winter_workday": { "day_offpeak": 0.200, "day_peak": 0.340, "night": 0.110 }, "winter_holiday": { "day_offpeak": 0.120, "day_peak": 0.200, "night": 0.110 } }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } }
+      ]
+    },
+    "G14dynamic": {
+      "name": "G14dynamic — taryfa dynamiczna (strefy S1–S4 wg Energetycznego Kompasu PSE)",
+      "zones": {
+        "S1": { "label": "Zalecane użytkowanie" },
+        "S2": { "label": "Normalne użytkowanie" },
+        "S3": { "label": "Zalecane oszczędzanie" },
+        "S4": { "label": "Wymagane ograniczenie" }
+      },
+      "opust_components": null,
+      "note": "Strefy S1–S4 przypisywane godzinowo wg Energetycznego Kompasu PSE (energetycznykompas.pl). Energia rozliczana dynamicznie (RCE godzinowa) — użyj produktu energii type=dynamic. Net-metering (opust) nie dotyczy (net-billing). Poniżej tylko składnik zmienny dystrybucji per strefa. Taryfa od 2025.",
+      "periods": [
+        { "valid_from": "2026-01-01", "valid_to": null, "confidence": "high", "distribution_variable_net": { "S1": 0.0224, "S2": 0.0893, "S3": 0.3881, "S4": 2.3756 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.38, "3ph": 10.86 } } },
+        { "valid_from": "2025-01-01", "valid_to": "2025-12-31", "confidence": "high", "distribution_variable_net": { "S1": 0.0118, "S2": 0.0470, "S3": 0.3528, "S4": 2.3521 }, "fixed_monthly_net": { "network_fixed": { "1ph": 7.02, "3ph": 10.34 } } }
+      ]
+    }
+  }
+}

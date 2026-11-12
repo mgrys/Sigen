@@ -3,7 +3,7 @@
 
 - strefy i stawki dystrybucji: z taryfy wybranej w Ustawieniach (operator + taryfa, prices.load_tariff),
 - ceny energii sprzedawcy taryfowego (brutto, z akcyza) dla kazdej strefy: config.ini [porownanie] <strefa> = zl/kWh;
-  domyslnie wbudowane ceny TAURON Sprzedaz 2026 (G11 / G12 / G12w / G13), dla innych - do wpisania,
+  domyslnie cena sprzedawcy z urzedu ze zbioru taryf (np. TAURON 2026: G11 / G12 / G12w / G13), dla innych - do wpisania,
 - dystrybucja jak na fakturze Pstryka: Pstryk refakturuje dystrybucje operatora, wiec w wariancie "te same godziny"
   dystrybucja = rzeczywista z licznika (pstryk_hour), w wariancie "najtansza strefa" - stawka tej strefy z taryfy,
 - depozyt u sprzedawcy taryfowego pokrywa TYLKO czesc energetyczna faktury (dystrybucja i oplaty stale zawsze do
@@ -14,15 +14,10 @@ import datetime as dt
 import config
 import prices
 
-# TAURON Sprzedaz 2026, brutto (z akcyza i VAT), zl/kWh - klucze stref jak w zbiorze taryf (davo22/polish-electricity-tariffs)
-TAURON_2026 = {
-    "G11": {"*": 0.6175},
-    "G13": {"morning_peak": 0.5803, "afternoon_peak": 0.9631, "off_peak": 0.5240},
-}
-
 
 def zone_prices(tariff):
-    """{strefa: cena energii brutto} - z [porownanie] w config.ini, a gdy brak - wbudowane TAURON 2026 (jesli pasuja)."""
+    """{strefa: cena energii brutto} - z [porownanie] w config.ini, a gdy brak - cena sprzedawcy z urzedu ze zbioru taryf
+    (netto + akcyza, z VAT), jesli zbior ja podaje dla tej taryfy."""
     zones = list((tariff or {}).get("zones", {}))
     cp = config.load()
     out = {}
@@ -32,11 +27,10 @@ def zone_prices(tariff):
             out[z] = float(v) if v else None
         except ValueError:
             out[z] = None
-    if any(v is None for v in out.values()) and prices.OPERATOR == "tauron":
-        d = TAURON_2026.get(prices.TARYFA, {})
-        for z in zones:
-            if out.get(z) is None:
-                out[z] = d.get(z, d.get("*"))
+    en = (tariff or {}).get("energy_net") or {}
+    for z in zones:
+        if out.get(z) is None and en.get(z) is not None:
+            out[z] = round((en[z] + prices.AKCYZA) * (1 + prices.VAT), 4)
     return out
 
 

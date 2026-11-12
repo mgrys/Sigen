@@ -60,7 +60,8 @@ FALLBACK = {
     "system": {"quality_net": 0.0331, "oze_net": 0.0073, "cogeneration_net": 0.003},
     "source": "wbudowane (Tauron 2026)",
 }
-ZONE_LABEL = {"morning_peak": "szczyt przedpołudniowy", "afternoon_peak": "szczyt popołudniowy",
+ZONE_LABEL = {"all": "całodobowa", "day": "dzienna", "night": "nocna", "peak": "szczytowa", "offpeak": "pozaszczytowa",
+              "morning_peak": "szczyt przedpołudniowy", "afternoon_peak": "szczyt popołudniowy",
               "off_peak": "pozostałe"}
 
 state = {"updated": None, "error": None, "tariff_source": None}
@@ -147,8 +148,18 @@ def load_tariff():
         except Exception:  # noqa: BLE001
             if TARIFF_CACHE.exists():
                 raw = json.loads(TARIFF_CACHE.read_text(encoding="utf-8"))
+    bundled = False
+    if raw is None:      # 1.24: kopia zbioru dolaczona do programu (stan z wydania) - poprawne strefy i stawki bez sieci
+        bp = config.RES_DIR / "tariffs" / f"{OPERATOR}.json"
+        try:
+            raw = json.loads(bp.read_text(encoding="utf-8")) if bp.exists() else None
+            bundled = raw is not None
+        except Exception:  # noqa: BLE001
+            raw = None
     if raw is None:
-        return FALLBACK
+        return dict(FALLBACK, missing_operator=OPERATOR != "tauron",
+                    source=(f"brak danych operatora {OPERATOR.upper()} w zbiorze taryf – przybliżenie stawkami TAURON G13 2026"
+                            if OPERATOR != "tauron" else FALLBACK["source"]))
     try:
         today = dt.date.today().isoformat()
         tariffs = raw["tariffs"]
@@ -162,9 +173,23 @@ def load_tariff():
 
         per = current(t["periods"])
         sysc = current(raw["system_components"])
+        energy = None       # 1.24: cena energii sprzedawcy z urzedu (netto, bez akcyzy) wg stref tej taryfy - do porownania
+        try:
+            prods = raw.get("energy_products") or []
+            pr = next((x for x in prods if x.get("id") == raw.get("default_energy_product")), None) or next(
+                (x for x in prods if x.get("default")), None)
+            if pr:
+                pp = current(pr["periods"])
+                energy = (pp.get("prices_net") or {}).get(TARYFA)
+                if energy is None and pp.get("flat_price_net") is not None:
+                    energy = {z: pp["flat_price_net"] for z in t["zones"]}
+                energy_name = f"{pr.get('seller', '')} – {pr.get('name', '')}"
+        except Exception:  # noqa: BLE001
+            energy = None
         return {"zones": t["zones"], "dist": per["distribution_variable_net"],
                 "system": {k: sysc.get(k, 0) for k in ("quality_net", "oze_net", "cogeneration_net")},
-                "source": f"{raw.get('source', 'taryfy URE')} ({per['valid_from']})"}
+                "energy_net": energy, "energy_name": energy_name if energy else None,
+                "source": f"{raw.get('operator_name') or OPERATOR.upper()} – taryfy URE od {per['valid_from']}" + (" (kopia z programu)" if bundled else "")}
     except Exception:  # noqa: BLE001
         return FALLBACK
 

@@ -230,9 +230,10 @@ def plan(hours, stored0, s_min, s_max, p_max, eta_c=0.95, eta_d=0.95, terminal_p
         # teraz (krańcowa wartosc z planu). Przy prognozie PV ponizej rzeczywistosci nadwyzka nie ucieka wtedy do sieci,
         # a przy niedoborze oba tryby dzialaja tak samo (dom z PV i sieci, magazyn nie oddaje).
         # (biezaca godzina z blokada trybu - bez zmiany: inaczej tryb przeskakiwal standby <-> samozuzycie co 5 min)
+        # 1.124: nadwyzka PV zawsze do magazynu (przyda sie na autokonsumpcje albo sprzedaz w drogiej godzinie) - bez
+        # warunku wartosci krańcowej; standby zostaje tylko bez nadwyzki PV albo przy pelnym magazynie
         if names[mi] == "standby" and h["pv"] > 0.05 * h.get("dur", 1.0) and j < n and not (t == 0 and force0):
-            mv = (V[t + 1][j][nod] - V[t + 1][j + 1][nod]) / step          # zl za kWh zmagazynowana wiecej
-            if mv * eta_c > h["sell"] + 0.05:
+            if h["pv"] - h["load"] > 0.05 * h.get("dur", 1.0):
                 room = max(0.0, (s_max - levels[i]) / eta_c)
                 d5 = min(max(h["pv"] - h["load"], 0.0), p_max, room)
                 j5 = idx(_apply(levels[i], d5, eta_c, eta_d, h.get("dur", 1.0)))

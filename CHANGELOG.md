@@ -2,6 +2,37 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.26.0] - 2026-11-12
+
+### Dodano
+- Instalacja PV: karta **„Aktualne pomiary”** z przełącznikiem **Dziś / Tydzień / Miesiąc** – kafle za wybrany okres i wykres
+  słupkowy: produkcja PV, zużycie domu, autokonsumpcja i samowystarczalność (godziny dziś, tygodnie miesiąca, miesiące roku);
+  podsumowania zamkniętych dni w pamięci podręcznej (`period_daily.json`). Zastępuje nieczynną nawigację po datach.
+- Sterowanie falownikiem: gdy plan mówi standby, a PV daje nadwyżkę ponad prognozę (≥ 0,3 kW przez 2 min), falownik
+  przechodzi w samozużycie bez rozładowania – nadwyżka do magazynu zamiast do sieci (powrót przy < 0,1 kW przez 10 min).
+- Strategia: checkbox **„Limit z PV bez prognozy”** (do limitu arbitrażu tylko PV już wyprodukowane) i kafel
+  **„Sprzedaż – bez dużych odbiorników”** z najbliższymi godzinami sprzedaży z magazynu.
+- Plan godzinowy domyślnie rozwinięty, od bieżącej godziny do jutra 12:00; przełączniki „Archiwalne” i „Po 12:00 jutro”.
+- Pradcast: `/api/pradcast/eval_detail` – zapamiętane prognozy i ceny rzeczywiste do oceny trafności.
+
+### Zmieniono
+- Strategia: prognozowana nadwyżka PV w standby zawsze do magazynu (wcześniej tylko, gdy kWh w magazynie była warta
+  więcej niż bieżąca sprzedaż).
+
+## [1.25.0] - 2026-11-12
+
+### Dodano
+- **macOS**: `start_mac.command` (dwuklik – przy pierwszym uruchomieniu tworzy `.venv` i instaluje biblioteki),
+  autostart przez launchd (`packaging/macos/pl.sigen.pvmonitor.plist`), sekcja macOS w README (nietestowane).
+- Taryfy: **kopia zbioru taryf URE dołączona do programu** (`tariffs/`) – poprawne strefy i stawki wybranej taryfy także bez
+  sieci (wcześniej zawsze Tauron G13, nawet przy G11).
+- Porównanie ze sprzedawcą taryfowym: puste ceny = cena sprzedawcy z urzędu ze zbioru taryf dla wybranej taryfy
+  (TAURON 2026: G11, G12, G12w, G13).
+
+### Poprawiono
+- Operator bez danych w zbiorze taryf (dziś: PGE, Enea, Energa, Stoen) jest wyraźnie oznaczony w Ustawieniach
+  („brak danych – stawki Tauron”), a podgląd taryfy ostrzega, że ceny są przybliżone.
+
 ## [1.24.0] - 2026-11-10
 
 ### Dodano

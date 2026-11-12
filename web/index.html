@@ -107,6 +107,7 @@ svg.flow { width: 100%; height: auto; display: block; }
 .fs-act[hidden] { display: none; }
 .fs-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
 .fs-btn.primary { background: var(--s-fc); border-color: var(--s-fc); color: #fff; }
+.per-seg { display: inline-flex; gap: 4px; }   /* 1.26: Dzis / Tydzien / Miesiac */
 .fs-btn:disabled { opacity: .5; cursor: default; }
 .fs-auto { font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .fs-auto input { width: 18px; height: 18px; }
@@ -463,6 +464,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">Rezerwa pod sprzedaż (Tarcza) do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
       <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. Puste = 7 dni">Sprzedaż tylko energii z PV – z ostatnich <input class="bp-num" id="st-legal" type="number" min="1" max="366" step="1" style="width:56px"> dni</span>
       <label title="Odznaczone (domyślnie) – plan zawsze ogranicza sprzedaż z magazynu limitem z PV. Zaznaczone – sprzedaż bez tego limitu"><input type="checkbox" id="st-illegal"> Niezgodny z prawem arbitraż</label>
+      <label title="Zaznaczone – do limitu sprzedaży wlicza się tylko PV już wyprodukowane (bez prognozy na resztę planu). Ostrożniej, gdy prognoza PV bywa za wysoka"><input type="checkbox" id="st-nofc"> Limit z PV bez prognozy</label>
     </div>
     <div class="stgrp-act"><span class="status" id="st-msg"></span><button class="fs-btn primary" id="st-save" type="button">Zapisz pułapy</button></div>
     </div>
@@ -499,8 +501,11 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     </details>
     <div class="chart"><canvas id="cSt"></canvas></div>
     <div class="empty" id="stempty" hidden></div>
-    <details>
+    <details open>
       <summary>Plan godzinowy</summary>
+      <div class="bp-row" style="justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;margin:6px 0">
+        <label title="Pokaż też godziny, które już minęły (rzeczywiste odczyty od północy)"><input type="checkbox" id="st-arch"> Archiwalne</label>
+        <label title="Domyślnie plan kończy się jutro o 12:00 (dalej zmieni się po nowych cenach). Zaznacz, żeby pokazać też godziny po 12:00 jutro"><input type="checkbox" id="st-to12"> Po 12:00 jutro</label></div>
       <div style="overflow-x:auto"><table class="sttab mh2 mh4 mh5 mh7 mh9"><thead><tr><th>Godz.</th><th>Cena zakupu</th><th>Cena sprzedaży</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
         <th>Z sieci kWh</th><th>SOC plan</th><th>SOC bez strategii</th><th>Koszt plan / bez</th></tr></thead><tbody id="stbody"></tbody></table></div>
       <div id="stnotes" class="status" style="display:block;font-size:12px;margin-top:4px"></div>
@@ -537,11 +542,8 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2 id="daytitle">Dzisiaj</h2>
-      <button id="prev" aria-label="Poprzedni dzień">‹</button>
-      <input type="date" id="date">
-      <button id="next" aria-label="Następny dzień">›</button>
-      <button id="today">Dziś</button>
+      <h2 id="daytitle" style="flex:1">Aktualne pomiary <span class="status" id="per-title" style="display:inline"></span></h2>
+      <div class="per-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dziś</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
     </div>
     <div class="tiles" id="tiles"></div>
     <details style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
@@ -563,7 +565,8 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <div id="lm-days" style="font-size:12px;overflow-x:auto"></div></details>
     </div>
     <div class="chart"><canvas id="cPower"></canvas></div>
-    <div class="empty" id="empty" hidden>Brak danych dla tego dnia.</div>
+    <div class="empty" id="empty" hidden>Brak danych dla tego okresu.</div>
+    <div class="status" id="per-note" style="display:block;font-size:12px"></div>
     <details>
       <summary>Tabela godzinowa (średnie kW)</summary>
       <table class="mh6"><thead><tr><th>Godz.</th><th>PV</th><th>Dom</th><th>Magazyn</th><th>Sieć</th><th>Straty</th><th>SOC %</th></tr></thead>
@@ -1004,8 +1007,8 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       </fieldset>
       <fieldset><legend>Ceny energii</legend>
         <label>Operator dystrybucyjny<select data-k="ceny.operator">
-          <option value="tauron">Tauron</option><option value="pge">PGE</option><option value="enea">Enea</option>
-          <option value="energa">Energa</option><option value="stoen">Stoen</option></select></label>
+          <option value="tauron">Tauron</option><option value="pge">PGE (brak danych – stawki Tauron)</option><option value="enea">Enea (brak danych – stawki Tauron)</option>
+          <option value="energa">Energa (brak danych – stawki Tauron)</option><option value="stoen">Stoen (brak danych – stawki Tauron)</option></select></label>
         <label>Taryfa<select data-k="ceny.taryfa"><option>G11</option><option>G12</option><option>G12w</option>
           <option>G12as</option><option>G13</option><option>G13s</option></select></label>
         <div class="status" id="cfg-tariff" style="display:block;grid-column:1/-1;font-size:12px"></div>
@@ -1274,6 +1277,11 @@ function baseOpts(unit) {
     elements: { point: { radius: 0, hoverRadius: 4 }, line: { borderWidth: 2, tension: 0.2 } }
   };
 }
+function rgbaHex(hex, a) {   // 1.26: kolor z przezroczystoscia (hex z css(); inny format - bez zmian)
+  const c = String(hex).trim(); if (!c.startsWith('#')) return c;
+  const h = c.slice(1), n = parseInt(h.length === 3 ? h.replace(/./g, x => x + x) : h.slice(0, 6), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+}
 function ds(label, data, color) {
   return { label, data, borderColor: color, backgroundColor: color, fill: false };
 }
@@ -1296,13 +1304,22 @@ function tile(t, v, unit, note) {
 const srcNote = (e, k) => e.src && e.src[k] === 'falownik' ? 'licznik falownika' : 'obliczone z mocy';
 async function loadDay(date) {
   current = date;
-  $('date').value = date;
-  $('daytitle').textContent = date === todayStr() ? 'Dzisiaj'
-    : new Date(date + 'T12:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
-  const d = await (await fetch('/api/day?date=' + date)).json();
   loadEff();
   loadPstryk(date);
   loadLossMonth(date.slice(0, 7));
+  loadPeriod();
+}
+// 1.26: Aktualne pomiary - kafle i wykres slupkowy za okres: dzis (godziny), tydzien (tygodnie miesiaca), miesiac (miesiace roku)
+let perSel = 'day';
+try { perSel = localStorage.getItem('sigen_period') || 'day'; } catch (e) {}
+document.querySelectorAll('.per-seg button').forEach(b => {
+  b.classList.toggle('primary', b.dataset.p === perSel);
+  b.onclick = () => { perSel = b.dataset.p; try { localStorage.setItem('sigen_period', perSel); } catch (e) {}
+    document.querySelectorAll('.per-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadPeriod(); };
+});
+async function loadPeriod() {
+  let d; try { d = await (await fetch('/api/period?okres=' + perSel)).json(); } catch (e) { return; }
+  $('per-title').textContent = '· ' + d.title;
   const e = d.energy;
   $('tiles').innerHTML =
     tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
@@ -1312,20 +1329,27 @@ async function loadDay(date) {
     tile('Samowystarczalność', e.samowystarczalnosc, '%', e.imp_home != null ? `dom bez prądu z sieci (dom z sieci ${e.imp_home.toFixed(1)} kWh, bez ładowania magazynu z sieci)` : '') +
     lossTiles(e);
 
-  const s = d.series;
-  $('empty').hidden = s.length > 0;
-  const labels = s.map(p => new Date(p.t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }));
-  const power = [
-    ds('Dom', s.map(p => p.load), css('--s-load')),
-    ds('PV', s.map(p => p.pv), css('--s-pv')),
-    ds('Magazyn (+ład.)', s.map(p => p.bat), css('--s-bat')),
-    ds('Sieć (+pobór)', s.map(p => p.grid), css('--s-grid')),
-  ];
+  popTiles($('tiles'));
+  const B = d.buckets || [];
+  $('empty').hidden = B.length > 0;
+  $('per-note').textContent = (d.partial ? 'Historia miesięcy jest jeszcze przeliczana w tle – odśwież za kilka minut. ' : '') +
+    'Autokonsumpcja i samowystarczalność bez arbitrażu (sprzedaż z magazynu i ładowanie z sieci nie zaniżają wyniku).';
+  const labels = B.map(b => b.label);
+  const bar = (label, k, color, axis) => ({ label, data: B.map(b => b[k]), backgroundColor: color, borderColor: color, type: 'bar', yAxisID: axis,
+    borderRadius: 3, maxBarThickness: 28 });
+  const sets = [bar('Produkcja PV', 'pv', css('--s-pv'), 'y'), bar('Zużycie domu', 'load', css('--s-load'), 'y'),
+    bar('Autokonsumpcja', 'autokonsumpcja', rgbaHex(css('--s-bat'), 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', rgbaHex(css('--s-sell'), 0.55), 'y1')];
+  if (cPower && cPower.config.type !== 'bar') { cPower.destroy(); cPower = null; }
   if (!cPower) {
-    cPower = new Chart($('cPower'), { type: 'line', data: { labels, datasets: power }, options: baseOpts('kW') });
+    const o = baseOpts('kWh');
+    o.scales.y1 = { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { color: css('--muted'), callback: v => v + ' %' } };
+    o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? '' : ` ${c.dataset.label}: ${c.parsed.y.toFixed(c.dataset.yAxisID === 'y1' ? 0 : 1)} ${c.dataset.yAxisID === 'y1' ? '%' : 'kWh'}`;
+    cPower = new Chart($('cPower'), { type: 'bar', data: { labels, datasets: sets }, options: o });
   } else {
-    cPower.data = { labels, datasets: power }; cPower.update();
+    cPower.data = { labels, datasets: sets }; cPower.update();
   }
+  if (perSel !== 'day') { $('tbody').innerHTML = '<tr><td colspan="7" class="empty">Tabela godzinowa – tylko „Dziś”.</td></tr>'; return; }
+  const s = d.series || [];
 
   // tabela godzinowa
   const hours = {};
@@ -1647,7 +1671,7 @@ async function loadCmp(force) {
     $('cmp-prices').innerHTML = (T.zones || []).map(Z => `<label title="${esc(Z.hours || 'cała doba')} · dystrybucja ${Z.dist.toFixed(3)} zł/kWh">Energia – ${esc(Z.label)} ` +
       `<input class="bp-num" data-zone="${esc(Z.key)}" type="number" min="0" max="5" step="0.0001" style="width:80px" value="${r.prices[Z.key] ?? ''}"> zł/kWh brutto</label>`).join('') +
       '<button class="fs-btn" id="cmp-save" type="button">Zapisz ceny</button>';
-  $('cmp-msg').textContent = r.default_tauron ? 'Domyślnie ceny TAURON Sprzedaż 2026 (brutto, z akcyzą) – wpisz ceny swojego sprzedawcy, jeśli są inne.' :
+  $('cmp-msg').textContent = r.default_name ? `Puste pola = cena ze zbioru taryf: ${r.default_name} (brutto, z akcyzą) – wpisz ceny swojego sprzedawcy, jeśli są inne.` :
     (Object.values(r.prices).some(v => v == null) ? 'Wpisz ceny energii (brutto) swojego sprzedawcy z cennika taryfowego dla każdej strefy.' : '');
   const sv = $('cmp-save');
   if (sv) sv.onclick = async () => {
@@ -1716,13 +1740,17 @@ async function loadPstryk(date) {
 
 // ---- strategia osobista (symulacja) ----
 let cSt;
+[['st-arch', 'sigen_st_arch'], ['st-to12', 'sigen_st_after12']].forEach(([id, k]) => {
+  try { $(id).checked = localStorage.getItem(k) === '1'; } catch (e) {}
+  $(id).onchange = () => { try { localStorage.setItem(k, $(id).checked ? '1' : '0'); } catch (e) {} loadStrategy(); };
+});
 $('st-save').onclick = async () => {
   let r;
   try {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ price_mode: $('st-pm').value, auto_margin: $('st-mg').value, load_profile: $('st-prof').value, sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
         p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value, tarcza: $('st-tz').value, tarcza_mode: $('st-tzm').value,
-        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value, illegal_arb: $('st-illegal').checked }) })).json();
+        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value, illegal_arb: $('st-illegal').checked, legal_no_fc: $('st-nofc').checked }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
   $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
@@ -1912,9 +1940,20 @@ async function loadStrategy() {
       return ctile(cls, 'Do sprzedaży teraz', f1(now), 'kWh',
         `${by ? by + ' · ' : ''}limit z PV: ${f1(lim)} kWh (produkcja ${f1(P.legal.pv)} − oddane ${f1(P.legal.exp)} kWh, ostatnie ${P.legal.days} dni)` +
         (bat != null ? ` · w magazynie do oddania: ${f1(bat)} kWh (SOC ${P.soc_now} %, min. ${P.soc_min} %, z uwzględnieniem strat)` : '') +
-        ` · plan liczy oba ograniczenia godzina po godzinie: limit rośnie o prognozę PV, magazyn o ładowanie` +
+        (P.legal_no_fc ? ` · plan liczy oba ograniczenia godzina po godzinie: limit tylko z PV już wyprodukowanego (bez prognozy), magazyn rośnie o ładowanie`
+          : ` · plan liczy oba ograniczenia godzina po godzinie: limit rośnie o prognozę PV, magazyn o ładowanie`) +
         (P.legal.capped_hours ? ` · sprzedaż przycięta limitem w ${P.legal.capped_hours} godz.${P.legal.cut_kwh ? ` (przekroczony arbitraż o ${f1(P.legal.cut_kwh)} kWh – żółte słupki na wykresie)` : ''}` : ''));
     })() : P.illegal_arb ? ctile('c-red', 'Limit z PV', 'wyłączony', '', 'zaznaczony „Niezgodny z prawem arbitraż” – plan sprzedaje z magazynu bez limitu z produkcji PV') : '') +
+    // 1.26: godziny sprzedazy z magazynu - wtedy unikac duzych odbiornikow (kazda kWh domu = mniej do sieci po cenie sprzedazy)
+    (() => {
+      const now = Date.now() / 1000, ex = (d.hours || []).filter(h => h.mode === 'export' && (h.e_exp || 0) >= 0.5 && h.ts + 3600 > now);
+      if (!ex.length) return '';
+      const bl = []; ex.forEach(h => { const l = bl[bl.length - 1]; if (l && h.ts === l.b + 3600 && h.day === l.day) { l.b = h.ts; l.p = Math.max(l.p, h.sell); } else bl.push({ day: h.day, a: h.ts, b: h.ts, p: h.sell }); });
+      const hh = ts => new Date(ts * 1000).getHours(), txt = bl.slice(0, 3).map(x => `${x.day} ${hh(x.a)}–${hh(x.b) + 1 || 24}`);
+      return ctile('c-amber', 'Sprzedaż – bez dużych odbiorników', txt[0], '',
+        `planowana sprzedaż z magazynu: ${txt.join(' · ')} – w tych godzinach nie włączaj suszarki, zmywarki, piekarnika, grzania wody; ` +
+        `falownik oddaje pełną moc, więc każda kWh zużyta w domu to kWh mniej sprzedana (do ${bl[0].p.toFixed(2).replace('.', ',')} zł/kWh)`);
+    })() +
     (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
       P.tarcza.active ? 'działa' : 'nie działa', '',
       esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? (P.tarcza.eff_buy_zones ? ` · zakup w tym miesiącu: limit ${P.tarcza.cap.toFixed(2)} zł (obejmuje też opłatę za obsługę) + dystrybucja strefy taryfy i akcyza = ` +
@@ -1932,6 +1971,7 @@ async function loadStrategy() {
   if (ae !== 'st-rez') $('st-rez').value = P.tarcza_rezerwa ?? '';
   if (ae !== 'st-legal') $('st-legal').value = P.legal_days ?? '';
   if (ae !== 'st-illegal') $('st-illegal').checked = !!P.illegal_arb;
+  if (ae !== 'st-nofc') $('st-nofc').checked = !!P.legal_no_fc;
   if (ae !== 'st-pm') $('st-pm').value = P.price_mode || 'progi';
   if (ae !== 'st-mg') $('st-mg').value = P.auto_margin ?? 0.2;
   if (ae !== 'st-prof') $('st-prof').value = P.load_profile || 'prosty';
@@ -2026,7 +2066,10 @@ async function loadStrategy() {
   cSt.options.scales.y1.min = cSt.options.scales.y2.min = -M; cSt.options.scales.y1.max = cSt.options.scales.y2.max = M;
   cSt.$h = H; cSt.$nowIdx = d.now_index || null; cSt.update();
   const f = (v, k) => v == null ? '–' : v.toFixed(k);
-  $('stbody').innerHTML = H.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? (h.fc ? '†' : '*') : ''}</td>` +
+  // 1.26: domyslnie plan od biezacej godziny do jutra 12:00; archiwalne i godziny po 12:00 jutro - przelaczniki (na urzadzeniu)
+  const cut12 = (() => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(12, 0, 0, 0); return t.getTime() / 1000; })();
+  const Hv = H.filter(h => ($('st-arch').checked || h.mode !== 'past') && ($('st-to12').checked || h.ts < cut12));
+  $('stbody').innerHTML = Hv.map(h => `<tr><td>${h.day} ${h.t}</td><td>${f(h.buy, 3)}${h.est ? (h.fc ? '†' : '*') : ''}</td>` +
     `<td${P.sell_floor != null && h.sell >= P.sell_floor ? ' style="color:var(--s-sell);font-weight:600"' : ''}>${f(h.sell, 3)}</td><td>${f(h.load, 2)}</td><td>${f(h.pv, 2)}</td>` +
     `<td><span class="stm ${h.mode}">${esc(h.label)}</span></td><td>${f(Math.max(h.grid, 0), 2)}</td><td>${h.soc == null ? '–' : f(h.soc, 0) + ' %'}</td><td>${h.base_soc == null ? '–' : f(h.base_soc, 0) + ' %'}</td>` +
     `<td>${f(h.cost, 2)} / ${f(h.base_cost, 2)}</td></tr>`).join('');
@@ -2809,7 +2852,7 @@ function planeRow(v) {
 // 1.24: podglad taryfy dystrybucyjnej uzywanej teraz (strefy, godziny, dystrybucja zmienna brutto)
 async function loadTariffInfo() {
   let t; try { t = await (await fetch('/api/tariff')).json(); } catch (e) { return; }
-  $('cfg-tariff').innerHTML = `Używana teraz: <b>${esc((t.operator || '').toUpperCase())} ${esc(t.taryfa || '')}</b> (${esc(t.source || '')}) – ` +
+  $('cfg-tariff').innerHTML = (t.missing_operator ? '<b style="color:var(--eff-bad)">Zbiór taryf URE nie ma jeszcze danych tego operatora – ceny zakupu, Tarcza i porównanie liczą się stawkami TAURON G13 2026 (przybliżenie).</b> ' : '') + `Używana teraz: <b>${esc((t.operator || '').toUpperCase())} ${esc(t.taryfa || '')}</b> (${esc(t.source || '')}) – ` +
     (t.zones || []).map(Z => `${esc(Z.label)}: ${esc(Z.hours || 'cała doba')}, dystrybucja ${Z.dist.toFixed(3)} zł/kWh`).join(' · ') +
     '. Strefy i stawki wpływają na ceny zakupu, Tarczę (plan ładuje w najtańszej strefie) i porównanie ze sprzedawcą taryfowym; zmiana po „Zapisz i uruchom ponownie”.';
 }

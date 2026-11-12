@@ -88,6 +88,14 @@ state = {"tryb": "wyl", "desired": None, "reason": None, "applied": None, "appli
 _alerts = {}           # rodzaj -> {"since": ts, "sent": ts | None}
 _mm = {"since": None, "txt": None, "miss": 0, "logged": False, "reg": None, "reg_ts": 0}
 _latch = {}            # godzina (ts) -> True, gdy cel SOC tej godziny osiagniety
+# 1.26: standby z planu przy nadwyzce PV ponad prognoze -> samozuzycie bez rozladowania (nadwyzka PV do magazynu, nie do
+# sieci). Plan liczony z prognozy (np. pochmurno), a wyszlo slonce: energia z PV w magazynie przyda sie na autokonsumpcje
+# albo sprzedaz w drogiej godzinie. Wlaczenie przy nadwyzce >= PV_OVR_ON kW przez PV_OVR_ON_S, wylaczenie, gdy
+# < PV_OVR_OFF kW przez PV_OVR_OFF_S (histereza - bez przeskakiwania przy chmurach).
+PV_OVR_ON, PV_OVR_OFF = 0.3, 0.1
+PV_OVR_ON_S, PV_OVR_OFF_S = 120, 600
+PV_OVR_SOC_MAX = 99.0
+_pv_ovr = {"on": False, "since": None}
 
 
 def _cfg():
@@ -463,11 +471,53 @@ def decide(data, soc, soc_ts, now, limits):
                                                    f"{kw:g} kW (limit {p_dis:g} kW)")
     else:
         cmd.update(ems=PLAN_TO_EMS[mode], why=h.get("label") or mode)
+        if mode == "standby":
+            sur = _pv_surplus(now, soc)
+            if sur is not None:
+                cmd.update(ems=2, plan_override="nodis", label="samozużycie bez rozładowania – PV ponad prognozę do magazynu",
+                           why=f"standby z planu, ale nadwyżka PV {sur:.1f} kW (ponad prognozę) – do magazynu zamiast do sieci, "
+                               f"magazyn nie oddaje (SOC {soc:.0f} %)".replace(".", ","))
+                mode = "nodis"
+        else:
+            _pv_ovr.update(on=False, since=None)
         if cmd["ems"] == 2:          # samozuzycie: limity ladowania (40032) i rozladowania (40034) na pelna moc
             cmd["charge_kw"], cmd["discharge_kw"] = P_MAX, (0 if mode == "nodis" else P_MAX)
     for k in [k for k in _latch if k < now - 7200]:
         _latch.pop(k, None)
     return cmd, cmd["why"]
+
+
+def _pv_surplus(now, soc):
+    """Nadwyzka PV nad zuzyciem domu [kW] z biezacych mocy, gdy przelaczenie standby -> samozuzycie ma dzialac, inaczej None.
+    W standby nadwyzka plynie do sieci (grid < 0), po przelaczeniu - do magazynu (bat > 0), wiec liczone sa oba."""
+    try:
+        f = get_flows() if get_flows else None
+    except Exception:  # noqa: BLE001
+        f = None
+    if not f or f.get("pv") is None or f.get("grid") is None:
+        return None
+    pv = float(f.get("pv") or 0)
+    sur = max(0.0, -float(f.get("grid") or 0)) + max(0.0, float(f.get("bat") or 0))
+    sur = min(sur, pv)
+    st = _pv_ovr
+    if soc is not None and soc >= PV_OVR_SOC_MAX:
+        st.update(on=False, since=None)
+        return None
+    if not st["on"]:
+        if sur >= PV_OVR_ON:
+            st["since"] = st["since"] or now
+            if now - st["since"] >= PV_OVR_ON_S:
+                st.update(on=True, since=None)
+        else:
+            st["since"] = None
+    else:
+        if sur < PV_OVR_OFF:
+            st["since"] = st["since"] or now
+            if now - st["since"] >= PV_OVR_OFF_S:
+                st.update(on=False, since=None)
+        else:
+            st["since"] = None
+    return sur if st["on"] else None
 
 
 def _key(cmd):

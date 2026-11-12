@@ -25,8 +25,9 @@ Więcej zrzutów ekranu: [galeria](#zrzuty-ekranu).
   - porównanie z rzeczywistą produkcją i tabela trafności prognoz ze **średnim odchyleniem** każdej prognozy
     (kWh/dzień i % produkcji) i kolorami – zielony najtrafniejsza, czerwony najmniej trafna; dni podbarwione wg błędu.
 - **Realna produkcja każdego stringu PV** (napięcie × prąd) – dzień oraz produkcja w miesiącach (wykres słupkowy z licznika falownika).
-- **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G13… operatorów Tauron, PGE,
-  Enea, Energa, Stoen). Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
+- **Ceny energii** co 15 min z PSE (RCE, SDAC) z taryfą dystrybucyjną (G11, G12, G12w, G13…) operatora z otwartego zbioru
+  taryf URE (dziś TAURON – kopia dołączona do programu, działa też bez sieci; inni operatorzy, gdy pojawią się w zbiorze).
+  Wzór ceny zakupu jest konfigurowalny, a aplikacja wskazuje najtańsze godziny.
 - **Temperatura ogniw magazynu** w czasie, z zakresem korzystnym dla ogniw LFP.
 - **Opcjonalnie: rekuperator Vallox (seria MV, MyVallox: 096 / 110 / 145 / 245 MV i inne)** – zakładka Rekuperacja po wpisaniu IP i wyborze modelu w Ustawieniach:
   temperatury i sprawność odzysku, CO₂, wilgotność, balans przepływów z automatyczną korektą albo bilansem wzorcowym
@@ -326,6 +327,25 @@ Przydatne narzędzia:
 
 - `python tools/sigen_scan.py` – pokazuje, które rejestry udostępnia Twój falownik,
 - `python tools/sigen_read.py` – podgląd kilku wartości w konsoli.
+
+### macOS (nietestowane – zgłoś uwagi)
+
+1. Zainstaluj Pythona 3.11 lub nowszego ([python.org](https://www.python.org/downloads/macos/) albo `brew install python`).
+2. Pobierz repozytorium (`git clone https://github.com/mgrys/Sigen.git` albo ZIP z GitHuba i rozpakuj).
+3. Uruchom **`start_mac.command`** (dwuklik w Finderze; przy pierwszym razie: prawy przycisk → Otwórz, bo plik nie jest
+   podpisany). Pierwsze uruchomienie tworzy środowisko `.venv` i instaluje biblioteki, potem otwiera stronę w przeglądarce.
+4. macOS zapyta o połączenia przychodzące – zezwól, jeśli strona ma działać z telefonu (aplikacja Android: adres IP Maca).
+
+Autostart po zalogowaniu (launchd):
+
+```bash
+sed "s#SCIEZKA_DO_REPO#$PWD#g" packaging/macos/pl.sigen.pvmonitor.plist > ~/Library/LaunchAgents/pl.sigen.pvmonitor.plist
+launchctl load ~/Library/LaunchAgents/pl.sigen.pvmonitor.plist      # uruchom z folderu repozytorium
+# wyłączenie: launchctl unload ~/Library/LaunchAgents/pl.sigen.pvmonitor.plist && rm ~/Library/LaunchAgents/pl.sigen.pvmonitor.plist
+```
+
+Mac musi być włączony i nieuśpiony (Ustawienia systemowe → Bateria / Oszczędzanie energii: bez usypiania przy
+zasilaczu), inaczej w danych będą przerwy. Dziennik autostartu: `sigen_mac.log` w folderze programu.
 
 ## Konfiguracja
 

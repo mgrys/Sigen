@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Autostart Sigen PV Monitor na macOS (launchd, po zalogowaniu uzytkownika).
+     SCIEZKA_DO_REPO zamien na pelna sciezke folderu z programem (np. /Users/jan/Sigen) - instrukcja w README, sekcja macOS. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>pl.sigen.pvmonitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>SCIEZKA_DO_REPO/start_mac.command</string>
+    <string>--no-browser</string>
+  </array>
+  <key>WorkingDirectory</key><string>SCIEZKA_DO_REPO</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>SCIEZKA_DO_REPO/sigen_mac.log</string>
+  <key>StandardErrorPath</key><string>SCIEZKA_DO_REPO/sigen_mac.log</string>
+</dict>
+</plist>

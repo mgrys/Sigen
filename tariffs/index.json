@@ -1,0 +1,17 @@
+{
+  "schema": 4,
+  "updated": "2026-10-02",
+  "base_url": "https://davo22.github.io/polish-electricity-tariffs/data/",
+  "notes": "Baza stawek dla gospodarstw domowych (grupy taryfowe G). Model: dystrybucja (regulowana, w 'tariffs') jest oddzielona od energii (sprzedawca × oferta, w 'energy_products'). Użytkownik wybiera grupę taryfową i produkt energii (domyślny = default_energy_product). Stawki dystrybucyjne zależą od operatora (u TAURON jednolite w całym obszarze); cena energii zależy od sprzedawcy/oferty. Składniki jakościowy/OZE/kogeneracyjny są wspólne (w 'system_components').",
+  "operators": [
+    {
+      "id": "tauron",
+      "name": "TAURON",
+      "file": "tauron.json",
+      "tariffs": ["G11", "G12", "G12w", "G12as", "G13", "G13s", "G14dynamic"],
+      "energy_products": ["tauron-urzad", "tauron-gwarancja-ceny"],
+      "region": "tauron-all",
+      "region_name": "Cały obszar TAURON Dystrybucja (taryfa jednolita)"
+    }
+  ]
+}

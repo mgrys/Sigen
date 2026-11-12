@@ -35,7 +35,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.24.0"
+__version__ = "1.26.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -823,6 +823,156 @@ def day(date: str | None = None):
     }
 
 
+# --- 1.26: Aktualne pomiary - Dzis / Tydzien / Miesiac (kafle za okres + wykres slupkowy) ----------------------------------
+PERIOD_CACHE = config.DATA_DIR / "period_daily.json"     # podsumowania zamknietych dni (liczniki, autokonsumpcja bez arbitrazu, straty)
+PERIOD_VER = 1
+_period = {"data": None, "lock": threading.Lock()}
+PSUM_KEYS = ("pv", "load", "imp", "exp", "chg", "dis", "pv_s", "load_s", "exp_pv", "imp_home", "e_in", "e_out",
+             "konwersja", "czuwanie", "h_czuwanie", "regulacja_pobor", "regulacja_oddanie")
+
+
+def _period_day(con, d):
+    """Podsumowanie doby: liczniki falownika (jak kafle dnia) + wartosci z probek do autokonsumpcji / samowystarczalnosci."""
+    start, end = day_range(d)
+    rows = day_rows(con, start, end)
+    if len(rows) < 2:
+        return None
+    en = energy(rows)
+    base = {"pv_s": en["pv"], "load_s": en["load"], "exp_pv": en["exp_pv"], "imp_home": en["imp_home"]}
+    e = merge_energy(dict(en), counter_energy(con, d.isoformat()))
+    acc, _n, split = eff_compute_day(con, d, split=True)
+    out = {k: round(float(e.get(k) or 0), 3) for k in ("pv", "load", "imp", "exp", "chg", "dis")}
+    out.update({k: round(float(v or 0), 3) for k, v in base.items()})
+    out["e_in"] = round(sum(v[1] for v in acc.values()), 3)
+    out["e_out"] = round(sum(v[2] for v in acc.values()), 3)
+    for k in ("konwersja", "czuwanie", "h_czuwanie", "regulacja_pobor", "regulacja_oddanie"):
+        out[k] = round(float(split.get(k) or 0), 3)
+    out["src"] = e.get("src")
+    return out
+
+
+def _period_cache():
+    if _period["data"] is None:
+        try:
+            d = json.loads(PERIOD_CACHE.read_text(encoding="utf-8")) if PERIOD_CACHE.exists() else {}
+        except Exception:  # noqa: BLE001
+            d = {}
+        _period["data"] = d if d.get("_ver") == PERIOD_VER else {"_ver": PERIOD_VER}
+    return _period["data"]
+
+
+def _period_days(d0, d1, compute_missing=40):
+    """{data iso: podsumowanie} dla dni d0..d1 (zamkniete z pamieci podrecznej, dzis zawsze na biezaco)."""
+    today = dt.date.today()
+    out, changed = {}, False
+    with _period["lock"]:
+        cache = _period_cache()
+        con = db_connect()
+        try:
+            d = d0
+            while d <= d1 and d <= today:
+                key = d.isoformat()
+                r = cache.get(key) if d < today else None
+                if r is None and (d == today or compute_missing > 0):
+                    r = _period_day(con, d)
+                    if d < today:
+                        compute_missing -= 1
+                        cache[key] = r if r is not None else {}
+                        changed = True
+                if r:
+                    out[key] = r
+                d += dt.timedelta(days=1)
+        finally:
+            con.close()
+        if changed:
+            try:
+                PERIOD_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+            except OSError:
+                pass
+    return out
+
+
+def _period_sum(days):
+    """Suma podsumowan dni -> slownik w ksztalcie energy z /api/day (kafle) + autokonsumpcja / samowystarczalnosc."""
+    t = {k: sum(float(x.get(k) or 0) for x in days) for k in PSUM_KEYS}
+    e = {k: round(t[k], 2) for k in ("pv", "load", "imp", "exp", "chg", "dis", "exp_pv", "imp_home")}
+    e["autokonsumpcja"] = round(100 * max(0.0, t["pv_s"] - t["exp_pv"]) / t["pv_s"], 1) if t["pv_s"] > 0.05 else None
+    e["samowystarczalnosc"] = round(100 * max(0.0, t["load_s"] - t["imp_home"]) / t["load_s"], 1) if t["load_s"] > 0.05 else None
+    e["sprawnosc"] = round(100 * t["e_out"] / t["e_in"], 1) if t["e_in"] > 0.05 else None
+    e["straty"] = {k: round(t[k], 3) for k in ("konwersja", "czuwanie", "h_czuwanie", "regulacja_pobor", "regulacja_oddanie")}
+    e["straty"]["czuwanie_sr_w"] = round(1000 * t["czuwanie"] / t["h_czuwanie"]) if t["h_czuwanie"] > 0.25 else None
+    src = [x.get("src") or {} for x in days]
+    e["src"] = {k: ("falownik" if src and all(s.get(k) == "falownik" for s in src) else "obliczone") for k in ENERGY_KEYS}
+    e["days"] = len(days)
+    return e
+
+
+def _bucket(label, e):
+    return {"label": label, "pv": e["pv"], "load": e["load"], "autokonsumpcja": e["autokonsumpcja"],
+            "samowystarczalnosc": e["samowystarczalnosc"]}
+
+
+@app.get("/api/period")
+def api_period(okres: str = "day"):
+    """1.26: kafle za okres (day = dzis, week = biezacy tydzien pn-dzis, month = biezacy miesiac) i slupki wykresu:
+    day - godziny dzis, week - kolejne tygodnie biezacego miesiaca, month - kolejne miesiace biezacego roku."""
+    today = dt.date.today()
+    if okres == "week":
+        w0 = today - dt.timedelta(days=today.weekday())
+        m0 = today.replace(day=1)
+        days = _period_days(min(w0, m0), today)
+        e = _period_sum([v for k, v in days.items() if k >= w0.isoformat()])
+        buckets, a = [], m0
+        while a <= today:
+            b = min(a + dt.timedelta(days=6 - a.weekday()), today)
+            sel = [v for k, v in days.items() if a.isoformat() <= k <= b.isoformat()]
+            if sel:
+                buckets.append(_bucket(f"{a.day}–{b.day}.{b.month:02d}" if a != b else f"{a.day}.{a.month:02d}", _period_sum(sel)))
+            a = b + dt.timedelta(days=1)
+        return {"range": "week", "title": f"tydzień {w0.day}.{w0.month:02d}–{today.day}.{today.month:02d}", "energy": e, "buckets": buckets}
+    if okres == "month":
+        y0 = today.replace(month=1, day=1)
+        days = _period_days(y0, today)
+        m0 = today.replace(day=1)
+        e = _period_sum([v for k, v in days.items() if k >= m0.isoformat()])
+        buckets = []
+        for m in range(1, today.month + 1):
+            pre = f"{today.year}-{m:02d}"
+            sel = [v for k, v in days.items() if k.startswith(pre)]
+            if sel:
+                buckets.append(_bucket(MONTHS_SHORT[m - 1], _period_sum(sel)))
+        missing = sum(1 for k, v in _period_cache().items() if k[:4] == str(today.year) and v == {})
+        return {"range": "month", "title": f"{MONTHS[today.month - 1]} {today.year}", "energy": e, "buckets": buckets,
+                "partial": len(days) < (today - y0).days + 1 - missing}
+    # dzis: kafle jak dotad (/api/day) + slupki godzinowe z probek
+    d = day(today.isoformat())
+    start, end = day_range(today)
+    con = db_connect()
+    try:
+        rows = day_rows(con, start, end)
+    finally:
+        con.close()
+    by = {}
+    for r in rows:
+        by.setdefault(time.localtime(r[0]).tm_hour, []).append(r)
+    buckets = []
+    for h in sorted(by):
+        en = energy(by[h])
+        buckets.append({"label": f"{h:02d}:00", "pv": en["pv"], "load": en["load"],
+                        "autokonsumpcja": en["autokonsumpcja"], "samowystarczalnosc": en["samowystarczalnosc"]})
+    return {"range": "day", "title": "dziś", "energy": d["energy"], "buckets": buckets, "series": d["series"]}
+
+
+def period_warmup():
+    """Przy starcie: podsumowania zamknietych dni biezacego roku (wykres miesiecy) liczone w tle."""
+    time.sleep(60)
+    try:
+        today = dt.date.today()
+        _period_days(today.replace(month=1, day=1), today - dt.timedelta(days=1), compute_missing=400)
+    except Exception as e:  # noqa: BLE001
+        print(f"period_warmup: {e}")
+
+
 # przedzialy mocy przetwarzanej [kW] do tabeli sprawnosci
 EFF_BINS = [0, 0.25, 0.5, 0.75, 1, 2, 3, 4, 6, 8]
 CHART_SUN_MARGIN = 30    # min - wykresy PV: od wschodu + 30 min do zachodu - 30 min
@@ -1319,7 +1469,8 @@ def api_tariff():
     t = prices.load_tariff()
     zones = [{"key": z, "label": prices.ZONE_LABEL.get(z, z), "hours": v.get("hours", ""),
               "dist": round(prices.price_parts(t, 0.0, 0.0, z)["dist"] * (1 + prices.VAT), 4)} for z, v in t.get("zones", {}).items()]
-    return {"operator": prices.OPERATOR, "taryfa": prices.TARYFA, "source": t.get("source"), "zones": zones}
+    return {"operator": prices.OPERATOR, "taryfa": prices.TARYFA, "source": t.get("source"), "zones": zones,
+            "missing_operator": bool(t.get("missing_operator")), "energy_name": t.get("energy_name")}
 
 
 @app.get("/api/porownanie")
@@ -1372,7 +1523,7 @@ def api_porownanie(months: int = 6):
     finally:
         con.close()
     return {"enabled": True, "months": out, "tariff": tinfo, "prices": zp,
-            "default_tauron": prices.OPERATOR == "tauron" and prices.TARYFA in porownanie.TAURON_2026}
+            "default_name": tinfo.get("energy_name")}
 
 
 @app.post("/api/porownanie/ceny")
@@ -1478,7 +1629,7 @@ def legal_budget(days):
             "budget": round(max(0.0, r["pv_total"] - r["exp_total"]), 2), "days": int(days)}
 
 
-def _legal_caps(hours, pl, budget):
+def _legal_caps(hours, pl, budget, use_fc=True):
     """Godziny sprzedazy z magazynu ponad limit: limit rosnie o prognozowana produkcje PV i maleje o oddawanie do sieci.
     1.106: gdy limitu brakuje, ograniczana jest NAJTANSZA sprzedaz z magazynu do tej chwili (wczesniej - ta, w ktorej
     limit sie skonczyl, przez co np. 12:00 po 3,58 zl zjadala limit, a 14:00-15:00 po 4,35 zl zostawalo bez sprzedazy).
@@ -1486,7 +1637,8 @@ def _legal_caps(hours, pl, budget):
     exp = [max(0.0, -p["d"] - max(h["load"] - h["pv"], 0.0)) if p["mode"] == "export" else 0.0 for h, p in zip(hours, pl)]
     caps, b = {}, budget
     for t, (h, p) in enumerate(zip(hours, pl)):
-        b += max(h["pv"], 0.0)
+        if use_fc:          # 1.26: bez prognozy - limit tylko z PV juz wyprodukowanego
+            b += max(h["pv"], 0.0)
         b -= max(-p["grid"], 0.0)
         while b < -0.01:
             cands = [k for k in range(t + 1) if exp[k] > 0.005]
@@ -1516,6 +1668,8 @@ def strat_limits():
     out["tarcza_mode"] = cp.get("strategia", "tarcza_tryb", fallback="auto").strip().lower() or "auto"   # auto | tak | nie
     # 1.24: arbitraz niezgodny z prawem - tylko gdy zaznaczony, sprzedaz z magazynu bez limitu z PV
     out["illegal_arb"] = cp.get("strategia", "arbitraz_niezgodny_z_prawem", fallback="nie").strip().lower() in ("1", "tak", "true")
+    # 1.26: limit z PV bez prognozy - do limitu wlicza sie tylko PV juz wyprodukowane (ostrozniej)
+    out["legal_no_fc"] = cp.get("strategia", "limit_pv_bez_prognozy", fallback="nie").strip().lower() in ("1", "tak", "true")
     pm = cp.get("strategia", "tryb_cen", fallback="progi").strip().lower()
     out["price_mode"] = pm if pm in PRICE_MODES else "progi"
     lp = cp.get("strategia", "profil_zuzycia", fallback="prosty").strip().lower()
@@ -1702,6 +1856,22 @@ def _market_actual(con):
                 by.setdefault(time.localtime(p["ts"]).tm_hour, []).append(v / 1000)
         return {h: sum(v) / len(v) for h, v in by.items()}
     return f
+
+
+@app.get("/api/pradcast/eval_detail")
+def api_pradcast_eval_detail(days: int = 30):
+    """1.26: surowe dane do oceny Pradcast - zapamietane prognozy (D+1..D+3) i cena rynkowa PSE z kazdej godziny."""
+    hist = pradcast._hist_load()
+    cut = (dt.date.today() - dt.timedelta(days=max(1, min(int(days), 90)))).isoformat()
+    con = db_connect()
+    try:
+        act = _market_actual(con)
+        out = {iso: {"fc": hz, "actual": {str(h): round(v, 5) for h, v in (act(iso) or {}).items()}}
+               for iso, hz in sorted(hist.items()) if cut <= iso < dt.date.today().isoformat()}
+        ev = pradcast.evaluate(act)
+    finally:
+        con.close()
+    return {"days": out, "eval": ev}
 
 
 _hour_lock = {}            # {"ts": poczatek godziny, "mode": tryb planu, "at": kiedy ustalony} - blokada trybu na godzine
@@ -1892,7 +2062,7 @@ def compute_strategy():
             capped = {}
             pl_free = pl          # 1.24: plan bez limitu - do pokazania sprzedazy wstrzymanej limitem arbitrazu
             for _it in range(4):          # sprzedaz z magazynu nie wiecej niz wyprodukowane PV (z prognoza do konca planu)
-                caps = _legal_caps(hours, pl, legal["budget"])
+                caps = _legal_caps(hours, pl, legal["budget"], use_fc=not lim.get("legal_no_fc"))
                 if not caps:
                     break
                 for t, cap_ in caps.items():
@@ -1979,7 +2149,7 @@ def compute_strategy():
                        "pvchg_min_kw": strategy.PVCHG_MIN_KW, "tarcza_rezerwa": lim.get("tarcza_rezerwa"),
                        "reserve_price": strategy.RESERVE_PRICE and round(strategy.RESERVE_PRICE, 2),
                        "tarcza": tz, "legal": legal, "legal_days": lim.get("legal_days") or 7,
-                       "illegal_arb": bool(lim.get("illegal_arb")),
+                       "illegal_arb": bool(lim.get("illegal_arb")), "legal_no_fc": bool(lim.get("legal_no_fc")),
                        "hour_lock": dict(_hour_lock) if _hour_lock.get("ts") == h0 else None,
                        "price_mode": lim.get("price_mode"), "price_mode_txt": PRICE_MODES.get(lim.get("price_mode")),
                        "auto_margin": strategy.AUTO_MARGIN if auto else lim.get("auto_margin"),
@@ -2069,6 +2239,9 @@ def release_inverter():
 def api_strategy_limits(payload: dict = Body(...)):
     """Pulapy cenowe strategii: {"sell_floor": 2.5, "buy_cap": 0.8} (puste = brak) - zapis w config.ini [strategia]."""
     vals = {}
+    if "legal_no_fc" in payload:
+        nf = payload.get("legal_no_fc")
+        vals["limit_pv_bez_prognozy"] = "tak" if nf is True or str(nf).strip().lower() in ("1", "true", "tak") else "nie"
     if "illegal_arb" in payload:
         ia = payload.get("illegal_arb")
         vals["arbitraz_niezgodny_z_prawem"] = "tak" if ia is True or str(ia).strip().lower() in ("1", "true", "tak") else "nie"
@@ -2529,6 +2702,7 @@ def start_background():
         threading.Thread(target=poll_loop, daemon=True, name="modbus").start()
         threading.Thread(target=forecast.loop, args=(db_connect,), daemon=True, name="forecast").start()
         threading.Thread(target=efficiency_loop, daemon=True, name="efficiency").start()
+        threading.Thread(target=period_warmup, daemon=True, name="period").start()
         inverter_ctl.P_MAX = STRAT["p_max_kw"]
         threading.Thread(target=inverter_ctl.decide_loop, args=(compute_strategy, _soc_now, _ctl_limits),
                          daemon=True, name="inverter_ctl").start()
