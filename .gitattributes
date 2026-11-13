@@ -1,0 +1,6 @@
+# pliki uruchamiane na Linuksie / macOS - zawsze LF (dodatek Home Assistant budowany przez Docker)
+sigen_pv_monitor/** text eol=lf
+sigen_pv_monitor/*.png binary
+repository.yaml text eol=lf
+*.command text eol=lf
+*.sh text eol=lf

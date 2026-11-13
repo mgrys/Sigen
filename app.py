@@ -15,7 +15,7 @@ import time
 
 from fastapi import Body, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pymodbus.client import ModbusTcpClient
 
 import config
@@ -36,7 +36,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.28.0"
+__version__ = "1.29.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -441,8 +441,19 @@ STATIC = config.WEB_DIR / "static"
 
 
 @app.get("/")
-def index():
-    return FileResponse(config.WEB_DIR / "index.html", headers={"Cache-Control": "no-store"})
+def index(request: Request):
+    """Strona aplikacji. 1.29: za Ingress Home Assistant (dodatek) strona jest pod adresem /api/hassio_ingress/<token>/ -
+    wtedy adresy /api/... i /static/... dostaja ten przedrostek (naglowek X-Ingress-Path)."""
+    path = config.WEB_DIR / "index.html"
+    pre = request.headers.get("x-ingress-path", "").rstrip("/")
+    if not pre or not pre.startswith("/") or any(c in pre for c in "\"'<> "):
+        return FileResponse(path, headers={"Cache-Control": "no-store"})
+    html = path.read_text(encoding="utf-8")
+    shim = (f"<script>window.SIGEN_BASE='{pre}';(f=>{{window.fetch=(u,o)=>f(typeof u==='string'&&u.startsWith('/')"
+            f"&&!u.startsWith('//')&&!u.startsWith('{pre}/')?'{pre}'+u:u,o)}})(window.fetch.bind(window));</script>")
+    html = html.replace("<head>", "<head>" + shim, 1)
+    html = html.replace('href="/static/', f'href="{pre}/static/').replace('src="/static/', f'src="{pre}/static/')
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/static/{name}")

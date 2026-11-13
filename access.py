@@ -71,8 +71,16 @@ def is_local(request):
     return (request.client.host if request.client else "") in LOCAL
 
 
+# 1.29: dodatek Home Assistant - zadania przez Ingress (panel w pasku bocznym HA) przychodza od Supervisora HA z adresu
+# 172.30.32.2 i sa juz po zalogowaniu do HA, wiec nie wymagaja PIN-u (tylko gdy aplikacja dziala jako dodatek).
+INGRESS_IP = "172.30.32.2"
+HA_ADDON = __import__("os").environ.get("SIGEN_HA_ADDON") == "1"
+
+
 def is_authed(request):
     if is_local(request):
+        return True
+    if HA_ADDON and request.client and request.client.host == INGRESS_IP and request.headers.get("x-ingress-path"):
         return True
     pin = _pin()
     sid = request.cookies.get(COOKIE)

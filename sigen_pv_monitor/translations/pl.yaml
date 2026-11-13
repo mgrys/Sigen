@@ -1,0 +1,13 @@
+configuration:
+  pin:
+    name: PIN aplikacji
+    description: PIN do zmian ustawień z telefonu i z kart panelu HA (panel w pasku bocznym HA działa bez PIN-u). Puste = bez zmian.
+  falownik_host:
+    name: Adres IP falownika
+    description: Adres falownika Sigenergy (Modbus TCP włączony w mySigen). Puste = ustaw w aplikacji (Ustawienia → Znajdź falownik).
+  falownik_port:
+    name: Port Modbus TCP
+    description: Zwykle 502.
+  karty_ha:
+    name: Karty panelu Home Assistant
+    description: Instaluje plik startowy kart w /config/www/sigen i dodaje zasób panelu (karty „Sigen” w edytorze pulpitu).

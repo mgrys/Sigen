@@ -235,11 +235,15 @@ rozpoznawane automatycznie. Daje pobór teraz, zużycie i koszt dnia / miesiąca
 z rekuperatora. **Inny miernik** (Tuya, Tasmota, Home Assistant…) – w nagłówku [`meter.py`](meter.py) jest opis
 i przykład dla Tuya: wystarczy jedna funkcja zwracająca moc [W] (i opcjonalnie licznik energii [Wh]).
 
-## Home Assistant – karty panelu
+## Home Assistant – dodatek i karty panelu
 
 Zakładkę „Instalacja PV” można pokazać w Home Assistant jako 9 kart (teraz, strategia, pomiary, ceny, prognoza, połacie,
 sprawność, Pstryk, ustawienia falownika) – dane z tej aplikacji, zmiany ustawień po PIN-ie.
 Instalacja: [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md).
+
+**Dodatek Home Assistant (HA OS / Supervised):** Ustawienia → Dodatki → Sklep z dodatkami → ⋮ → Repozytoria →
+`https://github.com/mgrys/Sigen` → **Sigen PV Monitor** → Zainstaluj. Aplikacja działa wtedy w HA (panel „Sigen PV”
+w pasku bocznym), a karty instalują się same. Opis: [sigen_pv_monitor/DOCS.md](sigen_pv_monitor/DOCS.md).
 
 ## Zrzuty ekranu
 

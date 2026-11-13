@@ -1,0 +1,5 @@
+# Repozytorium dodatków Home Assistant: Ustawienia → Dodatki → Sklep z dodatkami → ⋮ → Repozytoria →
+# https://github.com/mgrys/Sigen
+name: Sigen PV Monitor
+url: https://github.com/mgrys/Sigen
+maintainer: mgrys

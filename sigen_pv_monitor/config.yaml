@@ -1,0 +1,30 @@
+name: Sigen PV Monitor
+version: "1.29.0"
+slug: sigen_pv_monitor
+description: Falownik i magazyn Sigenergy (Modbus TCP) – podgląd na żywo, prognoza PV, ceny, strategia magazynu, Pstryk i karty panelu HA
+url: https://github.com/mgrys/Sigen
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+host_network: true
+ingress: true
+ingress_port: 8000
+panel_icon: mdi:solar-power
+panel_title: Sigen PV
+homeassistant_api: true
+map:
+  - type: homeassistant_config
+    read_only: false
+options:
+  pin: ""
+  falownik_host: ""
+  falownik_port: 502
+  karty_ha: true
+schema:
+  pin: password?
+  falownik_host: str?
+  falownik_port: port
+  karty_ha: bool

@@ -22,6 +22,9 @@ oraz `title:` (nagłówek; `""` – bez nagłówka).
 
 ## Instalacja
 
+**HA OS / Supervised:** najprościej dodatek „Sigen PV Monitor” – instaluje aplikację i karty sam
+([sigen_pv_monitor/DOCS.md](../sigen_pv_monitor/DOCS.md)). Poniżej – gdy aplikacja działa osobno (np. HA w Dockerze).
+
 1. **Plik startowy w HA.** Pobierz `http://<adres aplikacji>:8000/ha/sigen-loader.js` i zapisz w HA jako
    `/config/www/sigen/sigen-loader.js` (np. dodatkiem „File editor” albo „Samba share”).
    Jeśli folder `/config/www` był pusty / nie istniał – uruchom HA ponownie (Ustawienia → System → Uruchom ponownie).

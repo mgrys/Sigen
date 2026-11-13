@@ -1,0 +1,13 @@
+configuration:
+  pin:
+    name: App PIN
+    description: PIN for changing settings from phones and HA dashboard cards (the HA sidebar panel works without it). Empty = unchanged.
+  falownik_host:
+    name: Inverter IP address
+    description: Sigenergy inverter address (Modbus TCP enabled in mySigen). Empty = set it in the app (Settings → Find inverter).
+  falownik_port:
+    name: Modbus TCP port
+    description: Usually 502.
+  karty_ha:
+    name: Home Assistant dashboard cards
+    description: Installs the cards loader in /config/www/sigen and adds the dashboard resource ("Sigen" cards in the card picker).

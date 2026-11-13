@@ -2,6 +2,16 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.29.0] - 2026-11-13
+
+### Dodano
+- **Dodatek Home Assistant** (`sigen_pv_monitor/`, repozytorium dodatków `repository.yaml`): instalacja z HA
+  (Ustawienia → Dodatki → Repozytoria → `https://github.com/mgrys/Sigen`), aplikacja w pasku bocznym HA (Ingress),
+  opcje: PIN, adres i port falownika, karty panelu. Przy pierwszym starcie współrzędne i strefa czasowa z ustawień HA;
+  plik startowy kart w `/config/www/sigen/` i zasób panelu dodawane automatycznie. Opis: `sigen_pv_monitor/DOCS.md`.
+- Strona działa pod adresem Ingress HA (przedrostek z nagłówka `X-Ingress-Path`); w dodatku panel HA nie wymaga PIN-u
+  (użytkownik zalogowany w HA), telefon i karty – jak dotąd po PIN-ie.
+
 ## [1.28.0] - 2026-11-13
 
 ### Zmieniono
