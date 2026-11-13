@@ -14,6 +14,7 @@ import threading
 import time
 
 from fastapi import Body, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pymodbus.client import ModbusTcpClient
 
@@ -35,7 +36,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.26.0"
+__version__ = "1.28.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -405,6 +406,16 @@ async def _access_guard(request: Request, call_next):
     return await call_next(request)
 
 
+# 1.27: karty Home Assistant (web/static/ha/sigen-cards.js) - dane z tego API ze strony HA (inny port = inne pochodzenie):
+# CORS tylko ze stron na porcie 8123 (HA) albo z adresow z config.ini [ha] origins; zapis (POST) dalej tylko po PIN-ie.
+def _ha_origins():
+    return [o.strip().rstrip("/") for o in config.get("ha", "origins", "").split(",") if o.strip()]
+
+
+app.add_middleware(CORSMiddleware, allow_origin_regex=r"^https?://[^/]+:8123$", allow_origins=_ha_origins(),
+                   allow_methods=["GET", "POST"], allow_headers=["Content-Type"], allow_credentials=True, max_age=3600)
+
+
 @app.get("/api/access")
 def api_access(request: Request):
     return access.status(request)
@@ -441,6 +452,15 @@ def static_file(name: str):
     if path.parent != STATIC or not path.is_file():
         return JSONResponse({"error": "nie znaleziono"}, status_code=404)
     return FileResponse(path)
+
+
+@app.get("/ha/{name}")
+def ha_card_file(name: str):
+    """1.27: karty Home Assistant (web/static/ha/*.js) - wczytywane przez sigen-loader.js z /local w HA; bez cache."""
+    path = STATIC / "ha" / name
+    if path.parent != STATIC / "ha" or not path.is_file() or path.suffix != ".js":
+        return JSONResponse({"error": "nie znaleziono"}, status_code=404)
+    return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/version")
@@ -763,10 +783,15 @@ def api_forecast():
 
 
 @app.get("/api/pv_strings")
-def api_pv_strings(date: str | None = None):
-    """Rzeczywista moc kazdej polaci (U x I) w ciagu dnia + energia dzienna."""
+def api_pv_strings(date: str | None = None, okres: str = "day"):
+    """Rzeczywista moc kazdej polaci (U x I) w ciagu dnia + energia dzienna.
+    1.27: okres = week (biezacy tydzien pn-dzis) / month (biezacy miesiac) - sama energia polaci za okres, bez punktow."""
     d = dt.date.fromisoformat(date) if date else dt.date.today()
     start, end = day_range(d)
+    d0 = d
+    if okres in ("week", "month"):
+        d0 = d - dt.timedelta(days=d.weekday()) if okres == "week" else d.replace(day=1)
+        start = day_range(d0)[0]
     con = db_connect()
     try:
         rows = db.load_pv_strings(con, start, end)
@@ -783,10 +808,17 @@ def api_pv_strings(date: str | None = None):
             for n, a, b in zip(names, prev[1], p):
                 kwh[n] += (a + b) / 2 * h
         prev = (ts, p)
-        pts.append({"ts": ts, "t": dt.datetime.fromtimestamp(ts).strftime("%H:%M"),
-                    **{n: round(v, 3) for n, v in zip(names, p)}})
+        if okres not in ("week", "month"):
+            pts.append({"ts": ts, "t": dt.datetime.fromtimestamp(ts).strftime("%H:%M"),
+                        **{n: round(v, 3) for n, v in zip(names, p)}})
     total = sum(kwh.values())
-    return {"date": d.isoformat(), "names": names, "points": pts,
+    if okres in ("week", "month"):
+        return {"date": d.isoformat(), "okres": okres, "from": d0.isoformat(), "names": names, "points": [],
+                "now": {n: round(v, 3) for n, v in zip(names, prev[1])} if prev else None,
+                "now_t": dt.datetime.fromtimestamp(prev[0]).strftime("%H:%M") if prev else None,
+                "kwh": {n: round(v, 2) for n, v in kwh.items()},
+                "share": {n: round(100 * v / total, 1) if total > 0.01 else None for n, v in kwh.items()}}
+    return {"date": d.isoformat(), "okres": "day", "names": names, "points": pts,
             "sun": forecast.sun_times(d), "margin_min": CHART_SUN_MARGIN,
             "kwh": {n: round(v, 2) for n, v in kwh.items()},
             "share": {n: round(100 * v / total, 1) if total > 0.01 else None for n, v in kwh.items()}}
@@ -1313,6 +1345,62 @@ def efficiency(date: str | None = None, days: int = 1):
     lowpv = {"godzin": round(h, 2), "e_in": round(e_in, 2), "kwh": round(e_in - e_out, 3), "sr_w": round(1000 * (e_in - e_out) / h),
              "moc_sr_kw": round(e_in / h, 2), "sprawnosc": round(100 * e_out / e_in, 1) if e_in > 0.01 else None} if h >= 1 / 60 else None
     return {"date": d.isoformat(), "days": days, "n_days": n_days, "bins": out, "ladowanie": chg, "rozladowanie": dis, "czuwanie": idle, "slabe_pv": lowpv}
+
+
+@app.get("/api/battery_eff")
+def api_battery_eff(days: int = 7):
+    """Sprawnosc magazynu (round-trip) i zuzycie w czuwaniu z probek 5 s (srednie minutowe).
+
+    Round-trip = (energia rozladowania + zmiana energii w magazynie) / energia ladowania, na odcinku od poczatku okresu
+    do chwili z SOC najblizszym poczatkowemu. Czuwanie: odcinki >= 3 h z |moc magazynu| < 20 W - spadek SOC
+    (zasilanie z ogniw / samorozladowanie) i pobor falownika z sieci w tym czasie."""
+    days = max(1, min(int(days), 90))
+    with lock:
+        regs = dict(registers_state["values"])
+    cap = STRAT["cap_kwh"] or regs.get("cap_ess") or regs.get("cap_bat")
+    if not cap:
+        return {"ok": False, "error": "brak pojemności magazynu"}
+    cap = float(cap)
+    start = int(time.time()) - days * 86400
+    con = db_connect()
+    try:
+        rows = con.execute("SELECT ts / 60, AVG(bat), AVG(soc), AVG(plant), COUNT(*) FROM samples WHERE ts >= ? "
+                           "GROUP BY ts / 60 ORDER BY 1", (start,)).fetchall()
+    finally:
+        con.close()
+    rows = [(int(m), float(b), float(s), float(p)) for m, b, s, p, n in rows if n >= 6 and s is not None]
+    if len(rows) < 600:
+        return {"ok": False, "error": "za mało danych"}
+    soc0 = rows[0][2]
+    # koniec odcinka: ostatnia minuta z SOC najblizszym poczatkowemu (w ostatniej 1/3 okresu)
+    tail = rows[len(rows) * 2 // 3:]
+    end_i = len(rows) - len(tail) + min(range(len(tail)), key=lambda i: (abs(tail[i][2] - soc0), -i))
+    chg = sum(max(b, 0) for _, b, _, _ in rows[:end_i + 1]) / 60
+    dis = sum(max(-b, 0) for _, b, _, _ in rows[:end_i + 1]) / 60
+    d_soc = rows[end_i][2] - soc0
+    rt = (dis + d_soc / 100 * cap) / chg if chg > 1 else None
+    # czuwanie magazynu
+    runs, cur = [], []
+    for r in rows:
+        if abs(r[1]) < 0.02 and (not cur or r[0] - cur[-1][0] <= 2):
+            cur.append(r)
+        else:
+            if len(cur) >= 180:
+                runs.append(cur)
+            cur = [r] if abs(r[1]) < 0.02 else []
+    if len(cur) >= 180:
+        runs.append(cur)
+    h_idle = sum((c[-1][0] - c[0][0]) / 60 for c in runs)
+    drop = sum((sum(x[2] for x in c[:10]) / 10 - sum(x[2] for x in c[-10:]) / 10) for c in runs)
+    grid_w = (sum(-x[3] for c in runs for x in c) / sum(len(c) for c in runs) * 1000) if runs else None
+    return {"ok": True, "days": days, "cap_kwh": round(cap, 2),
+            "round_trip": None if rt is None else round(100 * rt, 1), "chg_kwh": round(chg, 1), "dis_kwh": round(dis, 1),
+            "soc_start": round(soc0, 1), "soc_end": round(rows[end_i][2], 1),
+            "period_h": round((rows[end_i][0] - rows[0][0]) / 60, 1),
+            "idle": {"hours": round(h_idle, 1), "runs": len(runs),
+                     "soc_drop_pct_h": round(drop / h_idle, 3) if h_idle else None,
+                     "cells_w": round(drop / 100 * cap * 1000 / h_idle) if h_idle else None,
+                     "grid_w": None if grid_w is None else round(grid_w)}}
 
 
 @app.get("/api/registers")

@@ -2,6 +2,28 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.28.0] - 2026-11-13
+
+### Zmieniono
+- Strategia: przy słońcu (średnia PV w godzinie ≥ 0,5 kW) i niepełnym magazynie plan wybiera **samozużycie bez
+  rozładowania** zamiast standby – także bez nadwyżki w godzinie; sterowanie przełącza standby na ten tryb, gdy PV ≥ 0,5 kW
+  przez 2 min (albo nadwyżka ≥ 0,3 kW), powrót przy PV < 0,3 kW bez nadwyżki przez 10 min. Chwilowe nadwyżki (chmury,
+  wyłączony odbiornik) trafiają do magazynu, a nie do sieci.
+- Połacie PV: same kafle (bez wykresu mocy) z przełącznikiem **Dziś / Tydzień / Miesiąc**, obok produkcja w miesiącach.
+- Sprawność falownika: kafle magazynu (round-trip, czuwanie z ogniw, pobór z sieci) i **jedna tabela** – przedziały mocy
+  × sprawność całości / ładowania / rozładowania; opisy na komputerze, na telefonie same procenty.
+- Granice SOC: **pasek 0–100 %** z zakresem pracy, rezerwą i bieżącym SOC; na telefonie trzy wartości w jednym rzędzie.
+- Telefon: bez stałych opisów i rozwijanych wyjaśnień (mniej przewijania).
+
+## [1.27.0] - 2026-11-13
+
+### Dodano
+- **Karty Home Assistant** (`web/static/ha/`): 9 kart panelu HA z danymi zakładki „Instalacja PV” – teraz, strategia
+  (z ustawieniami i sterowaniem po PIN-ie), aktualne pomiary, ceny, prognoza PV, połacie, sprawność, licznik Pstryk,
+  ustawienia falownika. Motyw HA (jasny / ciemny), układ na telefon. Instrukcja: `docs/HOME_ASSISTANT.md`.
+- API: zgoda CORS dla stron HA (port 8123 albo `config.ini` `[ha] origins`), pliki kart `/ha/<plik>.js`,
+  `/api/pv_strings?okres=week|month`, `/api/battery_eff` (sprawność magazynu round-trip i czuwanie).
+
 ## [1.26.0] - 2026-11-12
 
 ### Dodano

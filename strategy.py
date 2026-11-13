@@ -31,6 +31,7 @@ MODES = {
     "pvchg": ("PV do magazynu, dom z sieci", 4),   # tylko z Tarcza: cale PV do magazynu (pod sprzedaz), dom z sieci
     "nodis": ("samozużycie bez rozładowania", 2),  # EMS 2 + limit rozladowania 0: PV do domu, nadwyzka do magazynu, brak z sieci
 }
+PV_NODIS_KW = 0.5   # 1.28: kW sredniej PV w godzinie - od tej mocy standby z planu zamieniane na samozuzycie bez rozladowania
 SELL_FLOOR = None   # zl/kWh - sprzedaz z magazynu tylko przy cenie sprzedazy >= pulap (None = bez sprzedazy z magazynu)
 BUY_CAP = None      # zl/kWh - ladowanie z sieci tylko przy cenie zakupu <= pulap (None = bez ograniczenia)
 # Tryb auto (1.89): sprzedaz z magazynu w kazdej godzinie, w ktorej plan po kosztach (sprawnosc, zuzycie baterii, wartosc

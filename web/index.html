@@ -107,7 +107,9 @@ svg.flow { width: 100%; height: auto; display: block; }
 .fs-act[hidden] { display: none; }
 .fs-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
 .fs-btn.primary { background: var(--s-fc); border-color: var(--s-fc); color: #fff; }
-.per-seg { display: inline-flex; gap: 4px; }   /* 1.26: Dzis / Tydzien / Miesiac */
+/* 1.134: na telefonie bez opisow i wyjasnien (stale akapity objasnien, rozwijane "Jak to dziala / jak liczone", przypisy) */
+@media (max-width: 640px) { p.status:not([id]), details[data-expl], #stnotes, #per-note, #g13box > p.status { display: none !important; } }
+/.per-seg { display: inline-flex; gap: 4px; }   /* 1.26: Dzis / Tydzien / Miesiac */
 .fs-btn:disabled { opacity: .5; cursor: default; }
 .fs-auto { font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .fs-auto input { width: 18px; height: 18px; }
@@ -225,6 +227,27 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .soccell .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
 .soccell .v.na { color: var(--muted); }
 .soccell .w { font-size: 11px; color: var(--muted); }
+.socg { margin: 4px 0 12px; }
+.socg-bar { position: relative; height: 18px; border-radius: 9px; background: var(--border); margin-top: 22px; }
+.socg-bar > div { position: absolute; top: 0; bottom: 0; }
+.socg-off { background: repeating-linear-gradient(45deg, var(--border), var(--border) 4px, transparent 4px, transparent 8px); opacity: .9; }
+.socg-on { background: color-mix(in srgb, var(--s-bat) 55%, transparent); }
+.socg-bk { width: 2px; margin-left: -1px; top: -4px !important; bottom: -4px !important; background: var(--s-grid); }
+.socg-now { width: 3px; margin-left: -1.5px; top: -5px !important; bottom: -5px !important; background: var(--text); border-radius: 2px; }
+.socg-now span { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 700; white-space: nowrap; margin-bottom: 1px; }
+.socg-ax { position: relative; height: 16px; font-size: 11px; color: var(--text-2); }
+.socg-ax span { position: absolute; top: 2px; white-space: nowrap; }
+.socg-leg { display: flex; margin-top: 4px !important; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.socg-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.socg-leg i.on { background: color-mix(in srgb, var(--s-bat) 55%, transparent); }
+.socg-leg i.bk { background: var(--s-grid); width: 3px; }
+.socg-leg i.now { background: var(--text); width: 3px; }
+@media (max-width: 640px) {
+  .socrow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .soccell { padding: 7px 8px; }
+  .soccell .t { font-size: 11px; line-height: 1.2; }
+  .soccell .v { font-size: 18px; }
+  .soccell .w { display: none; }
 /* kafle z opisem w dymku (strategia): zwarte kafle, opis po najechaniu / dotknieciu */
 .tiles.popn .tile { position: relative; cursor: help; }
 .tiles.popn .tile .v.vt { font-size: 16px; line-height: 1.25; }
@@ -246,6 +269,10 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .stm { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); } .stm.export { color: var(--s-sell); font-weight: 600; } .stm.pvchg { color: var(--s-pv); font-weight: 600; } .stm.nodis { color: var(--s-bat); font-weight: 600; }
 .pvsplit { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
+.tiles.pvs3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 0; align-content: start; }
+.tiles.pvs3 .tile { padding: 8px 9px; }
+.tiles.pvs3 .tile .v { font-size: 18px; }
+.tiles.pvs3 .tile .t { font-size: 11px; }
 .pvmon { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
 .pvmon .chart { height: 260px; }
 .pvmon-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 650; color: var(--text-2); margin-bottom: 4px; }
@@ -285,6 +312,16 @@ tr.ps-sell td:nth-child(5) { color: var(--s-sell); font-weight: 600; }
 .risk.nie_ruszac { color: var(--err); border-color: var(--err); }
 .regs .w { color: var(--muted); font-size: 11px; }
 .effbar { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.efftab td, .efftab th { white-space: nowrap; }
+.efftab td.muted { color: var(--muted); }
+.effsub { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+@media (max-width: 640px) {
+  .efftab th { white-space: normal; font-size: 11px; }
+  .efftab td, .efftab th { padding: 5px 4px; }
+  .efftab .effbar { display: none; }
+  .efftab .effsub { display: none; }
+  .effexpl { display: none; }
+}
 .chart { position: relative; height: 300px; }
 .chart.small { height: 160px; }
 .chart.big { height: 460px; }
@@ -413,20 +450,18 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2>Realna produkcja PV – połacie</h2>
-      <span class="status" id="pvsstatus"></span>
+      <h2 style="flex:1">Realna produkcja PV – połacie <span class="status" id="pvsstatus" style="display:inline"></span></h2>
+      <div class="per-seg" id="pvs-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dziś</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
     </div>
-    <div class="tiles" id="pvstiles"></div>
     <div class="pvsplit">
-      <div class="chart"><canvas id="cPvs"></canvas></div>
+      <div class="tiles pvs3" id="pvstiles"></div>
       <div class="pvmon">
         <div class="pvmon-h"><span>Produkcja w miesiącach</span><span class="status" id="pvmstatus"></span></div>
         <div class="chart"><canvas id="cPvm"></canvas></div>
       </div>
     </div>
-    <div class="empty" id="pvsempty" hidden>Brak danych ze stringów na dziś – zapis co 60 s od uruchomienia wersji 1.11.</div>
-    <p class="status" style="margin-top:10px">Moc połaci = napięcie × prąd stringu (po stronie DC, przed falownikiem).
-      Wschód i Zachód pracują na wspólnym MPPT – mają to samo napięcie, różnią się prądem.</p>
+    <div class="empty" id="pvsempty" hidden>Brak danych ze stringów w tym okresie – zapis co 60 s.</div>
+    <p class="status" style="margin-top:10px">Moc połaci = napięcie × prąd stringu (po stronie DC, przed falownikiem).</p>
   </section>
 
   <section class="card">
@@ -510,7 +545,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <th>Z sieci kWh</th><th>SOC plan</th><th>SOC bez strategii</th><th>Koszt plan / bez</th></tr></thead><tbody id="stbody"></tbody></table></div>
       <div id="stnotes" class="status" style="display:block;font-size:12px;margin-top:4px"></div>
     </details>
-    <details>
+    <details data-expl>
       <summary>Jak to działa</summary>
       <p class="status" style="display:block;margin:6px 0 0">Okno: dziś od 00:00 do jutra 24:00 – minione godziny pokazują rzeczywiste odczyty, a dla każdej kolejnej godziny wybierany jest tryb magazynu, przy którym łączny koszt energii z sieci jest najmniejszy:
         <b>autokonsumpcja</b> (jak teraz), <b>standby</b> (magazyn czeka, dom bierze prąd z sieci – np. tania noc zimą, gdy energię z magazynu warto zachować na drogi szczyt)
@@ -546,7 +581,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <div class="per-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dziś</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
     </div>
     <div class="tiles" id="tiles"></div>
-    <details style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
+    <details data-expl style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
       <p class="status" style="display:block;margin:6px 0 0">Podział jak w <a href="https://solar.htw-berlin.de/publikationen/energy-storage-inspection-2026/" target="_blank" rel="noopener">Energy Storage Inspection (HTW Berlin)</a>:
       <b>straty konwersji</b> – przy przetwarzaniu energii PV, magazynu i AC (wejście PV = moc DC stringów);
       <b>zużycie własne (czuwanie)</b> – pobór falownika i magazynu, gdy nic nie przetwarzają (PV i magazyn &lt; 30 W);
@@ -617,33 +652,34 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <option value="0">Cała historia</option>
       </select>
       <label class="status" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="effhide"> ukryj przedziały z * (&lt; 15 min danych)</label>
+      <span class="infowrap"><button class="fs-btn infobtn" type="button" aria-expanded="false" aria-controls="effpop">ⓘ Jak liczone</button>
+        <div class="infopop" id="effpop" role="dialog">Moc przetwarzana = PV + rozładowanie magazynu + pobór AC z sieci przez falownik.
+      Sprawność = energia wyjściowa (ładowanie + AC) ÷ energia wejściowa. Wejście PV = moc DC stringów (napięcie × prąd),
+      liczone z minutowych średnich; minuty z gwałtowną zmianą mocy są odrzucane. * = mniej niż 15 min danych (wynik orientacyjny).
+      <b>Czuwanie</b> (PV i magazyn &lt; 30 W – falownik nic nie przetwarza) liczone osobno: to zużycie własne systemu, pobierane z sieci w każdym trybie,
+      więc nie zaniża sprawności przy małej mocy (strategia porównuje tryby bez niego).
+      <b>Sprawność magazynu (round-trip)</b> = (rozładowanie + zmiana energii w magazynie) ÷ ładowanie, od początku okresu do chwili z tym samym SOC –
+      obejmuje straty w ogniwach i w przetwornicy magazynu. <b>Magazyn w czuwaniu</b>: odcinki ≥ 3 h bez ładowania i rozładowania – spadek SOC
+      (zasilanie BMS z ogniw / samorozładowanie) i pobór falownika z sieci w tym czasie.<p id="effinfo" style="margin:8px 0 0"></p></div></span>
+    </div>
+    <div class="tiles popn pvs3" id="batefftiles"></div>
+    <div class="effexpl" style="margin:10px 0 6px">
+    <p class="status" style="display:block;margin:6px 0 4px"><b>Sprawność falownika (całość)</b> – wszystkie minuty pracy wg łącznej mocy
+      przetwarzanej (PV + rozładowanie magazynu + pobór AC). Energia wyjściowa (ładowanie + AC) ÷ energia wejściowa.</p>
+    <p class="status" style="display:block;margin:0 0 4px"><b>Ładowanie magazynu</b> – minuty, w których co najmniej 70 % energii wyjściowej idzie
+      do magazynu (PV → magazyn, sieć → magazyn), wg mocy ładowania. Strategia liczy ładowanie przy małej mocy z tą sprawnością, a tryb
+      „PV do magazynu” włącza od mocy, przy której sprawność ≥ 80 % (min. 0,5 kW).</p>
+    <p class="status" style="display:block;margin:0 0 4px"><b>Rozładowanie magazynu</b> – minuty, w których co najmniej 70 % energii wejściowej
+      pochodzi z magazynu (magazyn → dom / sieć), wg mocy rozładowania. Strategia liczy rozładowanie przy małej mocy z tą sprawnością.</p>
+    <p class="status" style="display:block;margin:0 0 4px"><b>Czuwanie</b> – falownik nic nie przetwarza, zużycie własne z sieci (średnia moc).
+      <b>Świt / zmierzch</b> – tylko słabe PV (&lt; 0,25 kW): stałe zużycie falownika nie jest wtedy widoczne w pomiarach, więc wynik jest
+      niemiarodajny i nie wchodzi do przedziałów. Pod wartością: czas w przedziale i średnia strata; najedź, aby zobaczyć szczegóły.</p>
     </div>
     <div style="overflow-x:auto">
-    <table class="mh3 mh4 mh5"><thead><tr><th>Moc przetwarzana</th><th>Czas [h]</th><th>Śr. moc [kW]</th><th>Energia wej. [kWh]</th>
-      <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
+    <table class="efftab"><thead><tr><th>Moc [kW]</th><th>Sprawność falownika (całość)</th><th>Ładowanie magazynu</th><th>Rozładowanie magazynu</th></tr></thead>
       <tbody id="effbody"></tbody></table>
     </div>
-    <h3 style="margin:14px 0 4px;font-size:14px">Ładowanie magazynu wg mocy ładowania</h3>
-    <p class="status" style="display:block;margin:0 0 6px">Minuty, w których co najmniej 70 % energii wyjściowej falownika idzie do magazynu
-      (PV → magazyn, sieć → magazyn). Sprawność = energia do magazynu (i AC) ÷ energia wejściowa. Strategia liczy ładowanie przy małej mocy
-      z tą sprawnością, a tryb „PV do magazynu” (Tarcza) włącza dopiero od mocy, przy której sprawność ≥ 80 % (min. 0,5 kW).</p>
-    <div style="overflow-x:auto">
-    <table class="mh3 mh4 mh5"><thead><tr><th>Moc ładowania</th><th>Czas [h]</th><th>Śr. moc ład. [kW]</th><th>Energia wej. [kWh]</th>
-      <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
-      <tbody id="effchgbody"></tbody></table>
-    </div>
-    <h3 style="margin:14px 0 4px;font-size:14px">Rozładowanie magazynu wg mocy rozładowania</h3>
-    <p class="status" style="display:block;margin:0 0 6px">Minuty, w których co najmniej 70 % energii wejściowej falownika pochodzi z magazynu
-      (magazyn → dom / sieć). Strategia liczy rozładowanie przy małej mocy z tą sprawnością. Świt i zmierzch z samym słabym PV (&lt; 0,25 kW)
-      są w tabeli ogólnej osobnym wierszem – stałe zużycie falownika nie jest wtedy widoczne w pomiarach, więc wynik jest niemiarodajny.</p>
-    <div style="overflow-x:auto">
-    <table class="mh3 mh4 mh5"><thead><tr><th>Moc rozładowania</th><th>Czas [h]</th><th>Śr. moc wej. [kW]</th><th>Energia wej. [kWh]</th>
-      <th>Straty [kWh]</th><th>Śr. strata [W]</th><th>Sprawność</th></tr></thead>
-      <tbody id="effdisbody"></tbody></table>
-    </div>
-    <p class="status" style="margin-top:10px">Moc przetwarzana = PV + rozładowanie magazynu + pobór AC z sieci przez falownik.
-      Sprawność = energia wyjściowa (ładowanie + AC) ÷ energia wejściowa. Wejście PV = moc DC stringów (napięcie × prąd),
-      liczone z minutowych średnich; minuty z gwałtowną zmianą mocy są odrzucane. * = mniej niż 15 min danych (wynik orientacyjny).<br><span id="effinfo"></span></p>
+
   </section>
   <section class="card">
     <div class="daynav">
@@ -1241,6 +1277,8 @@ async function refreshLive() {
     $('bat-fill').setAttribute('height', fh.toFixed(1)); $('bat-fill').setAttribute('y', (21 - fh).toFixed(1));
     $('soc').textContent = d.soc.toFixed(1) + ' %';
     $('socbar').style.width = Math.min(100, d.soc) + '%';
+    window.lastSoc = d.soc;
+    const sn = document.querySelector('.socg-now'); if (sn) { sn.style.left = Math.max(0, Math.min(100, d.soc)) + '%'; sn.firstChild.textContent = d.soc.toFixed(0) + ' %'; }
     $('k-pv').textContent = kw(d.pv);
     $('k-load').textContent = kw(d.load);
     $('k-bat').textContent = (d.bat > 0 ? '+' : '') + kw(d.bat);
@@ -1260,6 +1298,8 @@ async function refreshLive() {
 
 // ---- dzień ----
 let cPower;
+// 1.130: na telefonie bez dymkow na wykresach (zaslanialy caly wykres) - legenda i osie zostaja
+if (window.Chart && matchMedia('(max-width: 760px)').matches) Chart.defaults.plugins.tooltip.enabled = false;
 function baseOpts(unit) {
   return {
     responsive: true, maintainAspectRatio: false, animation: false,
@@ -1312,10 +1352,10 @@ async function loadDay(date) {
 // 1.26: Aktualne pomiary - kafle i wykres slupkowy za okres: dzis (godziny), tydzien (tygodnie miesiaca), miesiac (miesiace roku)
 let perSel = 'day';
 try { perSel = localStorage.getItem('sigen_period') || 'day'; } catch (e) {}
-document.querySelectorAll('.per-seg button').forEach(b => {
+document.querySelectorAll('.per-seg:not(#pvs-seg) button').forEach(b => {
   b.classList.toggle('primary', b.dataset.p === perSel);
   b.onclick = () => { perSel = b.dataset.p; try { localStorage.setItem('sigen_period', perSel); } catch (e) {}
-    document.querySelectorAll('.per-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadPeriod(); };
+    document.querySelectorAll('.per-seg:not(#pvs-seg) button').forEach(x => x.classList.toggle('primary', x === b)); loadPeriod(); };
 });
 async function loadPeriod() {
   let d; try { d = await (await fetch('/api/period?okres=' + perSel)).json(); } catch (e) { return; }
@@ -1338,7 +1378,7 @@ async function loadPeriod() {
   const bar = (label, k, color, axis) => ({ label, data: B.map(b => b[k]), backgroundColor: color, borderColor: color, type: 'bar', yAxisID: axis,
     borderRadius: 3, maxBarThickness: 28 });
   const sets = [bar('Produkcja PV', 'pv', css('--s-pv'), 'y'), bar('Zużycie domu', 'load', css('--s-load'), 'y'),
-    bar('Autokonsumpcja', 'autokonsumpcja', rgbaHex(css('--s-bat'), 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', rgbaHex(css('--s-sell'), 0.55), 'y1')];
+    bar('Autokonsumpcja', 'autokonsumpcja', rgbaHex(css('--s-bat'), 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', 'rgba(250,204,21,0.8)', 'y1')];
   if (cPower && cPower.config.type !== 'bar') { cPower.destroy(); cPower = null; }
   if (!cPower) {
     const o = baseOpts('kWh');
@@ -1574,37 +1614,28 @@ async function loadForecast() {
 }
 
 // ---- realna produkcja polaci ----
-let cPvs;
+// 1.133: polacie - same kafle (bez wykresu mocy), okres Dzis / Tydzien / Miesiac
+let pvsSel = 'day';
+try { pvsSel = localStorage.getItem('sigen_pvs_period') || 'day'; } catch (e) {}
+document.querySelectorAll('#pvs-seg button').forEach(b => {
+  b.classList.toggle('primary', b.dataset.p === pvsSel);
+  b.onclick = () => { pvsSel = b.dataset.p; try { localStorage.setItem('sigen_pvs_period', pvsSel); } catch (e) {}
+    document.querySelectorAll('#pvs-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadPvStrings(); };
+});
 async function loadPvStrings() {
   let d;
-  try { d = await (await fetch('/api/pv_strings')).json(); } catch (e) { return; }
-  const col = { 'Południe': css('--s-south'), 'Wschód': css('--s-east'), 'Zachód': css('--s-west') };
-  const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
-  // os czasu: od pierwszej do ostatniej minuty z produkcja (> 10 W na ktorejkolwiek polaci)
-  const prod = p => d.names.some(n => (p[n] || 0) > 0.01);
-  const fi = d.points.findIndex(prod);
-  let li = -1; for (let k = d.points.length - 1; k >= 0; k--) if (prod(d.points[k])) { li = k; break; }
-  const pts = fi < 0 ? [] : d.points.slice(fi, li + 1);
-  $('pvsempty').hidden = pts.length > 0;
-  const last = d.points[d.points.length - 1];
-  $('pvsstatus').textContent = (pts.length ? `produkcja ${pts[0].t}–${pts[pts.length - 1].t} · ` : '')
-    + (last ? 'ostatni odczyt ' + last.t + ' · co 60 s' : '');
-  $('pvstiles').innerHTML = d.names.map(n => tile('PV ' + n + ' dziś', d.kwh[n], 'kWh',
-    (d.share[n] != null ? d.share[n] + ' % produkcji' : '') + (last ? ` · teraz ${kw(last[n])}` : ''))).join('');
-  if (!pts.length) return;
-  const byMin = new Map(pts.map(p => [toMin(p.t), p]));
-  const a = toMin(pts[0].t), b = toMin(pts[pts.length - 1].t);
-  const mins = []; for (let m = a; m <= b; m++) mins.push(m);
-  const labels = mins.map(hm);
-  const sets = d.names.map(n => ({ ...ds('PV ' + n, mins.map(m => byMin.get(m)?.[n] ?? null), col[n]),
-    pointStyle: 'line', spanGaps: 3 }));
-  if (!cPvs) {
-    const o = baseOpts('kW'); o.scales.y.min = 0;
-    Object.assign(o.plugins.legend.labels, { usePointStyle: true, boxWidth: 24 });
-    cPvs = new Chart($('cPvs'), { type: 'line', data: { labels, datasets: sets }, options: o });
-  } else {
-    cPvs.data = { labels, datasets: sets }; cPvs.update();
-  }
+  try { d = await (await fetch('/api/pv_strings?okres=' + pvsSel)).json(); } catch (e) { return; }
+  const per = { day: 'dziś', week: 'tydzień', month: 'miesiąc' }[d.okres || 'day'];
+  let nowP = null, nowT = null;
+  if ((d.okres || 'day') === 'day') { const last = d.points[d.points.length - 1]; if (last) { nowP = last; nowT = last.t; } }
+  else { nowP = d.now; nowT = d.now_t; }
+  const any = d.names.some(n => (d.kwh[n] || 0) > 0.005);
+  $('pvsempty').hidden = any;
+  $('pvsstatus').textContent = (d.okres && d.okres !== 'day' ? `· od ${new Date(d.from + 'T12:00').toLocaleDateString('pl-PL', { day: 'numeric', month: 'numeric' })} ` : '· ') +
+    (nowT ? 'ostatni odczyt ' + nowT : '');
+  $('pvstiles').innerHTML = d.names.map(n => tile('PV ' + n + ' – ' + per, d.kwh[n], 'kWh',
+    (d.share[n] != null ? d.share[n] + ' % produkcji' : '') + (nowP && nowP[n] != null ? ` · teraz ${kw(nowP[n])}` : ''))).join('');
+  popTiles($('pvstiles'));
 }
 
 
@@ -1617,7 +1648,10 @@ async function loadPvMonthly() {
   const M = d.months || [];
   $('pvmstatus').textContent = d.total != null ? `licznik: ${d.total.toLocaleString('pl-PL')} kWh` : 'brak danych';
   const labels = M.map(m => m.label);
-  const sets = [{ label: 'Produkcja PV', data: M.map(m => m.kwh), backgroundColor: css('--s-pv'), borderWidth: 0, borderRadius: 4,
+  // 1.132: kazdy miesiac innym kolorem - zima niebieska, wiosna zielona, lato zolto-pomaranczowe, jesien czerwono-fioletowa
+  const MCOL = ['#3b82f6', '#06b6d4', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#db2777', '#a855f7', '#6366f1'];
+  const mcol = m => MCOL[((+String(m.month || '').slice(5, 7) || 1) - 1) % 12];
+  const sets = [{ label: 'Produkcja PV', data: M.map(m => m.kwh), backgroundColor: M.map(mcol), borderWidth: 0, borderRadius: 4,
     maxBarThickness: 60 }];
   if (!cPvm) {
     const o = baseOpts('kWh');
@@ -2138,30 +2172,58 @@ async function loadEff() {
   let date = current, days = sel;
   if (sel === 'y') { const y = new Date(); y.setDate(y.getDate() - 1); date = y.toLocaleDateString('sv-SE'); days = 1; }
   const d = await (await fetch(`/api/efficiency?date=${date}&days=${days}`)).json();
+  loadBatEff(sel === '1' || sel === 'y' ? 1 : sel === '0' ? 90 : +sel);
   $('effinfo').textContent = `Dni z danymi w zestawieniu: ${d.n_days}. Dane dzienne zapisywane w bazie (tabela efficiency_daily), dzisiejszy dzień liczony na bieżąco.`;
   const range = b => b.do == null ? `≥ ${b.od} kW` : `${b.od}–${b.do} kW`;
   const hide = $('effhide').checked, bins = hide ? d.bins.filter(b => !b.mala_probka) : d.bins;
   const hidden = d.bins.length - bins.length;
   if (hidden) $('effinfo').textContent += ` Ukryto ${hidden} przedz. z małą próbką (* – łącznie mniej niż 15 min danych w przedziale).`;
-  const effRow = b =>
-    `<tr${b.mala_probka ? ' style="color:var(--muted)" title="mniej niż 15 min danych – wynik orientacyjny"' : ''}><td>${range(b)}${b.mala_probka ? ' *' : ''}</td><td>${b.godzin.toFixed(2)}</td><td>${b.moc_sr_kw.toFixed(2)}</td><td>${b.e_in.toFixed(2)}</td>` +
-    `<td>${b.straty_kwh.toFixed(3)}</td><td>${b.strata_sr_w}</td>` +
-    `<td>${b.sprawnosc == null ? '–' : (() => { const c = b.sprawnosc >= 90 ? '--eff-good' : b.sprawnosc >= 70 ? '--eff-mid' : '--eff-bad';
-      return `<span class="effbar" style="width:${Math.max(4, Math.min(90, (b.sprawnosc - 50) * 1.8))}px;background:var(${c})"></span>` +
-        `<span style="color:var(${c});font-weight:600">${b.sprawnosc.toFixed(1)} %</span>`; })()}</td></tr>`;
-  $('effbody').innerHTML = bins.length ? bins.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych.</td></tr>';
-  const W = d.slabe_pv;
-  if (W) $('effbody').innerHTML = `<tr style="color:var(--text-2)" title="tylko słabe PV (&lt; 0,25 kW), magazyn nie pracuje – stałe zużycie falownika pokrywane jest wtedy poza mierzonymi mocami, więc wynik nie pokazuje rzeczywistej sprawności"><td>świt / zmierzch – PV &lt; 0,25 kW</td><td>${W.godzin.toFixed(2)}</td><td>${W.moc_sr_kw.toFixed(2)}</td><td>${W.e_in.toFixed(2)}</td>` +
-    `<td>${W.kwh.toFixed(3)}</td><td>${W.sr_w}</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFixed(1) + ' % (niemiarodajne)'}</td></tr>` + $('effbody').innerHTML;
-  const I = d.czuwanie;
-  if (I) $('effbody').innerHTML = `<tr style="color:var(--text-2)" title="falownik nic nie przetwarza – zużycie własne systemu z sieci"><td>czuwanie (bez przetwarzania)</td><td>${I.godzin.toFixed(2)}</td><td>–</td><td>–</td>` +
-    `<td>${I.kwh.toFixed(3)}</td><td>${I.sr_w}</td><td>–</td></tr>` + $('effbody').innerHTML;
-  const cb = (d.ladowanie || []).filter(b => !hide || !b.mala_probka);
-  $('effchgbody').innerHTML = cb.length ? cb.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych ładowania w tym okresie.</td></tr>';
-  const db_ = (d.rozladowanie || []).filter(b => !hide || !b.mala_probka);
-  $('effdisbody').innerHTML = db_.length ? db_.map(effRow).join('') : '<tr><td colspan="7" class="empty">Brak danych rozładowania w tym okresie.</td></tr>';
+  // 1.135: jedna tabela - przedzialy mocy x 3 sprawnosci (calosc / ladowanie / rozladowanie)
+  const pct = v => { const c = v >= 90 ? '--eff-good' : v >= 70 ? '--eff-mid' : '--eff-bad';
+    return `<span class="effbar" style="width:${Math.max(4, Math.min(60, (v - 50) * 1.2))}px;background:var(${c})"></span>` +
+      `<span style="color:var(${c});font-weight:600">${v.toFixed(1)} %</span>`; };
+  const cell = b => {
+    if (!b || (hide && b.mala_probka)) return '<td class="muted">–</td>';
+    const tip = `${range(b)}: ${b.godzin.toFixed(2)} h, śr. moc ${b.moc_sr_kw.toFixed(2)} kW, energia wej. ${b.e_in.toFixed(2)} kWh, straty ${b.straty_kwh.toFixed(3)} kWh (śr. ${b.strata_sr_w} W)` +
+      (b.mala_probka ? ' – mniej niż 15 min danych, wynik orientacyjny' : '');
+    return `<td title="${tip}"${b.mala_probka ? ' style="opacity:.55"' : ''}>${b.sprawnosc == null ? '–' : pct(b.sprawnosc)}${b.mala_probka ? ' *' : ''}` +
+      `<div class="effsub">${b.godzin.toFixed(1)} h · ${b.strata_sr_w} W</div></td>`;
+  };
+  const byOd = arr => Object.fromEntries((arr || []).map(b => [b.od, b]));
+  const G = byOd(d.bins), C = byOd(d.ladowanie), D = byOd(d.rozladowanie);
+  const ods = [...new Set([...d.bins, ...(d.ladowanie || []), ...(d.rozladowanie || [])].map(b => b.od))].sort((x, y) => x - y);
+  const rng = od => { const b = G[od] || C[od] || D[od]; return b.do == null ? `≥ ${b.od}` : `${b.od}–${b.do}`; };
+  let rows = ods.filter(od => [G[od], C[od], D[od]].some(b => b && !(hide && b.mala_probka)))
+    .map(od => `<tr><td>${rng(od)}</td>${cell(G[od])}${cell(C[od])}${cell(D[od])}</tr>`).join('');
+  const I = d.czuwanie, W = d.slabe_pv;
+  if (W) rows = `<tr style="color:var(--text-2)" title="tylko słabe PV (&lt; 0,25 kW), magazyn nie pracuje – stałe zużycie falownika nie jest widoczne w pomiarach (${W.godzin.toFixed(2)} h, ${W.e_in.toFixed(2)} kWh, śr. strata ${W.sr_w} W)">` +
+    `<td>świt / zmierzch</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFixed(1) + ' %'}<div class="effsub">niemiarodajne</div></td><td class="muted">–</td><td class="muted">–</td></tr>` + rows;
+  if (I) rows = `<tr style="color:var(--text-2)" title="falownik nic nie przetwarza – zużycie własne systemu z sieci (${I.godzin.toFixed(2)} h, ${I.kwh.toFixed(3)} kWh)">` +
+    `<td>czuwanie</td><td>${I.sr_w} W<div class="effsub">pobór z sieci, ${I.godzin.toFixed(1)} h</div></td><td class="muted">–</td><td class="muted">–</td></tr>` + rows;
+  $('effbody').innerHTML = rows || '<tr><td colspan="4" class="empty">Brak danych.</td></tr>';
+  if (!(d.rozladowanie || []).length) $('effinfo').textContent += ' Brak danych rozładowania (przeliczenie historii po restarcie trwa kilka minut).';
+}
+async function loadBatEff(days) {
+  let b;
+  try { b = await (await fetch(`/api/battery_eff?days=${days}`)).json(); } catch (e) { return; }
+  if (!b.ok) { $('batefftiles').innerHTML = ''; return; }
+  const I = b.idle || {};
+  $('batefftiles').innerHTML =
+    ctile(b.round_trip == null ? 'c-blue' : b.round_trip >= 90 ? 'c-green' : b.round_trip >= 80 ? 'c-blue' : 'c-red', 'Sprawność magazynu (round-trip)',
+      b.round_trip == null ? null : b.round_trip.toFixed(1), '%',
+      `ładowanie ${b.chg_kwh} kWh · rozładowanie ${b.dis_kwh} kWh · SOC ${b.soc_start} → ${b.soc_end} % w ${Math.round(b.period_h)} h (${days === 1 ? 'doba' : days + ' dni'}) – im dłuższy okres, tym dokładniej`) +
+    ctile('c-blue', 'Magazyn w czuwaniu – z ogniw', I.cells_w, 'W',
+      I.hours ? `spadek SOC ${I.soc_drop_pct_h} %/h w ${I.hours} h (${I.runs} odcinki ≥ 3 h bez ładowania i rozładowania); ok. 0 W = BMS zasilany z sieci` : 'brak odcinków ≥ 3 h bez pracy magazynu') +
+    ctile('c-blue', 'Czuwanie – pobór z sieci', I.grid_w, 'W', I.hours ? 'pobór falownika z AC w tych samych odcinkach (zużycie własne systemu)' : '');
+  popTiles($('batefftiles'));
 }
 $('effdays').onchange = loadEff;
+document.querySelectorAll('.infobtn').forEach(b => b.onclick = e => {
+  const w = b.parentElement, o = !w.classList.contains('open');
+  document.querySelectorAll('.infowrap.open').forEach(x => x.classList.remove('open'));
+  w.classList.toggle('open', o); b.setAttribute('aria-expanded', o); e.stopPropagation();
+});
+document.addEventListener('click', e => { if (!e.target.closest('.infowrap')) document.querySelectorAll('.infowrap.open').forEach(x => x.classList.remove('open')); });
 $('effhide').onchange = loadEff;
 
 // ---- odczyty falownika ----
@@ -2183,6 +2245,24 @@ async function loadRegs() {
 
 // ---- ustawienia (tylko odczyt) ----
 const RISK = { bezpieczne: 'bezpieczne', ostroznie: 'ostrożnie', nie_ruszac: 'nie ruszać' };
+// 1.136: granice SOC w poziomie - pasek 0-100 % ze strefa pracy, rezerwa i biezacym SOC
+function socGauge(items) {
+  const v = k => { const it = items.find(i => i.key === k); return it && typeof it.value === 'number' ? it.value : null; };
+  const hi = v('soc_charge_cut'), lo = v('soc_discharge_cut'), bk = v('soc_backup'), soc = window.lastSoc;
+  if (hi == null || lo == null) return '';
+  const cl = x => Math.max(0, Math.min(100, x));
+  const axl = x => `<span style="left:${cl(x)}%;transform:translateX(${x >= 95 ? -100 : x <= 5 ? 0 : -50}%)">${x} %</span>`;
+  return `<div class="socg"><div class="socg-bar">` +
+    `<div class="socg-off" style="left:0;width:${cl(lo)}%"></div>` +
+    `<div class="socg-on" style="left:${cl(lo)}%;width:${cl(hi - lo)}%"></div>` +
+    `<div class="socg-off" style="left:${cl(hi)}%;width:${100 - cl(hi)}%"></div>` +
+    (bk != null ? `<div class="socg-bk" style="left:${cl(bk)}%" title="rezerwa (backup) ${bk} %"></div>` : '') +
+    (soc != null ? `<div class="socg-now" style="left:${cl(soc)}%" title="teraz ${soc.toFixed(0)} %"><span>${soc.toFixed(0)} %</span></div>` : '') +
+    `</div><div class="socg-ax">${axl(lo)}${axl(hi)}</div>` +
+    `<div class="socg-leg"><span><i class="on"></i>zakres pracy ${lo}–${hi} %</span>` +
+    (bk != null ? `<span><i class="bk"></i>rezerwa ${bk} %</span>` : '') +
+    (soc != null ? `<span><i class="now"></i>teraz ${soc.toFixed(0)} %</span>` : '') + `</div></div>`;
+}
 const fmtVal = it => it.value == null ? 'brak' : esc(it.text ?? (typeof it.value === 'number'
   ? it.value.toLocaleString('pl-PL') : it.value)) + (it.unit && !it.text ? ' ' + esc(it.unit) : '');
 async function loadSettings() {
@@ -2208,7 +2288,7 @@ async function loadSettings() {
       `sprawdzane: DC i sieć, upływ, izolacja, AFCI (wykrywanie łuku elektrycznego)</div></div>`;
   }
   if (d.ts) $('settings').innerHTML = d.groups.map(g => g.group.startsWith('Magazyn – granice SOC') ?
-    `<div class="grp socgrp"><h3>${esc(g.group)}</h3><div class="socrow">` + g.items.map(it => `<div class="soccell"><div class="t">${esc(it.name)}</div>` +
+    `<div class="grp socgrp"><h3>${esc(g.group)}</h3>${socGauge(g.items)}<div class="socrow">` + g.items.map(it => `<div class="soccell"><div class="t">${esc(it.name)}</div>` +
       `<div class="v${it.value == null ? ' na' : ''}">${fmtVal(it)}</div><div class="w">działa: ${esc(it.when)}</div></div>`).join('') + '</div></div>' :
     `<div class="grp" data-hide="${HIDEABLE_GRP[g.group] || ''}"${HIDEABLE_GRP[g.group] && !uiShow(HIDEABLE_GRP[g.group]) ? ' hidden' : ''}><h3>${esc(g.group)}</h3><table><tbody>` +
     g.items.map(it => `<tr><td>${esc(it.name)}<br><span class="w">działa: ${esc(it.when)}</span></td>` +
@@ -2315,7 +2395,7 @@ document.querySelectorAll('.bt-range button[data-d]').forEach(b => b.onclick = (
 });
 
 // ---- zakladki ----
-const charts = () => [cPower, cFc, cPrice, cSt, cPvs, cPvm, cBt, cVair, cVtw].filter(Boolean);
+const charts = () => [cPower, cFc, cPrice, cSt, cPvm, cBt, cVair, cVtw].filter(Boolean);
 function showTab(name) {
   ['pv', 'rek', 'set'].forEach(t => {
     $('tab-' + t).hidden = t !== name;

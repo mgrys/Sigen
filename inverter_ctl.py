@@ -93,6 +93,9 @@ _latch = {}            # godzina (ts) -> True, gdy cel SOC tej godziny osiagniet
 # albo sprzedaz w drogiej godzinie. Wlaczenie przy nadwyzce >= PV_OVR_ON kW przez PV_OVR_ON_S, wylaczenie, gdy
 # < PV_OVR_OFF kW przez PV_OVR_OFF_S (histereza - bez przeskakiwania przy chmurach).
 PV_OVR_ON, PV_OVR_OFF = 0.3, 0.1
+# 1.28: albo samo slonce - PV >= PV_OVR_PV_ON kW (wylaczenie, gdy PV < PV_OVR_PV_OFF i brak nadwyzki), bo chwilowe
+# nadwyzki (chmury, wylaczony odbiornik) maja trafic do magazynu, nie do sieci; w standby magazyn i tak nie oddaje
+PV_OVR_PV_ON, PV_OVR_PV_OFF = 0.5, 0.3
 PV_OVR_ON_S, PV_OVR_OFF_S = 120, 600
 PV_OVR_SOC_MAX = 99.0
 _pv_ovr = {"on": False, "since": None}
@@ -472,11 +475,12 @@ def decide(data, soc, soc_ts, now, limits):
     else:
         cmd.update(ems=PLAN_TO_EMS[mode], why=h.get("label") or mode)
         if mode == "standby":
-            sur = _pv_surplus(now, soc)
-            if sur is not None:
-                cmd.update(ems=2, plan_override="nodis", label="samozużycie bez rozładowania – PV ponad prognozę do magazynu",
-                           why=f"standby z planu, ale nadwyżka PV {sur:.1f} kW (ponad prognozę) – do magazynu zamiast do sieci, "
-                               f"magazyn nie oddaje (SOC {soc:.0f} %)".replace(".", ","))
+            ov = _pv_surplus(now, soc)
+            if ov is not None:
+                why = (f"standby z planu, ale nadwyżka PV {ov['sur']:.1f} kW – do magazynu zamiast do sieci" if ov["sur"] >= PV_OVR_OFF
+                       else f"standby z planu, ale świeci słońce (PV {ov['pv']:.1f} kW) – chwilowe nadwyżki do magazynu, nie do sieci")
+                cmd.update(ems=2, plan_override="nodis", label="samozużycie bez rozładowania – PV do magazynu",
+                           why=(why + f", magazyn nie oddaje (SOC {soc:.0f} %)").replace(".", ","))
                 mode = "nodis"
         else:
             _pv_ovr.update(on=False, since=None)
@@ -504,20 +508,20 @@ def _pv_surplus(now, soc):
         st.update(on=False, since=None)
         return None
     if not st["on"]:
-        if sur >= PV_OVR_ON:
+        if sur >= PV_OVR_ON or pv >= PV_OVR_PV_ON:
             st["since"] = st["since"] or now
             if now - st["since"] >= PV_OVR_ON_S:
                 st.update(on=True, since=None)
         else:
             st["since"] = None
     else:
-        if sur < PV_OVR_OFF:
+        if sur < PV_OVR_OFF and pv < PV_OVR_PV_OFF:
             st["since"] = st["since"] or now
             if now - st["since"] >= PV_OVR_OFF_S:
                 st.update(on=False, since=None)
         else:
             st["since"] = None
-    return sur if st["on"] else None
+    return {"sur": sur, "pv": pv} if st["on"] else None
 
 
 def _key(cmd):
