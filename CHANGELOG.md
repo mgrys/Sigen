@@ -2,6 +2,34 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.30.0] - 2026-11-19
+
+### Dodano
+- **Przepływ energii (diagram Sankeya)** w karcie Aktualne pomiary: Słońce / Magazyn / Sieć → Dom / Magazyn / Sieć /
+  Straty, bloki z kWh i % w środku, płynące kropki. Podział: PV najpierw do domu, potem do magazynu, reszta do sieci;
+  dom z magazynu, potem z sieci; ładowanie ponad PV – z sieci, rozładowanie ponad dom – do sieci.
+- **Wybór okresu Dzień / Tydzień / Miesiąc / Rok ze strzałkami ‹ data › i „Teraz”** – Aktualne pomiary (tydzień = dni
+  pn–nd, miesiąc = dni, rok = miesiące), Połacie (dzień / tydzień / miesiąc), Sprawność falownika (także „Całość”, zamiast
+  listy rozwijanej), Pstryk (dzień). Wspólne `period_range()`; `/api/period`, `/api/pv_strings`, `/api/efficiency`
+  przyjmują `okres` i `date`.
+- Schemat „Teraz”: gałęzie przepływu (PV → dom / magazyn / sieć, sieć → dom / magazyn, magazyn → dom / sieć), kropki
+  z grubością i prędkością zależną od mocy.
+- **Pasek SOC z 10 segmentów** – kolor wg pochodzenia energii w magazynie (z PV / z sieci / wcześniej), znaczniki granic
+  SOC; `/api/bat_origin` (pule z 7 dni, rozładowanie proporcjonalnie).
+- **Kafel „Obecny tryb”** nad schematem: tryb, kto steruje (Zdalny tryb EMS wg strategii / ręcznie / pauza / falownik),
+  czas do najbliższej zmiany; czerwony przy niezgodności falownika lub błędzie zapisu.
+- Strategia: limit „sprzedaż tylko energii z PV” może być liczony z **puli PV w magazynie** (`limit_pv_podstawa = pula`
+  w [strategia]) zamiast bilansu z N dni – ściślej: pula rośnie o ładowanie nadwyżką PV z prognozy, maleje o sprzedaż
+  i proporcjonalnie o rozładowanie na dom. Domyślnie bez zmian (bilans z N dni).
+
+### Zmieniono
+- Karta „Ceny energii – dziś i jutro” domyślnie zwinięta (stan zapamiętany w przeglądarce).
+- Animacja przepływów działa też przy włączonym „ogranicz animacje” w telefonie.
+
+### Poprawiono
+- **Część stylów strony nie działała** (niezamknięty blok `@media` w CSS) – m.in. dymki objaśnień były widoczne na stałe,
+  kafle strategii z opisami i okno PIN-u bez stylów.
+
 ## [1.29.1] - 2026-11-19
 
 ### Poprawiono

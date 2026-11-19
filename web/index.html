@@ -51,6 +51,21 @@ h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-2); font-weight: 600; 
 .dot.ok { background: var(--ok); } .dot.err { background: var(--err); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .live { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+/* 1.30: C4 - kafel „Obecny tryb” (jak w Sigen) nad schematem: tryb, zrodlo (Remote EMS / falownik / recznie / pauza), zmiana za */
+.curmode { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px;
+  border-radius: 10px; border: 1px solid var(--border); border-left: 4px solid var(--muted); font-size: 14px; }
+.curmode .cm-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.curmode .cm-h { color: var(--text-2); font-size: 13px; }
+.curmode b { font-size: 16px; }
+.curmode .cm-src { color: var(--text-2); font-size: 13px; }
+.curmode .cm-next { margin-left: auto; color: var(--text-2); font-size: 13px; }
+.curmode.m-sell { border-left-color: var(--s-sell); } .curmode.m-sell .cm-dot { background: var(--s-sell); }
+.curmode.m-buy { border-left-color: var(--s-buy); } .curmode.m-buy .cm-dot { background: var(--s-buy); }
+.curmode.m-auto { border-left-color: var(--s-bat); } .curmode.m-auto .cm-dot { background: var(--s-bat); }
+.curmode.m-man { border-left-color: var(--s-grid); } .curmode.m-man .cm-dot { background: var(--s-grid); }
+.curmode.m-warn { border-left-color: var(--eff-bad); background: color-mix(in srgb, var(--eff-bad) 7%, transparent); }
+.curmode.m-warn .cm-dot { background: var(--eff-bad); }
+@media (max-width: 640px) { .curmode .cm-next { margin-left: 0; flex-basis: 100%; } }
 @media (max-width: 760px) { .live { grid-template-columns: 1fr; } }
 /* 1.24: na telefonie tabele bez mniej waznych kolumn - klasa mhN chowa N-ta kolumne; wiersz z colspan nie rozpycha tabeli */
 @media (max-width: 640px) { .mh2 tr > :nth-child(2), .mh3 tr > :nth-child(3), .mh4 tr > :nth-child(4), .mh5 tr > :nth-child(5), .mh6 tr > :nth-child(6), .mh7 tr > :nth-child(7), .mh8 tr > :nth-child(8), .mh9 tr > :nth-child(9) { display: none; }
@@ -67,10 +82,20 @@ svg.flow { width: 100%; height: auto; display: block; }
 .flow .val { fill: var(--text); font-size: 15px; font-weight: 600; text-anchor: middle; }
 .flow .sub { fill: var(--muted); font-size: 11px; text-anchor: middle; }
 .line { fill: none; stroke-width: 3; stroke-linecap: round; opacity: .25; }
-.line.on { opacity: 1; stroke-dasharray: 6 8; animation: flow 1s linear infinite; }
+/* 1.30: pasek SOC z 10 segmentow - kolor wg pochodzenia energii (PV / siec / wczesniej), znaczniki granic SOC */
+.socseg { position: relative; display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; margin: 6px 0 4px; }
+.socseg i { height: 22px; border-radius: 6px; background: color-mix(in srgb, var(--text) 10%, transparent); position: relative; overflow: hidden; }
+.socseg i b { position: absolute; inset: 0 auto 0 0; border-radius: 6px; }
+.socseg .lim { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); opacity: .55; border-radius: 1px; }
+.socseg-leg { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--text-2); margin: 0 0 12px; }
+.socseg-leg span { display: inline-flex; align-items: center; gap: 5px; }
+.socseg-leg em { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.line.br { opacity: 0; }        /* 1.30: galezie widoczne tylko przy przeplywie */
+.line.br.on { opacity: .95; }
+/* 1.30: kropki plynace z predkoscia i gruboscia wg mocy (setLine); bez wylaczania przy „ogranicz animacje” w telefonie */
+.line.on { opacity: 1; stroke-dasharray: .1 11; animation: flow var(--fd, 1s) linear infinite; }
 .line.on.rev { animation-direction: reverse; }
-@keyframes flow { to { stroke-dashoffset: -14; } }
-@media (prefers-reduced-motion: reduce) { .line.on { animation: none; } }
+@keyframes flow { to { stroke-dashoffset: -11.1; } }
 .eltiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
 .eltiles .tile { transition: background .4s; }
 .eltiles .tile.lvl-good { background: color-mix(in srgb, var(--eff-good) 16%, transparent); border-color: var(--eff-good); }
@@ -109,7 +134,23 @@ svg.flow { width: 100%; height: auto; display: block; }
 .fs-btn.primary { background: var(--s-fc); border-color: var(--s-fc); color: #fff; }
 /* 1.134: na telefonie bez opisow i wyjasnien (stale akapity objasnien, rozwijane "Jak to dziala / jak liczone", przypisy) */
 @media (max-width: 640px) { p.status:not([id]), details[data-expl], #stnotes, #per-note, #g13box > p.status { display: none !important; } }
-/.per-seg { display: inline-flex; gap: 4px; }   /* 1.26: Dzis / Tydzien / Miesiac */
+.per-seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+/* 1.30: wybor okresu (‹ data ›) i przeplyw energii (Sankey) */
+.per-nav { display: flex; align-items: center; gap: 8px; margin: -4px 0 12px; }
+.per-nav #per-title, .per-nav .pn-t { min-width: 150px; text-align: center; font-weight: 600; font-size: 15px; }
+.per-nav .fs-btn { min-width: 36px; }
+.sankey-wrap { margin: 0 0 16px; }
+.sankey-h { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+#sankey svg { width: 100%; height: auto; display: block; }
+#sankey .sk-link { fill: none; stroke-opacity: .32; transition: stroke-opacity .15s; }
+#sankey .sk-link:hover { stroke-opacity: .65; }
+#sankey .sk-anim { fill: none; stroke: #fff; stroke-opacity: .55; stroke-linecap: round; stroke-dasharray: .1 16; animation: skflow 2s linear infinite; pointer-events: none; }
+@keyframes skflow { to { stroke-dashoffset: -16.1; } }
+#sankey .sk-n { font-size: 11px; font-weight: 700; letter-spacing: .03em; fill: #1b1b1b; }
+#sankey .sk-v { font-size: 17px; font-weight: 750; fill: #1b1b1b; }
+#sankey .sk-u { font-size: 11px; font-weight: 500; fill: #1b1b1b; }
+#sankey .sk-p { font-size: 12px; font-weight: 600; fill: #1b1b1b; opacity: .8; }
+@media (max-width: 640px) { #sankey .sk-v { font-size: 15px; } .per-nav #per-title, .per-nav .pn-t { min-width: 0; flex: 1; } }
 .fs-btn:disabled { opacity: .5; cursor: default; }
 .fs-auto { font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .fs-auto input { width: 18px; height: 18px; }
@@ -248,6 +289,7 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
   .soccell .t { font-size: 11px; line-height: 1.2; }
   .soccell .v { font-size: 18px; }
   .soccell .w { display: none; }
+}
 /* kafle z opisem w dymku (strategia): zwarte kafle, opis po najechaniu / dotknieciu */
 .tiles.popn .tile { position: relative; cursor: help; }
 .tiles.popn .tile .v.vt { font-size: 16px; line-height: 1.25; }
@@ -364,11 +406,24 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <div id="tab-pv" role="tabpanel">
   <section class="card live">
+    <div class="curmode" id="curmode" title="tryb pracy falownika teraz – jak „Obecny tryb” w aplikacji Sigen">
+      <span class="cm-dot"></span><span class="cm-h">Obecny tryb</span><b id="cm-mode">–</b><span class="cm-src" id="cm-src"></span>
+      <span class="cm-next" id="cm-next"></span></div>
     <svg class="flow" viewBox="0 0 400 312" role="img" aria-label="Przepływ energii">
-      <path id="l-pv"   class="line" d="M200 64 L200 116"  stroke="var(--s-pv)"/>
-      <path id="l-grid" class="line" d="M60 150 L172 150"  stroke="var(--s-grid)"/>
-      <path id="l-load" class="line" d="M334 150 L228 150" stroke="var(--s-load)"/>
-      <path id="l-bat"  class="line" d="M200 230 L200 186" stroke="var(--s-bat)"/>
+      <path id="l-pv"   class="line" style="opacity:.12" d="M200 64 L200 116"  stroke="var(--s-pv)"/>
+      <path id="l-grid" class="line" style="opacity:.12" d="M60 150 L172 150"  stroke="var(--s-grid)"/>
+      <path id="l-load" class="line" style="opacity:.12" d="M334 150 L228 150" stroke="var(--s-load)"/>
+      <path id="l-bat"  class="line" style="opacity:.12" d="M200 230 L200 186" stroke="var(--s-bat)"/>
+      <!-- 1.30: galezie przeplywu (zrodlo -> odbior) z plynacymi kropkami; pod obrazkiem falownika -->
+      <g id="lv-br">
+        <path id="b-pv-load"   class="line br" d="M214 64 Q300 66 334 132"   stroke="var(--s-pv)"><title></title></path>
+        <path id="b-pv-grid"   class="line br" d="M186 64 Q100 66 66 132"     stroke="var(--s-pv)"><title></title></path>
+        <path id="b-pv-bat"    class="line br" d="M200 64 L200 232"           stroke="var(--s-pv)"><title></title></path>
+        <path id="b-grid-load" class="line br" d="M66 150 L334 150"           stroke="var(--s-grid)"><title></title></path>
+        <path id="b-grid-bat"  class="line br" d="M66 168 Q100 234 186 236"   stroke="var(--s-grid)"><title></title></path>
+        <path id="b-bat-load"  class="line br" d="M214 236 Q300 234 334 168"  stroke="var(--s-bat)"><title></title></path>
+        <path id="b-bat-grid"  class="line br" d="M186 236 Q100 234 66 168"   stroke="var(--s-bat)"><title></title></path>
+      </g>
       <!-- falownik -->
       <image href="/static/inverter.svg" x="171" y="117" width="58" height="68" preserveAspectRatio="xMidYMid meet">
         <title>Falownik</title></image>
@@ -413,7 +468,9 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <div>
       <h2>Magazyn energii</h2>
       <div class="soc-big" id="soc">–</div>
-      <div class="bar"><div id="socbar" style="width:0"></div></div>
+      <div class="bar" hidden><div id="socbar" style="width:0"></div></div>
+      <div class="socseg" id="socseg" title="pochodzenie energii w magazynie"></div>
+      <div class="socseg-leg" id="socseg-leg"></div>
       <div class="kv">
         <span><i class="sw" style="background:var(--s-pv)"></i>Produkcja PV</span><span id="k-pv">–</span>
         <span><i class="sw" style="background:var(--s-load)"></i>Zużycie domu</span><span id="k-load">–</span>
@@ -451,8 +508,9 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
   <section class="card">
     <div class="daynav">
       <h2 style="flex:1">Realna produkcja PV – połacie <span class="status" id="pvsstatus" style="display:inline"></span></h2>
-      <div class="per-seg" id="pvs-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dziś</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
+      <div class="per-seg" id="pvs-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
     </div>
+    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="pvs-prev" title="poprzedni okres">‹</button><span class="pn-t" id="pvs-title">–</span><button type="button" class="fs-btn" id="pvs-next" title="następny okres">›</button><button type="button" class="fs-btn" id="pvs-now" title="wróć do bieżącego okresu" hidden>Teraz</button></div>
     <div class="pvsplit">
       <div class="tiles pvs3" id="pvstiles"></div>
       <div class="pvmon">
@@ -469,9 +527,11 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <h2><span class="infowrap ttlinfo">Ceny energii – dziś i jutro <span class="ib">ⓘ</span><span class="infopop" id="prformula"></span></span></h2>
       <span class="status" id="prstatus"></span>
     </div>
-    <div class="tiles" id="prtiles"></div>
+    <details id="prdet"><summary class="status" style="display:list-item;cursor:pointer">Pokaż ceny i wykres</summary>
+    <div class="tiles" id="prtiles" style="margin-top:8px"></div>
     <div class="chart"><canvas id="cPrice"></canvas></div>
     <div class="empty" id="prempty" hidden>Brak cen – pobieram z PSE (ceny na jutro po ok. 13:40).</div>
+    </details>
   </section>
 
   <section class="card" id="stcard">
@@ -497,7 +557,9 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span title="Tylko z Pstrykiem. Gdy Tarcza działa (średnia cena energii w miesiącu powyżej limitu), każda kWh z sieci kosztuje tyle samo – plan nie rozładowuje magazynu do domu, ładuje go z PV (tryb „PV do magazynu”) i trzyma energię na sprzedaż w drogich godzinach">Tarcza Pstryk: limit <input class="bp-num" id="st-tz" type="number" min="0" max="5" step="0.01" style="width:70px"> zł/kWh
         <select id="st-tzm" class="fs-btn"><option value="auto">auto (wg średniej w miesiącu)</option><option value="tak">zawsze</option><option value="nie">wyłączona</option></select></span>
       <span title="Z Tarczą: magazyn ładowany (PV albo tanio z sieci) do tego poziomu i trzymany na sprzedaż w drogich godzinach – także poza horyzontem planu (energia w rezerwie wyceniana na 80 % pułapu sprzedaży). Puste / 0 = bez rezerwy">Rezerwa pod sprzedaż (Tarcza) do <input class="bp-num" id="st-rez" type="number" min="0" max="100" step="5" style="width:60px"> %</span>
-      <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. Puste = 7 dni">Sprzedaż tylko energii z PV – z ostatnich <input class="bp-num" id="st-legal" type="number" min="1" max="366" step="1" style="width:56px"> dni</span>
+      <span title="Arbitraż zgodny z prawem: z magazynu do sieci najwyżej tyle, ile instalacja wyprodukowała (PV) w podanym okresie, minus to, co już oddano do sieci; limit rośnie o prognozę PV do końca planu. Puste = 7 dni. Pula PV w magazynie: z magazynu do sieci najwyżej tyle, ile jest w nim teraz energii z PV (pochodzenie energii liczone jak w kafelku SOC), plus ładowanie nadwyżką PV z prognozy – ściślej niż bilans z N dni">Sprzedaż tylko energii z PV –
+        <select id="st-lb" class="fs-btn"><option value="dni">bilans z ostatnich N dni</option><option value="pula">pula PV w magazynie</option></select>
+        <span id="st-legal-w">N = <input class="bp-num" id="st-legal" type="number" min="1" max="366" step="1" style="width:56px"> dni</span></span>
       <label title="Odznaczone (domyślnie) – plan zawsze ogranicza sprzedaż z magazynu limitem z PV. Zaznaczone – sprzedaż bez tego limitu"><input type="checkbox" id="st-illegal"> Niezgodny z prawem arbitraż</label>
       <label title="Zaznaczone – do limitu sprzedaży wlicza się tylko PV już wyprodukowane (bez prognozy na resztę planu). Ostrożniej, gdy prognoza PV bywa za wysoka"><input type="checkbox" id="st-nofc"> Limit z PV bez prognozy</label>
     </div>
@@ -577,10 +639,15 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2 id="daytitle" style="flex:1">Aktualne pomiary <span class="status" id="per-title" style="display:inline"></span></h2>
-      <div class="per-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dziś</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
+      <h2 id="daytitle" style="flex:1">Aktualne pomiary</h2>
+      <div class="per-seg" id="per-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button><button type="button" class="fs-btn" data-p="year">Rok</button></div>
     </div>
+    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="per-prev" title="poprzedni okres">‹</button>
+      <span id="per-title">–</span><button type="button" class="fs-btn" id="per-next" title="następny okres">›</button>
+      <button type="button" class="fs-btn" id="per-now" title="wróć do bieżącego okresu">Teraz</button></div>
     <div class="tiles" id="tiles"></div>
+    <div class="sankey-wrap"><div class="sankey-h">Przepływ energii <span class="status" id="sk-note" style="display:inline"></span></div>
+      <div id="sankey"></div></div>
     <details data-expl style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
       <p class="status" style="display:block;margin:6px 0 0">Podział jak w <a href="https://solar.htw-berlin.de/publikationen/energy-storage-inspection-2026/" target="_blank" rel="noopener">Energy Storage Inspection (HTW Berlin)</a>:
       <b>straty konwersji</b> – przy przetwarzaniu energii PV, magazynu i AC (wejście PV = moc DC stringów);
@@ -614,6 +681,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <h2 id="pstitle">Licznik operatora – Pstryk</h2>
       <span class="status" id="psstatus"></span>
     </div>
+    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="ps-prev" title="poprzedni okres">‹</button><span class="pn-t" id="ps-title">–</span><button type="button" class="fs-btn" id="ps-next" title="następny okres">›</button><button type="button" class="fs-btn" id="ps-now" title="wróć do bieżącego okresu" hidden>Teraz</button></div>
     <div class="tiles" id="pstiles"></div>
     <h3 class="pssub" id="psmtitle"></h3>
     <div class="tiles" id="psmonth"></div>
@@ -643,14 +711,8 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2>Sprawność falownika wg mocy przetwarzanej</h2>
-      <select id="effdays" aria-label="Okres">
-        <option value="1">Wybrany dzień</option>
-        <option value="y">Wczoraj</option>
-        <option value="7">7 dni</option>
-        <option value="30">30 dni</option>
-        <option value="0">Cała historia</option>
-      </select>
+      <h2 style="flex:1">Sprawność falownika wg mocy przetwarzanej</h2>
+      <div class="per-seg" id="eff-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button><button type="button" class="fs-btn" data-p="year">Rok</button><button type="button" class="fs-btn" data-p="all">Całość</button></div>
       <label class="status" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="effhide"> ukryj przedziały z * (&lt; 15 min danych)</label>
       <span class="infowrap"><button class="fs-btn infobtn" type="button" aria-expanded="false" aria-controls="effpop">ⓘ Jak liczone</button>
         <div class="infopop" id="effpop" role="dialog">Moc przetwarzana = PV + rozładowanie magazynu + pobór AC z sieci przez falownik.
@@ -662,6 +724,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       obejmuje straty w ogniwach i w przetwornicy magazynu. <b>Magazyn w czuwaniu</b>: odcinki ≥ 3 h bez ładowania i rozładowania – spadek SOC
       (zasilanie BMS z ogniw / samorozładowanie) i pobór falownika z sieci w tym czasie.<p id="effinfo" style="margin:8px 0 0"></p></div></span>
     </div>
+    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="eff-prev" title="poprzedni okres">‹</button><span class="pn-t" id="eff-title">–</span><button type="button" class="fs-btn" id="eff-next" title="następny okres">›</button><button type="button" class="fs-btn" id="eff-now" title="wróć do bieżącego okresu" hidden>Teraz</button></div>
     <div class="tiles popn pvs3" id="batefftiles"></div>
     <div class="effexpl" style="margin:10px 0 6px">
     <p class="status" style="display:block;margin:6px 0 4px"><b>Sprawność falownika (całość)</b> – wszystkie minuty pracy wg łącznej mocy
@@ -1218,10 +1281,51 @@ const todayStr = () => new Date().toLocaleDateString('sv-SE');
 let current = todayStr();
 
 // ---- live ----
+// 1.30: pasek SOC z 10 segmentow; kolory: z PV (kolor PV), z sieci (kolor sieci), wczesniej / nieznane (szary);
+// pochodzenie z /api/bat_origin (co 60 s), granice SOC (min / maks.) jako kreski
+let boData = null, boTs = 0;
+async function renderSocSeg(soc) {
+  if (Date.now() - boTs > 60000) { boTs = Date.now(); try { boData = await (await fetch('/api/bat_origin')).json(); } catch (e) {} }
+  const B = boData && boData.ok ? boData : null, s = Math.max(0, Math.min(100, soc ?? (B ? B.soc : 0)));
+  const sh = B ? B.pct : { pv: 0, grid: 0, other: 100 };
+  const pvEnd = s * (sh.pv || 0) / 100, grEnd = pvEnd + s * (sh.grid || 0) / 100;
+  const cPv = css('--s-pv'), cGr = css('--s-grid'), cOt = css('--muted') || '#888';
+  let h = '';
+  for (let i = 0; i < 10; i++) {
+    const a = i * 10, fill = Math.max(0, Math.min(10, s - a)) / 10, mid = a + Math.min(10, Math.max(0, s - a)) / 2;
+    const col = mid < pvEnd ? cPv : mid < grEnd ? cGr : cOt;
+    h += `<i>${fill > 0 ? `<b style="width:${(fill * 100).toFixed(0)}%;background:${col}"></b>` : ''}</i>`;
+  }
+  const lim = v => v == null ? '' : `<span class="lim" style="left:calc(${v}% - 1px)" title="granica SOC ${v} %"></span>`;
+  if (B) h += lim(B.soc_min) + (B.soc_max != null && B.soc_max < 100 ? lim(B.soc_max) : '');
+  $('socseg').innerHTML = h;
+  const f = v => (v ?? 0).toFixed(1).replace('.', ',');
+  $('socseg-leg').innerHTML = B ? `<span><em style="background:${cPv}"></em>z PV ${f(B.kwh.pv)} kWh</span>` +
+    `<span><em style="background:${cGr}"></em>z sieci ${f(B.kwh.grid)} kWh</span>` +
+    (B.kwh.other >= 0.05 ? `<span><em style="background:${cOt}"></em>wcześniej ${f(B.kwh.other)} kWh</span>` : '') +
+    `<span title="ładowanie z PV / z sieci liczone z pomiarów z ostatnich ${B.days} dni, rozładowanie zabiera po równo">ⓘ</span>` : '';
+}
+// 1.30: chwilowy podzial jak w Sankeyu (app.py _flows): PV -> dom, magazyn, siec; dom z magazynu, potem z sieci
+function liveBranches(d) {
+  const pv = Math.max(d.pv || 0, 0), load = Math.max(d.load || 0, 0), chg = Math.max(d.bat || 0, 0), dis = Math.max(-(d.bat || 0), 0);
+  const imp = Math.max(d.grid || 0, 0), exp = Math.max(-(d.grid || 0), 0);
+  const pl = Math.min(pv, load), pb = Math.min(pv - pl, chg), pg = Math.min(pv - pl - pb, exp);
+  const bl = Math.min(dis, load - pl), gl = Math.min(imp, load - pl - bl), gb = Math.min(imp - gl, chg - pb), bg = Math.min(dis - bl, exp - pg);
+  const N = { pv: 'PV', load: 'dom', grid: 'sieć', bat: 'magazyn' };
+  [['pv-load', pl], ['pv-grid', pg], ['pv-bat', pb], ['grid-load', gl], ['grid-bat', gb], ['bat-load', bl], ['bat-grid', bg]].forEach(([id, v]) => {
+    const el = $('b-' + id); if (!el) return;
+    setLine('b-' + id, v, true);
+    const [a, b] = id.split('-');
+    el.firstElementChild.textContent = `${N[a]} → ${N[b]}: ${v >= 1 ? v.toFixed(2) + ' kW' : Math.round(v * 1000) + ' W'}`;
+  });
+}
 function setLine(id, value, inward) {
-  const el = $(id), on = Math.abs(value) >= 0.01;
+  const el = $(id), kw = Math.abs(value || 0), on = kw >= 0.01;
   el.classList.toggle('on', on);
   el.classList.toggle('rev', on && !inward);
+  // 1.30: grubosc i predkosc wg mocy - 0,1 kW: cienko i wolno, 5 kW i wiecej: grubo i szybko
+  el.style.strokeWidth = on ? (3 + Math.min(5, kw * 1.1)).toFixed(1) : '';
+  el.style.setProperty('--fd', on ? Math.max(0.35, 1.8 - 0.3 * kw).toFixed(2) + 's' : '1s');
 }
 const hms = t => new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 const ddmm = t => new Date(t * 1000).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
@@ -1277,6 +1381,7 @@ async function refreshLive() {
     $('bat-fill').setAttribute('height', fh.toFixed(1)); $('bat-fill').setAttribute('y', (21 - fh).toFixed(1));
     $('soc').textContent = d.soc.toFixed(1) + ' %';
     $('socbar').style.width = Math.min(100, d.soc) + '%';
+    renderSocSeg(d.soc);
     window.lastSoc = d.soc;
     const sn = document.querySelector('.socg-now'); if (sn) { sn.style.left = Math.max(0, Math.min(100, d.soc)) + '%'; sn.firstChild.textContent = d.soc.toFixed(0) + ' %'; }
     $('k-pv').textContent = kw(d.pv);
@@ -1285,10 +1390,7 @@ async function refreshLive() {
     $('k-grid').textContent = (d.grid > 0 ? 'pobór ' : 'oddawanie ') + kw(Math.abs(d.grid));
     $('k-plant').textContent = kw(d.plant);
     $('k-loss').textContent = d.loss == null ? '–' : kw(d.loss) + (d.loss_mode === 'czuwanie' ? ' (czuwanie)' : '');
-    setLine('l-pv', d.pv, true);
-    setLine('l-load', d.load, false);  // sciezka dom->falownik, wiec rev = do domu
-    setLine('l-bat', d.bat, d.bat < 0);
-    setLine('l-grid', d.grid, d.grid > 0);
+    liveBranches(d);   // 1.30: galezie zrodlo -> odbior zamiast 4 szprych (szprychy zostaja jako tlo)
     showGrid(d);
   } catch (e) {
     $('dot').className = 'dot err';
@@ -1350,16 +1452,93 @@ async function loadDay(date) {
   loadPeriod();
 }
 // 1.26: Aktualne pomiary - kafle i wykres slupkowy za okres: dzis (godziny), tydzien (tygodnie miesiaca), miesiac (miesiace roku)
-let perSel = 'day';
+let perSel = 'day', perDate = '', perNav = null;     // 1.30: perDate = '' -> biezacy okres
 try { perSel = localStorage.getItem('sigen_period') || 'day'; } catch (e) {}
-document.querySelectorAll('.per-seg:not(#pvs-seg) button').forEach(b => {
+document.querySelectorAll('#per-seg button').forEach(b => {
   b.classList.toggle('primary', b.dataset.p === perSel);
   b.onclick = () => { perSel = b.dataset.p; try { localStorage.setItem('sigen_period', perSel); } catch (e) {}
-    document.querySelectorAll('.per-seg:not(#pvs-seg) button').forEach(x => x.classList.toggle('primary', x === b)); loadPeriod(); };
+    document.querySelectorAll('#per-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadPeriod(); };
 });
+$('per-prev').onclick = () => { if (perNav) { perDate = perNav.prev; loadPeriod(); } };
+$('per-next').onclick = () => { if (perNav && perNav.next) { perDate = perNav.next; loadPeriod(); } };
+$('per-now').onclick = () => { perDate = ''; loadPeriod(); };
+// 1.30: wspolny nawigator okresu (‹ tytul › Teraz) dla kart Polacie / Sprawnosc / Pstryk
+function bindPerNav(x, go) {
+  let nav = null;
+  $(x + '-prev').onclick = () => { if (nav && nav.prev) go(nav.prev); };
+  $(x + '-next').onclick = () => { if (nav && nav.next) go(nav.next); };
+  $(x + '-now').onclick = () => go('');
+  return n => { nav = n || null; const el = $(x + '-title').parentElement; el.hidden = !n;
+    if (!n) return;
+    $(x + '-title').textContent = n.title || '–'; $(x + '-prev').disabled = !n.prev;
+    $(x + '-next').disabled = !n.next; $(x + '-now').hidden = !!n.is_current; };
+}
+const dayNav = date => {                      // nawigacja po dniach liczona w przegladarce (Pstryk)
+  const d = new Date(date + 'T12:00'), t = todayStr(), sh = k => { const x = new Date(d); x.setDate(x.getDate() + k); return x.toLocaleDateString('sv-SE'); };
+  const nx = sh(1);
+  return { prev: sh(-1), next: nx <= t ? nx : null, is_current: date === t,
+    title: date === t ? 'dziś' : d.toLocaleDateString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) };
+};
+// 1.30: przeplyw energii (Sankey) - zrodla (PV, magazyn, siec) -> odbiory (dom, magazyn, siec, straty); wlasny SVG
+let skLast = null, skRT = null;
+window.addEventListener('resize', () => { clearTimeout(skRT); skRT = setTimeout(() => { if (skLast) renderSankey(skLast); }, 250); });
+function renderSankey(F) {
+  const box = $('sankey');
+  const kw = v => (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)).replace('.', ',');
+  const S = [{ id: 'pv', n: 'Słońce', c: css('--s-pv') }, { id: 'bat', n: 'Magazyn', c: css('--s-bat') }, { id: 'grid', n: 'Sieć', c: css('--s-grid') }];
+  const T = [{ id: 'load', n: 'Dom', c: css('--s-load') }, { id: 'bat', n: 'Magazyn', c: css('--s-bat') }, { id: 'grid', n: 'Sieć', c: css('--s-grid') },
+    { id: 'loss', n: 'Straty', c: css('--s-loss') || '#e87ba4' }];
+  const L = [['pv', 'load'], ['pv', 'bat'], ['pv', 'grid'], ['bat', 'load'], ['bat', 'grid'], ['grid', 'load'], ['grid', 'bat']]
+    .map(([a, b]) => ({ a, b, v: +(F[a + '_' + b] || 0) })).filter(x => x.v >= 0.005);
+  const lossBy = { pv: 0, bat: 0, grid: 0 };
+  if ((F.loss || 0) >= 0.005) { const tot = S.reduce((x, n) => x + L.filter(l => l.a === n.id).reduce((y, l) => y + l.v, 0), 0) || 1;
+    S.forEach(n => { lossBy[n.id] = F.loss * (L.filter(l => l.a === n.id).reduce((y, l) => y + l.v, 0) / tot); });
+    S.forEach(n => { if (lossBy[n.id] >= 0.005) L.push({ a: n.id, b: 'loss', v: lossBy[n.id] }); }); }
+  const out = id => L.filter(l => l.a === id).reduce((x, l) => x + l.v, 0), inn = id => L.filter(l => l.b === id).reduce((x, l) => x + l.v, 0);
+  const sN = S.filter(n => out(n.id) > 0), tN = T.filter(n => inn(n.id) > 0);
+  const tot = Math.max(sN.reduce((x, n) => x + out(n.id), 0), tN.reduce((x, n) => x + inn(n.id), 0));
+  if (!(tot > 0.01)) { box.innerHTML = '<div class="empty">Brak danych o przepływach w tym okresie.</div>'; return; }
+  // 1.30: bloki wezlow jak w Sigen - szerokie, z nazwa, kWh i % w srodku; laczniki z plynacymi kropkami
+  const W = Math.max(320, Math.round(box.clientWidth || 640)), narrow = W < 560;
+  const NW = Math.round(Math.min(150, Math.max(92, W * 0.22))), GAP = 8, MINH = 54, X0 = 0, X1 = W - NW;
+  const H = narrow ? 380 : 420;
+  const tot2 = Math.max(sN.length, tN.length);
+  const k = (H - GAP * (tot2 - 1) - MINH * tot2 * 0.25) / tot;
+  const place = (arr, val) => { let y = 0; return arr.map(n => { const h = Math.max(1, val(n.id) * k), bh = Math.max(h, MINH), r = { ...n, y, h, bh };
+    y += bh + GAP; return r; }); };
+  const sP = place(sN, out), tP = place(tN, inn);
+  const sOff = {}, tOff = {}; sP.forEach(n => sOff[n.id] = n.y + (n.bh - n.h) / 2); tP.forEach(n => tOff[n.id] = n.y + (n.bh - n.h) / 2);
+  const order = [...L].sort((p, q) => sP.findIndex(n => n.id === p.a) - sP.findIndex(n => n.id === q.a) || tP.findIndex(n => n.id === p.b) - tP.findIndex(n => n.id === q.b));
+  const pct = (v, all) => all > 0 ? (100 * v / all).toFixed(v / all < 0.1 ? 1 : 0).replace('.', ',') + ' %' : '';
+  const srcTot = sN.reduce((x, n) => x + out(n.id), 0);
+  let g = '', anim = '';
+  order.forEach(l => {
+    const sn = sP.find(n => n.id === l.a), tn = tP.find(n => n.id === l.b), h = Math.max(1, l.v * k);
+    const y0 = sOff[l.a] + h / 2, y1 = tOff[l.b] + h / 2; sOff[l.a] += h; tOff[l.b] += h;
+    const xa = X0 + NW, xb = X1, xm = (xa + xb) / 2, d = `M${xa},${y0} C${xm},${y0} ${xm},${y1} ${xb},${y1}`;
+    g += `<path class="sk-link" d="${d}" stroke="${sn.c}" stroke-width="${h}"><title>${sn.n} → ${tn.n}: ${kw(l.v)} kWh (${pct(l.v, srcTot)})</title></path>`;
+    if (h >= 1.5) anim += `<path class="sk-anim" d="${d}" stroke-width="${Math.min(Math.max(h * 0.5, 2), 4).toFixed(1)}" style="animation-duration:${(0.9 + 1.2 * Math.random()).toFixed(2)}s"/>`;
+  });
+  const node = (n, x, val) => {
+    const cx = x + NW / 2, my = n.y + n.bh / 2, tall = n.bh >= 78;
+    return `<rect x="${x}" y="${n.y}" width="${NW}" height="${n.bh}" rx="8" fill="${n.c}"><title>${n.n}: ${kw(val)} kWh</title></rect>` +
+      `<text class="sk-n" x="${cx}" y="${tall ? my - 16 : my - 7}" text-anchor="middle">${n.n.toUpperCase()}</text>` +
+      `<text class="sk-v" x="${cx}" y="${tall ? my + 6 : my + 12}" text-anchor="middle">${kw(val)}<tspan class="sk-u"> kWh</tspan></text>` +
+      (tall ? `<text class="sk-p" x="${cx}" y="${my + 24}" text-anchor="middle">${pct(val, srcTot)}</text>` : '');
+  };
+  g += anim + sP.map(n => node(n, X0, out(n.id))).join('') + tP.map(n => node(n, X1, inn(n.id))).join('');
+  const hh = Math.max(...[...sP, ...tP].map(n => n.y + n.bh));
+  skLast = F;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${hh}" style="width:100%;height:auto;display:block" role="img" aria-label="Przepływ energii">${g}</svg>`;
+}
 async function loadPeriod() {
-  let d; try { d = await (await fetch('/api/period?okres=' + perSel)).json(); } catch (e) { return; }
-  $('per-title').textContent = '· ' + d.title;
+  let d; try { d = await (await fetch('/api/period?okres=' + perSel + (perDate ? '&date=' + perDate : ''))).json(); } catch (e) { return; }
+  perNav = d;
+  $('per-title').textContent = d.title;
+  $('per-next').disabled = !d.next; $('per-now').hidden = !!d.is_current;
+  const F = d.energy.flows || {};
+  renderSankey(F);
+  $('sk-note').textContent = '· z pomiarów co 5 s' + (F.loss >= 0.05 ? ' · straty = różnica wejść i wyjść falownika' : '');
   const e = d.energy;
   $('tiles').innerHTML =
     tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
@@ -1372,7 +1551,7 @@ async function loadPeriod() {
   popTiles($('tiles'));
   const B = d.buckets || [];
   $('empty').hidden = B.length > 0;
-  $('per-note').textContent = (d.partial ? 'Historia miesięcy jest jeszcze przeliczana w tle – odśwież za kilka minut. ' : '') +
+  $('per-note').textContent = (d.partial ? 'Część dni jest jeszcze przeliczana w tle – odśwież za kilka minut. ' : '') +
     'Autokonsumpcja i samowystarczalność bez arbitrażu (sprzedaż z magazynu i ładowanie z sieci nie zaniżają wyniku).';
   const labels = B.map(b => b.label);
   const bar = (label, k, color, axis) => ({ label, data: B.map(b => b[k]), backgroundColor: color, borderColor: color, type: 'bar', yAxisID: axis,
@@ -1388,7 +1567,7 @@ async function loadPeriod() {
   } else {
     cPower.data = { labels, datasets: sets }; cPower.update();
   }
-  if (perSel !== 'day') { $('tbody').innerHTML = '<tr><td colspan="7" class="empty">Tabela godzinowa – tylko „Dziś”.</td></tr>'; return; }
+  if (perSel !== 'day') { $('tbody').innerHTML = '<tr><td colspan="7" class="empty">Tabela godzinowa – tylko dla „Dzień”.</td></tr>'; return; }
   const s = d.series || [];
 
   // tabela godzinowa
@@ -1615,19 +1794,23 @@ async function loadForecast() {
 
 // ---- realna produkcja polaci ----
 // 1.133: polacie - same kafle (bez wykresu mocy), okres Dzis / Tydzien / Miesiac
-let pvsSel = 'day';
+let pvsSel = 'day', pvsDate = '';
+const pvsNav = bindPerNav('pvs', v => { pvsDate = v; loadPvStrings(); });
 try { pvsSel = localStorage.getItem('sigen_pvs_period') || 'day'; } catch (e) {}
+if (!['day', 'week', 'month'].includes(pvsSel)) pvsSel = 'day';
 document.querySelectorAll('#pvs-seg button').forEach(b => {
   b.classList.toggle('primary', b.dataset.p === pvsSel);
   b.onclick = () => { pvsSel = b.dataset.p; try { localStorage.setItem('sigen_pvs_period', pvsSel); } catch (e) {}
-    document.querySelectorAll('#pvs-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadPvStrings(); };
+    pvsDate = ''; document.querySelectorAll('#pvs-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadPvStrings(); };
 });
 async function loadPvStrings() {
   let d;
-  try { d = await (await fetch('/api/pv_strings?okres=' + pvsSel)).json(); } catch (e) { return; }
-  const per = { day: 'dziś', week: 'tydzień', month: 'miesiąc' }[d.okres || 'day'];
+  try { d = await (await fetch('/api/pv_strings?okres=' + pvsSel + (pvsDate ? '&date=' + pvsDate : ''))).json(); } catch (e) { return; }
+  pvsNav(d.prev ? d : null);
+  const cur = d.is_current !== false, per = cur ? { day: 'dziś', week: 'tydzień', month: 'miesiąc' }[d.okres || 'day'] : (d.title || '');
   let nowP = null, nowT = null;
-  if ((d.okres || 'day') === 'day') { const last = d.points[d.points.length - 1]; if (last) { nowP = last; nowT = last.t; } }
+  if (!cur) {}
+  else if ((d.okres || 'day') === 'day') { const last = d.points[d.points.length - 1]; if (last) { nowP = last; nowT = last.t; } }
   else { nowP = d.now; nowT = d.now_t; }
   const any = d.names.some(n => (d.kwh[n] || 0) > 0.005);
   $('pvsempty').hidden = any;
@@ -1724,8 +1907,11 @@ async function loadCmp(force) {
         `<td>${z(m.night.deposit_left)} zł</td>` : '<td colspan="3">brak cen energii taryfowej</td>') + '</tr>';
   }).join('');
 }
+let psDate = '';                                // 1.30: wlasny dzien karty Pstryk ('' = dzien z gornego wyboru)
+const psNav = bindPerNav('ps', v => { psDate = v; loadPstryk(current); });
 async function loadPstryk(date) {
   loadCmp();
+  date = psDate || date; psNav(dayNav(date));
   let d;
   try { d = await (await fetch('/api/pstryk?date=' + date)).json(); } catch (e) { return; }
   $('pscard').hidden = !d.enabled;
@@ -1778,13 +1964,14 @@ let cSt;
   try { $(id).checked = localStorage.getItem(k) === '1'; } catch (e) {}
   $(id).onchange = () => { try { localStorage.setItem(k, $(id).checked ? '1' : '0'); } catch (e) {} loadStrategy(); };
 });
+$('st-lb').onchange = () => { $('st-legal-w').hidden = $('st-lb').value === 'pula'; };
 $('st-save').onclick = async () => {
   let r;
   try {
     r = await (await fetch('/api/strategy/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ price_mode: $('st-pm').value, auto_margin: $('st-mg').value, load_profile: $('st-prof').value, sell_floor: $('st-floor').value, buy_cap: $('st-cap').value, p_charge: $('st-pc').value,
         p_discharge: $('st-pd').value, standby_below_w: $('st-sb').value, tarcza: $('st-tz').value, tarcza_mode: $('st-tzm').value,
-        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value, illegal_arb: $('st-illegal').checked, legal_no_fc: $('st-nofc').checked }) })).json();
+        tarcza_rezerwa: $('st-rez').value, legal_days: $('st-legal').value, legal_basis: $('st-lb').value, illegal_arb: $('st-illegal').checked, legal_no_fc: $('st-nofc').checked }) })).json();
   } catch (e) { r = { ok: false, error: String(e) }; }
   $('st-msg').style.color = r.ok ? 'var(--text-2)' : 'var(--eff-bad)';
   $('st-msg').textContent = r.ok ? 'zapisano – przeliczam' : (r.error || 'błąd');
@@ -1860,9 +2047,40 @@ function renderStNow(c) {
   $('stnow-src').textContent = c.manual ? 'ręcznie' : c.tryb === 'wl' ? (c.src || '') : c.tryb === 'probny' ? 'próbnie – bez zapisu' : 'symulacja – sterowanie wyłączone';
   $('stnow-why').textContent = ds ? (ds.why || '') + (c.applied ? '' : ' · wysyłam…') : (c.reason || '');
   const x = lastStrat?.next && lastStrat.next.ts > Date.now() / 1000 ? lastStrat.next : null;
+  renderCurMode(c, mode, cls);
   $('stnow-next').textContent = c.manual ? (c.manual.do ? 'ręczne do ' + new Date(c.manual.do * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : 'ręczne do anulowania')
     : x ? `Następnie ${x.day !== 'dziś' ? x.day + ' ' : ''}${x.t}: ${x.label}` : 'bez zmian do końca planu';
 }
+// 1.30: C4 - „Obecny tryb”: kto steruje falownikiem i co robi + czas do najblizszej zmiany (plan / koniec recznego / pauzy)
+let cmLast = null;
+function renderCurMode(c, mode, cls) {
+  const box = $('curmode'); if (!box) return;
+  cmLast = [c, mode, cls];
+  const now = Date.now() / 1000, hm = ts => new Date(ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  const left = ts => { const s = Math.max(0, ts - now); return s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`; };
+  const paused = c.pause_until && c.pause_until > now;
+  const remote = (c.manual || (c.tryb === 'wl' && !paused)) && c.desired;
+  const x = lastStrat?.next && lastStrat.next.ts > now ? lastStrat.next : null;
+  let m = mode, src, next = '', k = cls.replace('m-stby', '');
+  if (c.manual) {
+    src = 'ręcznie · Zdalny tryb EMS'; k = 'm-man';
+    next = c.manual.do ? `koniec za ${left(c.manual.do)} (${hm(c.manual.do)}) → strategia` : 'do anulowania';
+  } else if (paused) {
+    m = 'Tryb falownika'; src = 'pauza strategii – steruje falownik (mySigen)'; k = '';
+    next = `wznowienie za ${left(c.pause_until)} (${hm(c.pause_until)})`;
+  } else if (remote) {
+    src = 'Zdalny tryb EMS · wg strategii' + (c.applied ? '' : ' · wysyłam…');
+    if (x) next = `zmiana za ${left(x.ts)} → ${x.label}`;
+  } else {
+    m = c.owned ? 'Oddaję sterowanie…' : 'Tryb falownika'; k = '';
+    src = c.tryb === 'probny' ? 'steruje falownik (mySigen) · strategia próbnie, bez zapisu' : 'steruje falownik (mySigen) · strategia tylko symulacją';
+    if (x) next = `plan: ${mode.toLowerCase()} · zmiana za ${left(x.ts)} → ${x.label}`;
+  }
+  if (c.mismatch?.alert || c.error) { k = 'm-warn'; src += c.error ? ' · błąd zapisu' : ' · falownik robi co innego!'; }
+  box.className = 'curmode ' + k;
+  $('cm-mode').textContent = m; $('cm-src').textContent = src; $('cm-next').textContent = next;
+}
+setInterval(() => { if (cmLast) renderCurMode(...cmLast); }, 30000);
 async function loadCtl() {
   let c;
   try { c = await (await fetch('/api/inverter/ctl')).json(); } catch (e) { return; }
@@ -1972,9 +2190,12 @@ async function loadStrategy() {
       const by = bat == null ? '' : bat < 0.5 ? 'magazyn pusty' : lim < bat ? 'ogranicza limit z PV' : 'ogranicza stan magazynu';
       const cls = bat != null && bat < 0.5 ? '' : lim < 0.5 || (bat != null && lim < bat) ? 'c-amber' : 'c-green';
       return ctile(cls, 'Do sprzedaży teraz', f1(now), 'kWh',
-        `${by ? by + ' · ' : ''}limit z PV: ${f1(lim)} kWh (produkcja ${f1(P.legal.pv)} − oddane ${f1(P.legal.exp)} kWh, ostatnie ${P.legal.days} dni)` +
+        `${by ? by + ' · ' : ''}limit z PV: ${f1(lim)} kWh ` + (P.legal.basis === 'pula'
+          ? `(pula PV w magazynie ${f1(P.legal.pool_pv)} kWh z ${f1(P.legal.stored)} kWh, po stratach rozładowania; reszta: z sieci ${f1(P.legal.pool_grid)}, nieznane ${f1(P.legal.pool_other)} kWh)`
+          : `(produkcja ${f1(P.legal.pv)} − oddane ${f1(P.legal.exp)} kWh, ostatnie ${P.legal.days} dni)`) +
         (bat != null ? ` · w magazynie do oddania: ${f1(bat)} kWh (SOC ${P.soc_now} %, min. ${P.soc_min} %, z uwzględnieniem strat)` : '') +
         (P.legal_no_fc ? ` · plan liczy oba ograniczenia godzina po godzinie: limit tylko z PV już wyprodukowanego (bez prognozy), magazyn rośnie o ładowanie`
+          : P.legal.basis === 'pula' ? ` · plan liczy oba ograniczenia godzina po godzinie: pula rośnie o ładowanie nadwyżką PV z prognozy, maleje o sprzedaż i proporcjonalnie o rozładowanie na dom`
           : ` · plan liczy oba ograniczenia godzina po godzinie: limit rośnie o prognozę PV, magazyn o ładowanie`) +
         (P.legal.capped_hours ? ` · sprzedaż przycięta limitem w ${P.legal.capped_hours} godz.${P.legal.cut_kwh ? ` (przekroczony arbitraż o ${f1(P.legal.cut_kwh)} kWh – żółte słupki na wykresie)` : ''}` : ''));
     })() : P.illegal_arb ? ctile('c-red', 'Limit z PV', 'wyłączony', '', 'zaznaczony „Niezgodny z prawem arbitraż” – plan sprzedaje z magazynu bez limitu z produkcji PV') : '') +
@@ -2004,6 +2225,8 @@ async function loadStrategy() {
   if (ae !== 'st-tzm') $('st-tzm').value = TZ.mode || 'auto';
   if (ae !== 'st-rez') $('st-rez').value = P.tarcza_rezerwa ?? '';
   if (ae !== 'st-legal') $('st-legal').value = P.legal_days ?? '';
+  if (ae !== 'st-lb') $('st-lb').value = P.legal_basis || 'dni';
+  $('st-legal-w').hidden = (P.legal_basis || 'dni') === 'pula';
   if (ae !== 'st-illegal') $('st-illegal').checked = !!P.illegal_arb;
   if (ae !== 'st-nofc') $('st-nofc').checked = !!P.legal_no_fc;
   if (ae !== 'st-pm') $('st-pm').value = P.price_mode || 'progi';
@@ -2114,6 +2337,10 @@ async function loadStrategy() {
 
 // ---- ceny energii ----
 let cPrice;
+// 1.30: karta cen domyslnie zwinieta; stan zapamietany w przegladarce
+try { $('prdet').open = localStorage.getItem('sigen_prices_open') === '1'; } catch (e) {}
+$('prdet').addEventListener('toggle', () => { try { localStorage.setItem('sigen_prices_open', $('prdet').open ? '1' : '0'); } catch (e) {}
+  if ($('prdet').open && cPrice) setTimeout(() => cPrice.resize(), 50); });
 const zl = v => v == null ? null : v.toFixed(3);
 async function loadPrices() {
   let d;
@@ -2167,12 +2394,20 @@ async function loadPrices() {
 }
 
 // ---- sprawnosc wg mocy ----
+let effSel = 'day', effDate = '';              // 1.30: okres jak w Aktualnych pomiarach + cala historia
+try { effSel = localStorage.getItem('sigen_eff_period') || 'day'; } catch (e) {}
+const effNav = bindPerNav('eff', v => { effDate = v; loadEff(); });
+document.querySelectorAll('#eff-seg button').forEach(b => {
+  b.classList.toggle('primary', b.dataset.p === effSel);
+  b.onclick = () => { effSel = b.dataset.p; effDate = ''; try { localStorage.setItem('sigen_eff_period', effSel); } catch (e) {}
+    document.querySelectorAll('#eff-seg button').forEach(x => x.classList.toggle('primary', x === b)); loadEff(); };
+});
 async function loadEff() {
-  const sel = $('effdays').value;
-  let date = current, days = sel;
-  if (sel === 'y') { const y = new Date(); y.setDate(y.getDate() - 1); date = y.toLocaleDateString('sv-SE'); days = 1; }
-  const d = await (await fetch(`/api/efficiency?date=${date}&days=${days}`)).json();
-  loadBatEff(sel === '1' || sel === 'y' ? 1 : sel === '0' ? 90 : +sel);
+  let d;
+  try { d = await (await fetch(`/api/efficiency?okres=${effSel}` + (effDate ? '&date=' + effDate : ''))).json(); } catch (e) { return; }
+  const N = d.nav || {};
+  effNav(effSel === 'all' ? null : N);
+  loadBatEff(effSel === 'all' ? 90 : Math.max(1, Math.min(90, N.days || 1)));
   $('effinfo').textContent = `Dni z danymi w zestawieniu: ${d.n_days}. Dane dzienne zapisywane w bazie (tabela efficiency_daily), dzisiejszy dzień liczony na bieżąco.`;
   const range = b => b.do == null ? `≥ ${b.od} kW` : `${b.od}–${b.do} kW`;
   const hide = $('effhide').checked, bins = hide ? d.bins.filter(b => !b.mala_probka) : d.bins;
@@ -2217,7 +2452,6 @@ async function loadBatEff(days) {
     ctile('c-blue', 'Czuwanie – pobór z sieci', I.grid_w, 'W', I.hours ? 'pobór falownika z AC w tych samych odcinkach (zużycie własne systemu)' : '');
   popTiles($('batefftiles'));
 }
-$('effdays').onchange = loadEff;
 document.querySelectorAll('.infobtn').forEach(b => b.onclick = e => {
   const w = b.parentElement, o = !w.classList.contains('open');
   document.querySelectorAll('.infowrap.open').forEach(x => x.classList.remove('open'));

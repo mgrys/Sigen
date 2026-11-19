@@ -36,7 +36,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.29.1"
+__version__ = "1.30.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -356,10 +356,29 @@ def merge_energy(e, ce):
 
 
 # --- energia z mocy ------------------------------------------------------
+FLOW_KEYS = ("f_pv_load", "f_pv_bat", "f_pv_grid", "f_bat_load", "f_bat_grid", "f_grid_load", "f_grid_bat", "f_loss")
+
+
+def _flows(pv, bat, grid, load):
+    pv, load = max(pv or 0, 0), max(load or 0, 0)
+    chg, dis = max(bat or 0, 0), max(-(bat or 0), 0)
+    imp, exp = max(grid or 0, 0), max(-(grid or 0), 0)
+    pl = min(pv, load)
+    pb = min(pv - pl, chg)
+    pg = min(pv - pl - pb, exp)
+    bl = min(dis, load - pl)
+    gl = min(imp, load - pl - bl)
+    gb = min(imp - gl, chg - pb)
+    bg = min(dis - bl, exp - pg)
+    loss = max(0.0, (pv - pl - pb - pg) + (dis - bl - bg) + (imp - gl - gb))
+    return {"f_pv_load": pl, "f_pv_bat": pb, "f_pv_grid": pg, "f_bat_load": bl, "f_bat_grid": bg,
+            "f_grid_load": gl, "f_grid_bat": gb, "f_loss": loss}
+
+
 def energy(rows):
     """Calkowanie mocy (kW) po czasie -> kWh, z rozbiciem na kierunki."""
     e = dict(pv=0.0, load=0.0, imp=0.0, exp=0.0, chg=0.0, dis=0.0,
-             loss=0.0, e_in=0.0, e_out=0.0, exp_pv=0.0, imp_home=0.0)
+             loss=0.0, e_in=0.0, e_out=0.0, exp_pv=0.0, imp_home=0.0, **{k: 0.0 for k in FLOW_KEYS})
     hours = 0.0
     for (t1, _soc, pv, bat, grid, pl, load), (t2, *_) in zip(rows, rows[1:]):
         dt_s = t2 - t1
@@ -370,12 +389,14 @@ def energy(rows):
         e["load"] += max(load, 0) * h
         e["imp"] += max(grid, 0) * h
         e["exp"] += max(-grid, 0) * h
-        # 1.24: do sieci z PV = oddanie, ale nie wiecej niz nadwyzka PV ponad dom (reszta to sprzedaz z magazynu);
+        # 1.117: do sieci z PV = oddanie, ale nie wiecej niz nadwyzka PV ponad dom (reszta to sprzedaz z magazynu);
         # dom z sieci = pobor, ale nie wiecej niz biezace zuzycie domu (reszta to ladowanie magazynu z sieci)
         e["exp_pv"] += min(max(-grid, 0), max(pv - max(load, 0), 0)) * h
         e["imp_home"] += min(max(grid, 0), max(load, 0)) * h
         e["chg"] += max(bat, 0) * h
         e["dis"] += max(-bat, 0) * h
+        for k, v in _flows(pv, bat, grid, load).items():
+            e[k] += v * h
         e["loss"] += (pv - bat - pl) * h
         e["e_in"] += (max(pv, 0) + max(-bat, 0) + max(-pl, 0)) * h
         e["e_out"] += (max(bat, 0) + max(pl, 0)) * h
@@ -383,7 +404,7 @@ def energy(rows):
     e = {k: round(v, 2) for k, v in e.items()}
     e["sprawnosc"] = round(100 * e["e_out"] / e["e_in"], 1) if e["e_in"] > 0.05 else None
     e["strata_sr_w"] = round(1000 * e["loss"] / hours) if hours > 0.1 else None
-    # 1.24: przy arbitrazu (sprzedaz z magazynu, ladowanie z sieci) zwykle wzory dawaly np. -384 % - liczone bez arbitrazu:
+    # 1.117: przy arbitrazu (sprzedaz z magazynu, ladowanie z sieci) zwykle wzory dawaly np. -384 % - liczone bez arbitrazu:
     # autokonsumpcja = PV zuzyte na miejscu (dom + magazyn) / PV, samowystarczalnosc = dom bez pradu z sieci / zuzycie domu
     e["autokonsumpcja"] = round(100 * max(0.0, e["pv"] - e["exp_pv"]) / e["pv"], 1) if e["pv"] > 0.05 else None
     e["samowystarczalnosc"] = round(100 * max(0.0, e["load"] - e["imp_home"]) / e["load"], 1) if e["load"] > 0.05 else None
@@ -796,13 +817,12 @@ def api_forecast():
 @app.get("/api/pv_strings")
 def api_pv_strings(date: str | None = None, okres: str = "day"):
     """Rzeczywista moc kazdej polaci (U x I) w ciagu dnia + energia dzienna.
-    1.27: okres = week (biezacy tydzien pn-dzis) / month (biezacy miesiac) - sama energia polaci za okres, bez punktow."""
-    d = dt.date.fromisoformat(date) if date else dt.date.today()
-    start, end = day_range(d)
-    d0 = d
-    if okres in ("week", "month"):
-        d0 = d - dt.timedelta(days=d.weekday()) if okres == "week" else d.replace(day=1)
-        start = day_range(d0)[0]
+    1.27: okres = week / month - sama energia polaci za okres, bez punktow; 1.30: date wybiera okres (‹ data ›)."""
+    if okres == "year":                      # 1.30: rok - za duzo probek stringow, polacie najwyzej za miesiac
+        okres = "month"
+    okres, d, d0, d1, title, nav = period_range(okres, date or "")
+    start = day_range(d0)[0]
+    end = day_range(min(d1, dt.date.today()))[1]
     con = db_connect()
     try:
         rows = db.load_pv_strings(con, start, end)
@@ -824,12 +844,12 @@ def api_pv_strings(date: str | None = None, okres: str = "day"):
                         **{n: round(v, 3) for n, v in zip(names, p)}})
     total = sum(kwh.values())
     if okres in ("week", "month"):
-        return {"date": d.isoformat(), "okres": okres, "from": d0.isoformat(), "names": names, "points": [],
+        return {**nav, "title": title, "date": d.isoformat(), "okres": okres, "from": d0.isoformat(), "names": names, "points": [],
                 "now": {n: round(v, 3) for n, v in zip(names, prev[1])} if prev else None,
                 "now_t": dt.datetime.fromtimestamp(prev[0]).strftime("%H:%M") if prev else None,
                 "kwh": {n: round(v, 2) for n, v in kwh.items()},
                 "share": {n: round(100 * v / total, 1) if total > 0.01 else None for n, v in kwh.items()}}
-    return {"date": d.isoformat(), "okres": "day", "names": names, "points": pts,
+    return {**nav, "title": title, "date": d.isoformat(), "okres": "day", "names": names, "points": pts,
             "sun": forecast.sun_times(d), "margin_min": CHART_SUN_MARGIN,
             "kwh": {n: round(v, 2) for n, v in kwh.items()},
             "share": {n: round(100 * v / total, 1) if total > 0.01 else None for n, v in kwh.items()}}
@@ -868,7 +888,7 @@ def day(date: str | None = None):
 
 # --- 1.26: Aktualne pomiary - Dzis / Tydzien / Miesiac (kafle za okres + wykres slupkowy) ----------------------------------
 PERIOD_CACHE = config.DATA_DIR / "period_daily.json"     # podsumowania zamknietych dni (liczniki, autokonsumpcja bez arbitrazu, straty)
-PERIOD_VER = 1
+PERIOD_VER = 2                                # 1.30: + przeplywy (Sankey)
 _period = {"data": None, "lock": threading.Lock()}
 PSUM_KEYS = ("pv", "load", "imp", "exp", "chg", "dis", "pv_s", "load_s", "exp_pv", "imp_home", "e_in", "e_out",
              "konwersja", "czuwanie", "h_czuwanie", "regulacja_pobor", "regulacja_oddanie")
@@ -891,6 +911,8 @@ def _period_day(con, d):
     for k in ("konwersja", "czuwanie", "h_czuwanie", "regulacja_pobor", "regulacja_oddanie"):
         out[k] = round(float(split.get(k) or 0), 3)
     out["src"] = e.get("src")
+    for k in FLOW_KEYS:
+        out[k] = round(float(en.get(k) or 0), 3)
     return out
 
 
@@ -947,6 +969,7 @@ def _period_sum(days):
     src = [x.get("src") or {} for x in days]
     e["src"] = {k: ("falownik" if src and all(s.get(k) == "falownik" for s in src) else "obliczone") for k in ENERGY_KEYS}
     e["days"] = len(days)
+    e["flows"] = {k[2:]: round(sum(float(x.get(k) or 0) for x in days), 2) for k in FLOW_KEYS}
     return e
 
 
@@ -955,55 +978,138 @@ def _bucket(label, e):
             "samowystarczalnosc": e["samowystarczalnosc"]}
 
 
-@app.get("/api/period")
-def api_period(okres: str = "day"):
-    """1.26: kafle za okres (day = dzis, week = biezacy tydzien pn-dzis, month = biezacy miesiac) i slupki wykresu:
-    day - godziny dzis, week - kolejne tygodnie biezacego miesiaca, month - kolejne miesiace biezacego roku."""
-    today = dt.date.today()
-    if okres == "week":
-        w0 = today - dt.timedelta(days=today.weekday())
-        m0 = today.replace(day=1)
-        days = _period_days(min(w0, m0), today)
-        e = _period_sum([v for k, v in days.items() if k >= w0.isoformat()])
-        buckets, a = [], m0
-        while a <= today:
-            b = min(a + dt.timedelta(days=6 - a.weekday()), today)
-            sel = [v for k, v in days.items() if a.isoformat() <= k <= b.isoformat()]
-            if sel:
-                buckets.append(_bucket(f"{a.day}–{b.day}.{b.month:02d}" if a != b else f"{a.day}.{a.month:02d}", _period_sum(sel)))
-            a = b + dt.timedelta(days=1)
-        return {"range": "week", "title": f"tydzień {w0.day}.{w0.month:02d}–{today.day}.{today.month:02d}", "energy": e, "buckets": buckets}
-    if okres == "month":
-        y0 = today.replace(month=1, day=1)
-        days = _period_days(y0, today)
-        m0 = today.replace(day=1)
-        e = _period_sum([v for k, v in days.items() if k >= m0.isoformat()])
-        buckets = []
-        for m in range(1, today.month + 1):
-            pre = f"{today.year}-{m:02d}"
-            sel = [v for k, v in days.items() if k.startswith(pre)]
-            if sel:
-                buckets.append(_bucket(MONTHS_SHORT[m - 1], _period_sum(sel)))
-        missing = sum(1 for k, v in _period_cache().items() if k[:4] == str(today.year) and v == {})
-        return {"range": "month", "title": f"{MONTHS[today.month - 1]} {today.year}", "energy": e, "buckets": buckets,
-                "partial": len(days) < (today - y0).days + 1 - missing}
-    # dzis: kafle jak dotad (/api/day) + slupki godzinowe z probek
-    d = day(today.isoformat())
-    start, end = day_range(today)
+# --- 1.30: pochodzenie energii w magazynie (z PV / z sieci) - pasek SOC jak w Sigen ---------------------------------------
+# Pule kWh od 7 dni wstecz: ladowanie dopisywane do puli zrodla (podzial _flows: najpierw PV, ponad PV - z sieci),
+# rozladowanie zabiera proporcjonalnie ze wszystkich pul; na start (nieznane pochodzenie) cala zawartosc w puli "inne".
+# Na koniec przeskalowane do biezacej zawartosci (SOC x pojemnosc) - straty i dokladnosc SOC.
+BO_DAYS = 7
+_bo_cache = {"ts": 0, "data": None}
+
+
+@app.get("/api/bat_origin")
+def api_bat_origin():
+    now = time.time()
+    if _bo_cache["data"] and now - _bo_cache["ts"] < 60:
+        return _bo_cache["data"]
+    with lock:
+        soc = latest.get("soc")
+        regs = dict(registers_state["values"])
+        sv = dict(settings_state["values"])
+    cap = STRAT["cap_kwh"] or regs.get("cap_ess") or regs.get("cap_bat")
+    if not cap or soc is None:
+        return {"ok": False, "error": "brak SOC / pojemności"}
+    cap = float(cap)
     con = db_connect()
     try:
-        rows = day_rows(con, start, end)
+        rows = day_rows(con, int(now) - BO_DAYS * 86400, int(now) + 60)
     finally:
         con.close()
-    by = {}
-    for r in rows:
-        by.setdefault(time.localtime(r[0]).tm_hour, []).append(r)
+    pools = {"pv": 0.0, "grid": 0.0, "other": 0.0}
+    if rows:
+        pools["other"] = max(0.0, float(rows[0][1] or 0) / 100 * cap)
+    for (t1, _soc, pv, bat, grid, _pl, load), (t2, *_r) in zip(rows, rows[1:]):
+        dt_s = t2 - t1
+        if dt_s <= 0 or dt_s > MAX_GAP:
+            continue
+        h = dt_s / 3600
+        f = _flows(pv, bat, grid, load)
+        pools["pv"] += f["f_pv_bat"] * h
+        pools["grid"] += f["f_grid_bat"] * h
+        dis = max(-(bat or 0), 0) * h
+        tot = sum(pools.values())
+        if dis > 0 and tot > 0:
+            k = max(0.0, 1 - dis / tot)
+            for key in pools:
+                pools[key] *= k
+    stored = float(soc) / 100 * cap
+    tot = sum(pools.values())
+    if tot > 0:
+        pools = {k: v * stored / tot for k, v in pools.items()}
+    else:
+        pools = {"pv": 0.0, "grid": 0.0, "other": stored}
+    data = {"ok": True, "soc": soc, "cap_kwh": round(cap, 2), "stored_kwh": round(stored, 2),
+            "kwh": {k: round(v, 2) for k, v in pools.items()},
+            "pct": {k: (round(100 * v / stored, 1) if stored > 0 else 0) for k, v in pools.items()},
+            "soc_min": sv.get("soc_discharge_cut"), "soc_max": sv.get("soc_charge_cut"), "days": BO_DAYS}
+    _bo_cache.update(ts=now, data=data)
+    return data
+
+
+def period_range(okres, date=""):
+    """1.30: wspolny wybor okresu (Dzien / Tydzien / Miesiac / Rok + ‹ data ›) - (okres, d, poczatek, koniec, tytul, nav)."""
+    today = dt.date.today()
+    try:
+        d = min(dt.date.fromisoformat(date), today) if date else today
+    except ValueError:
+        d = today
+    if okres == "week":
+        a = d - dt.timedelta(days=d.weekday())
+        b = a + dt.timedelta(days=6)
+        prev, nxt = a - dt.timedelta(days=7), b + dt.timedelta(days=1)
+        title = f"{a.day}.{a.month:02d}–{b.day}.{b.month:02d}.{b.year}" + (" (bieżący)" if a <= today <= b else "")
+    elif okres == "month":
+        a = d.replace(day=1)
+        b = (a + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
+        prev, nxt = (a - dt.timedelta(days=1)).replace(day=1), b + dt.timedelta(days=1)
+        title = f"{MONTHS[a.month - 1]} {a.year}"
+    elif okres == "year":
+        a, b = d.replace(month=1, day=1), d.replace(month=12, day=31)
+        prev, nxt = a.replace(year=a.year - 1), b + dt.timedelta(days=1)
+        title = str(a.year)
+    else:
+        okres, a, b = "day", d, d
+        prev, nxt = d - dt.timedelta(days=1), d + dt.timedelta(days=1)
+        title = "dziś" if d == today else f"{WEEKDAYS_SHORT[d.weekday()]} {d.day}.{d.month:02d}.{d.year}"
+    nav = {"date": a.isoformat(), "prev": prev.isoformat(), "next": nxt.isoformat() if nxt <= today else None,
+           "is_current": a <= today <= b}
+    return okres, d, a, b, title, nav
+
+
+@app.get("/api/period")
+def api_period(okres: str = "day", date: str = ""):
+    """1.30: kafle, slupki i przeplyw energii (Sankey) za okres zawierajacy `date` (puste = dzis):
+    day - godziny doby, week - dni tygodnia pn-nd, month - dni miesiaca, year - miesiace roku; prev / next - sasiedni okres."""
+    okres, d, a, b, title, nav = period_range(okres, date)
+    today = dt.date.today()
+    if okres == "day":
+        dd = day(d.isoformat())
+        start, end = day_range(d)
+        con = db_connect()
+        try:
+            rows = day_rows(con, start, end)
+        finally:
+            con.close()
+        by = {}
+        for r in rows:
+            by.setdefault(time.localtime(r[0]).tm_hour, []).append(r)
+        buckets = []
+        for h in sorted(by):
+            en = energy(by[h])
+            buckets.append({"label": f"{h:02d}:00", "pv": en["pv"], "load": en["load"],
+                            "autokonsumpcja": en["autokonsumpcja"], "samowystarczalnosc": en["samowystarczalnosc"]})
+        e = dd["energy"]
+        en_all = energy(rows)
+        e["flows"] = {k[2:]: en_all[k] for k in FLOW_KEYS}
+        return {"range": "day", "title": title, "energy": e, "buckets": buckets, "series": dd["series"], **nav}
+    days = _period_days(a, min(b, today), compute_missing=400 if okres == "year" else 60)
+    e = _period_sum(list(days.values()))
     buckets = []
-    for h in sorted(by):
-        en = energy(by[h])
-        buckets.append({"label": f"{h:02d}:00", "pv": en["pv"], "load": en["load"],
-                        "autokonsumpcja": en["autokonsumpcja"], "samowystarczalnosc": en["samowystarczalnosc"]})
-    return {"range": "day", "title": "dziś", "energy": d["energy"], "buckets": buckets, "series": d["series"]}
+    if okres == "year":
+        for m in range(1, 13):
+            sel = [v for k, v in days.items() if k[5:7] == f"{m:02d}"]
+            if sel:
+                buckets.append(_bucket(MONTHS_SHORT[m - 1], _period_sum(sel)))
+    else:
+        x = a
+        while x <= min(b, today):
+            v = days.get(x.isoformat())
+            if v:
+                lab = f"{WEEKDAYS_SHORT[x.weekday()]} {x.day}.{x.month:02d}" if okres == "week" else str(x.day)
+                buckets.append(_bucket(lab, _period_sum([v])))
+            x += dt.timedelta(days=1)
+    n_want = (min(b, today) - a).days + 1
+    empty = sum(1 for k, v in _period_cache().items() if k != "_ver" and v == {} and a.isoformat() <= k <= b.isoformat())
+    return {"range": okres, "title": title, "energy": e, "buckets": buckets, "partial": len(days) + empty < n_want - 1, **nav}
 
 
 def period_warmup():
@@ -1300,12 +1406,21 @@ def api_losses_month(month: str | None = None):
 
 
 @app.get("/api/efficiency")
-def efficiency(date: str | None = None, days: int = 1):
+def efficiency(date: str | None = None, days: int = 1, okres: str = ""):
     """Sprawnosc falownika w przedzialach mocy przetwarzanej (z tabeli efficiency_daily).
 
     days: 1 = wybrany dzien, N = N dni konczacych sie tym dniem, 0 = cala historia.
+    1.30: okres = day / week / month / year (+ date) - okres jak w Aktualnych pomiarach, all = cala historia.
     Dzisiejszy dzien liczony na biezaco z probek.
     """
+    nav = {}
+    if okres in ("day", "week", "month", "year"):
+        _o, _d, a, b, title, nav = period_range(okres, date or "")
+        b = min(b, dt.date.today())
+        date, days = b.isoformat(), (b - a).days + 1
+        nav = dict(nav, title=title, days=days)
+    elif okres == "all":
+        date, days, nav = None, 0, {"title": "cała historia", "days": 0, "is_current": True}
     d = dt.date.fromisoformat(date) if date else dt.date.today()
     first = None if days <= 0 else (d - dt.timedelta(days=days - 1)).isoformat()
     con = db_connect()
@@ -1355,7 +1470,7 @@ def efficiency(date: str | None = None, days: int = 1):
     h, e_in, e_out = acc[LOWPV_BIN]
     lowpv = {"godzin": round(h, 2), "e_in": round(e_in, 2), "kwh": round(e_in - e_out, 3), "sr_w": round(1000 * (e_in - e_out) / h),
              "moc_sr_kw": round(e_in / h, 2), "sprawnosc": round(100 * e_out / e_in, 1) if e_in > 0.01 else None} if h >= 1 / 60 else None
-    return {"date": d.isoformat(), "days": days, "n_days": n_days, "bins": out, "ladowanie": chg, "rozladowanie": dis, "czuwanie": idle, "slabe_pv": lowpv}
+    return {"date": d.isoformat(), "days": days, "n_days": n_days, "bins": out, "ladowanie": chg, "rozladowanie": dis, "czuwanie": idle, "slabe_pv": lowpv, "nav": nav}
 
 
 @app.get("/api/battery_eff")
@@ -1428,6 +1543,7 @@ MONTHS = ["styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec"
 
 # --- produkcja PV w miesiacach (licznik narastajacy produkcji PV instalacji) ---------
 MONTHS_SHORT = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"]
+WEEKDAYS_SHORT = ["pn", "wt", "śr", "cz", "pt", "so", "nd"]
 
 
 @app.get("/api/pv_monthly")
@@ -1728,17 +1844,39 @@ def legal_budget(days):
             "budget": round(max(0.0, r["pv_total"] - r["exp_total"]), 2), "days": int(days)}
 
 
-def _legal_caps(hours, pl, budget, use_fc=True):
+def legal_pool(eta_d=0.95):
+    """1.30: limit sprzedazy = energia z PV w magazynie (pula PV z /api/bat_origin), po stratach rozladowania [kWh AC]."""
+    bo = api_bat_origin()
+    if not bo.get("ok"):
+        return None
+    k = bo["kwh"]
+    return {"basis": "pula", "budget": round(max(0.0, k["pv"]) * (eta_d or 0.95), 2), "pool_pv": k["pv"], "pool_grid": k["grid"],
+            "pool_other": k["other"], "stored": bo["stored_kwh"], "days": bo["days"]}
+
+
+def _legal_caps(hours, pl, budget, use_fc=True, pool=False, stored0=None):
     """Godziny sprzedazy z magazynu ponad limit: limit rosnie o prognozowana produkcje PV i maleje o oddawanie do sieci.
     1.106: gdy limitu brakuje, ograniczana jest NAJTANSZA sprzedaz z magazynu do tej chwili (wczesniej - ta, w ktorej
     limit sie skonczyl, przez co np. 12:00 po 3,58 zl zjadala limit, a 14:00-15:00 po 4,35 zl zostawalo bez sprzedazy).
+    1.30 pool=True: limit = energia z PV w magazynie (pula PV z /api/bat_origin): rosnie o ladowanie magazynu nadwyzka PV
+    (z prognozy), maleje o sprzedaz z magazynu i proporcjonalnie o rozladowanie na dom (pule oddaja energie proporcjonalnie);
+    bezposrednie oddawanie PV do sieci nie zmienia puli.
     Zwraca {indeks godziny: maks. energia z magazynu do sieci [kWh]} albo {}, gdy plan miesci sie w limicie."""
     exp = [max(0.0, -p["d"] - max(h["load"] - h["pv"], 0.0)) if p["mode"] == "export" else 0.0 for h, p in zip(hours, pl)]
     caps, b = {}, budget
     for t, (h, p) in enumerate(zip(hours, pl)):
-        if use_fc:          # 1.26: bez prognozy - limit tylko z PV juz wyprodukowanego
-            b += max(h["pv"], 0.0)
-        b -= max(-p["grid"], 0.0)
+        if pool:
+            sp = pl[t - 1]["stored"] if t else stored0
+            d = p["d"]
+            if d > 0 and use_fc:
+                b += min(d, max(h["pv"] - h["load"], 0.0))
+            elif d < 0 and sp and b > 0:
+                b -= min(-d, max(h["load"] - h["pv"], 0.0)) * min(1.0, b / sp)
+            b -= exp[t]
+        else:
+            if use_fc:          # 1.125: bez prognozy - limit tylko z PV juz wyprodukowanego
+                b += max(h["pv"], 0.0)
+            b -= max(-p["grid"], 0.0)
         while b < -0.01:
             cands = [k for k in range(t + 1) if exp[k] > 0.005]
             if not cands:
@@ -1769,6 +1907,9 @@ def strat_limits():
     out["illegal_arb"] = cp.get("strategia", "arbitraz_niezgodny_z_prawem", fallback="nie").strip().lower() in ("1", "tak", "true")
     # 1.26: limit z PV bez prognozy - do limitu wlicza sie tylko PV juz wyprodukowane (ostrozniej)
     out["legal_no_fc"] = cp.get("strategia", "limit_pv_bez_prognozy", fallback="nie").strip().lower() in ("1", "tak", "true")
+    # 1.30: podstawa limitu z PV - dni (PV - oddane z N dni) | pula (energia z PV w magazynie)
+    lb = cp.get("strategia", "limit_pv_podstawa", fallback="dni").strip().lower()
+    out["legal_basis"] = lb if lb in ("dni", "pula") else "dni"
     pm = cp.get("strategia", "tryb_cen", fallback="progi").strip().lower()
     out["price_mode"] = pm if pm in PRICE_MODES else "progi"
     lp = cp.get("strategia", "profil_zuzycia", fallback="prosty").strip().lower()
@@ -2153,15 +2294,16 @@ def compute_strategy():
     pl = strategy.plan(hours, st0, *args, terminal_price=terminal, mode0=mode0, force0=hlock["mode"] if hlock else None)
     legal = None
     if not lim.get("illegal_arb"):         # 1.24: limit z PV zawsze, chyba ze zaznaczony arbitraz niezgodny z prawem
+        pool = lim.get("legal_basis") == "pula"
         try:
-            legal = legal_budget(lim.get("legal_days") or 7)
+            legal = legal_pool(args[4]) if pool else legal_budget(lim.get("legal_days") or 7)
         except Exception as e:  # noqa: BLE001
             legal = {"error": str(e)}
         if legal and legal.get("budget") is not None:
             capped = {}
             pl_free = pl          # 1.24: plan bez limitu - do pokazania sprzedazy wstrzymanej limitem arbitrazu
             for _it in range(4):          # sprzedaz z magazynu nie wiecej niz wyprodukowane PV (z prognoza do konca planu)
-                caps = _legal_caps(hours, pl, legal["budget"], use_fc=not lim.get("legal_no_fc"))
+                caps = _legal_caps(hours, pl, legal["budget"], use_fc=not lim.get("legal_no_fc"), pool=pool, stored0=st0)
                 if not caps:
                     break
                 for t, cap_ in caps.items():
@@ -2248,7 +2390,7 @@ def compute_strategy():
                        "pvchg_min_kw": strategy.PVCHG_MIN_KW, "tarcza_rezerwa": lim.get("tarcza_rezerwa"),
                        "reserve_price": strategy.RESERVE_PRICE and round(strategy.RESERVE_PRICE, 2),
                        "tarcza": tz, "legal": legal, "legal_days": lim.get("legal_days") or 7,
-                       "illegal_arb": bool(lim.get("illegal_arb")), "legal_no_fc": bool(lim.get("legal_no_fc")),
+                       "illegal_arb": bool(lim.get("illegal_arb")), "legal_no_fc": bool(lim.get("legal_no_fc")), "legal_basis": lim.get("legal_basis") or "dni",
                        "hour_lock": dict(_hour_lock) if _hour_lock.get("ts") == h0 else None,
                        "price_mode": lim.get("price_mode"), "price_mode_txt": PRICE_MODES.get(lim.get("price_mode")),
                        "auto_margin": strategy.AUTO_MARGIN if auto else lim.get("auto_margin"),
@@ -2338,6 +2480,11 @@ def release_inverter():
 def api_strategy_limits(payload: dict = Body(...)):
     """Pulapy cenowe strategii: {"sell_floor": 2.5, "buy_cap": 0.8} (puste = brak) - zapis w config.ini [strategia]."""
     vals = {}
+    if "legal_basis" in payload:
+        lb = str(payload.get("legal_basis") or "dni").strip().lower()
+        if lb not in ("dni", "pula"):
+            return JSONResponse({"ok": False, "error": "podstawa limitu: dni / pula"}, status_code=400)
+        vals["limit_pv_podstawa"] = lb
     if "legal_no_fc" in payload:
         nf = payload.get("legal_no_fc")
         vals["limit_pv_bez_prognozy"] = "tak" if nf is True or str(nf).strip().lower() in ("1", "true", "tak") else "nie"
