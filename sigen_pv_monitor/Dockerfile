@@ -1,6 +1,7 @@
 # Dodatek Home Assistant: aplikacja Sigen PV Monitor z wydania (tagu) o numerze wersji dodatku.
-ARG BUILD_FROM=python:3.12-slim-bookworm
-FROM ${BUILD_FROM}
+# 1.29.1: obraz bazowy na sztywno (Debian, apt-get) - Supervisor HA podstawia przez --build-arg BUILD_FROM swój obraz
+# Alpine, więc ARG BUILD_FROM nie może wybierać obrazu; build.yaml usunięty (przestarzały w HA)
+FROM docker.io/library/python:3.12-slim-bookworm
 ARG BUILD_VERSION
 ENV PYTHONUNBUFFERED=1 SIGEN_PV_DATA=/data SIGEN_HA_ADDON=1
 WORKDIR /app

@@ -1,5 +1,5 @@
 name: Sigen PV Monitor
-version: "1.29.0"
+version: "1.29.1"
 slug: sigen_pv_monitor
 description: Falownik i magazyn Sigenergy (Modbus TCP) – podgląd na żywo, prognoza PV, ceny, strategia magazynu, Pstryk i karty panelu HA
 url: https://github.com/mgrys/Sigen

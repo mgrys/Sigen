@@ -36,7 +36,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.29.0"
+__version__ = "1.29.1"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen

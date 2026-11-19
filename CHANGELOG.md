@@ -2,6 +2,14 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.29.1] - 2026-11-19
+
+### Poprawiono
+- **Dodatek Home Assistant nie dawał się zainstalować** (`/bin/ash: apt-get: not found`, exit 127): Supervisor odrzucał
+  `build.yaml` (skrócona nazwa obrazu) i budował na swoim obrazie Alpine, nadpisując `BUILD_FROM` z Dockerfile.
+  Obraz bazowy (`docker.io/library/python:3.12-slim-bookworm`) jest teraz wpisany na stałe w Dockerfile, `build.yaml`
+  usunięty (przestarzały w HA). Dziękuję za zgłoszenie z diagnozą.
+
 ## [1.29.0] - 2026-11-13
 
 ### Dodano
