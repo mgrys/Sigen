@@ -5,7 +5,8 @@
 // Karty:
 //   type: custom:sigen-live-card      – Teraz: przepływy PV / dom / magazyn / sieć, SOC, strategia teraz
 //   type: custom:sigen-prices-card    – Ceny energii dziś i jutro (opcja tiles: false)
-//   type: custom:sigen-period-card    – Aktualne pomiary Dziś / Tydzień / Miesiąc (opcje okres: day|week|month, losses: false)
+//   type: custom:sigen-period-card    – Aktualne pomiary Dzień / Tydzień / Miesiąc / Rok z ‹ data ›, przepływ energii (Sankey),
+//                                       strzałki vs poprzedni okres (opcje okres: day|week|month|year, losses: false, sankey: false)
 //   type: custom:sigen-forecast-card  – Prognoza PV (kafle, wybór źródeł, trafność, korekta)
 //   type: custom:sigen-strings-card   – Połacie PV Dziś / Tydzień / Miesiąc + produkcja w miesiącach (opcja months: false)
 //   type: custom:sigen-inverter-card  – Ustawienia falownika: alarmy, granice SOC, limity, Remote EMS (tylko odczyt)
@@ -13,16 +14,13 @@
 //   type: custom:sigen-pstryk-card    – Licznik operatora Pstryk (opcja g13: false)
 //   type: custom:sigen-strategy-card  – Strategia osobista: kafle, sterowanie (odczyt), wykres planu, plan godzinowy
 //                                       + ustawienia strategii i sterowanie (PIN aplikacji); opcje tiles / control / settings / chart / table: false
-// Wspólne opcje:  api: http://192.168.0.121:8000   (domyślnie ten sam host co HA, port 8000)
+// Wspólne opcje:  api: http://192.168.1.10:8000   (domyślnie ten sam host co HA, port 8000)
 //                 title: "…"                         (nagłówek karty; title: "" – bez nagłówka)
-const SIGEN_CARDS_VERSION = '1.143.0';
+const SIGEN_CARDS_VERSION = '1.169.0';
 const SIGEN_DEF_API = (window.SIGEN_API_DEFAULT || window.SIGEN_API || `${location.protocol}//${location.hostname}:8000`).replace(/\/$/, '');
 
 // kolory serii jak w aplikacji (jasny / ciemny motyw)
-const SIGEN_PAL = {
-  light: { pv: '#eb6834', load: '#2a78d6', bat: '#1baf7a', grid: '#eda100', loss: '#e87ba4', sell: '#008300', buy: '#e34948', err: '#e34948', ok: '#1baf7a' },
-  dark:  { pv: '#d95926', load: '#3987e5', bat: '#199e70', grid: '#c98500', loss: '#d55181', sell: '#2f9e2f', buy: '#e66767', err: '#e66767', ok: '#199e70' },
-};
+// SIGEN_PAL, sgNum, toFx, sgNowLabelIdx – w sigen-common.js (aplikacja dokleja go przed ten plik)
 
 // wersja aplikacji: domowa albo publiczna (sigen-pv-monitor - /api/version ma "modules"); raz na adres API
 const sgFlavorP = {};
@@ -135,7 +133,7 @@ class SigenBase extends HTMLElement {
   static getStubConfig() { return {}; }
 }
 
-const sgKw = v => (v == null ? '–' : Math.abs(v) < 1 ? (v * 1000).toFixed(0) + ' W' : v.toFixed(2) + ' kW');
+const sgKw = v => (v == null ? '–' : Math.abs(v) < 1 ? (v * 1000).toFx(0) + ' W' : v.toFx(2) + ' kW');
 const sgHm = t => new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 const sgHms = t => new Date(t * 1000).toLocaleTimeString('pl-PL');
 const sgDm = t => new Date(t * 1000).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
@@ -178,10 +176,33 @@ class SigenLiveCard extends SigenBase {
     .icon { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .icon-bg { fill: var(--sg-surface); }
     .line { fill: none; stroke-width: 3; stroke-linecap: round; opacity: .25; }
-    .line.on { opacity: 1; stroke-dasharray: 6 8; animation: sgflow 1s linear infinite; }
+    /* 1.169: jak w aplikacji - galezie zrodlo -> odbior z plynacymi kropkami (grubosc i predkosc wg mocy), szprychy jako tlo */
+    .line.spoke { opacity: .12; }
+    .line.br { opacity: 0; } .line.br.on { opacity: .95; }
+    .line.on { stroke-dasharray: .1 11; animation: sgflow var(--fd, 1s) linear infinite; }
+    .line.spoke.on { opacity: .12; animation: none; stroke-dasharray: none; }
     .line.on.rev { animation-direction: reverse; }
-    @keyframes sgflow { to { stroke-dashoffset: -14; } }
-    @media (prefers-reduced-motion: reduce) { .line.on { animation: none; } }
+    @keyframes sgflow { to { stroke-dashoffset: -11.1; } }
+    .socseg { position: relative; display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; margin: 8px 0 4px; }
+    .socseg i { height: 20px; border-radius: 6px; background: var(--sg-line, rgba(127,127,127,.18)); position: relative; overflow: hidden; }
+    .socseg i b { position: absolute; inset: 0 auto 0 0; border-radius: 6px; }
+    .socseg .lim { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--sg-text, #555); opacity: .55; border-radius: 1px; }
+    .socseg-leg { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--sg-text2); margin: 0 0 12px; }
+    .socseg-leg span { display: inline-flex; align-items: center; gap: 5px; }
+    .socseg-leg em { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+    .curmode { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 7px 12px; margin: 0 0 8px; border-radius: 10px;
+      border: 1px solid var(--sg-border); border-left: 4px solid var(--sg-muted); font-size: 14px; }
+    .curmode .cm-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--sg-muted); flex: none; }
+    .curmode .cm-h, .curmode .cm-src { color: var(--sg-text2); font-size: 12px; }
+    .curmode b { font-size: 15px; }
+    .curmode .cm-next { margin-left: auto; color: var(--sg-text2); font-size: 12px; }
+    @container (max-width: 560px) { .curmode .cm-next { margin-left: 0; flex-basis: 100%; } }
+    .curmode.m-sell { border-left-color: var(--sg-sell); } .curmode.m-sell .cm-dot { background: var(--sg-sell); }
+    .curmode.m-buy { border-left-color: var(--sg-buy); } .curmode.m-buy .cm-dot { background: var(--sg-buy); }
+    .curmode.m-auto { border-left-color: var(--sg-bat); } .curmode.m-auto .cm-dot { background: var(--sg-bat); }
+    .curmode.m-man { border-left-color: var(--sg-grid); } .curmode.m-man .cm-dot { background: var(--sg-grid); }
+    .curmode.m-warn { border-left-color: var(--sg-err); background: color-mix(in srgb, var(--sg-err) 7%, transparent); }
+    .curmode.m-warn .cm-dot { background: var(--sg-err); }
     .socrow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .soclbl { font-size: 13px; color: var(--sg-text2); }
     .soc { font-size: 40px; font-weight: 700; line-height: 1; }
@@ -206,12 +227,15 @@ class SigenLiveCard extends SigenBase {
     const c = this._cfg, A = this.api;
     const flow = c.flow !== false, details = c.details !== false, strat = c.strategy !== false;
     return `<div class="og" id="og" hidden><b id="og-t"></b><div id="og-s"></div></div>
+    ${strat ? `<div class="curmode" id="curmode" title="tryb pracy falownika teraz – jak „Obecny tryb” w aplikacji Sigen"><span class="cm-dot"></span>
+      <span class="cm-h">Obecny tryb</span><b id="cm-mode">–</b><span class="cm-src" id="cm-src"></span><span class="cm-next" id="cm-next"></span></div>` : ''}
     <div class="grid">
     ${flow ? `<svg class="flow" viewBox="0 0 400 312" role="img" aria-label="Przepływ energii">
-      <path id="l-pv" class="line" d="M200 64 L200 116" stroke="var(--sg-pv)"/>
-      <path id="l-grid" class="line" d="M60 150 L172 150" stroke="var(--sg-grid)"/>
-      <path id="l-load" class="line" d="M334 150 L228 150" stroke="var(--sg-load)"/>
-      <path id="l-bat" class="line" d="M200 230 L200 186" stroke="var(--sg-bat)"/>
+      <path id="l-pv" class="line spoke" d="M200 64 L200 116" stroke="var(--sg-pv)"/>
+      <path id="l-grid" class="line spoke" d="M60 150 L172 150" stroke="var(--sg-grid)"/>
+      <path id="l-load" class="line spoke" d="M334 150 L228 150" stroke="var(--sg-load)"/>
+      <path id="l-bat" class="line spoke" d="M200 230 L200 186" stroke="var(--sg-bat)"/>
+      <g id="lv-br">${sgBranchPaths(k => `var(--sg-${k})`)}</g>
       <image id="invimg" href="${A}/static/inverter.png" x="171" y="117" width="58" height="68" preserveAspectRatio="xMidYMid meet"><title>Falownik</title></image>
       <g class="icon" transform="translate(200 36)" stroke="var(--sg-pv)">
         <polygon points="-28,12 28,12 19,-14 -19,-14" class="icon-bg"/>
@@ -244,7 +268,7 @@ class SigenLiveCard extends SigenBase {
     </svg>` : ''}
     <div>
       ${details ? `<div class="socrow"><span class="soclbl">Magazyn energii</span><span class="soc" id="soc">–</span></div>
-      <div class="bar"><div id="socbar"></div></div>
+      <div class="socseg" id="socseg" title="pochodzenie energii w magazynie"></div><div class="socseg-leg" id="socseg-leg"></div>
       <div class="kv">
         <span><i class="sw" style="background:var(--sg-pv)"></i>Produkcja PV</span><span id="k-pv">–</span>
         <span><i class="sw" style="background:var(--sg-load)"></i>Zużycie domu</span><span id="k-load">–</span>
@@ -271,7 +295,7 @@ class SigenLiveCard extends SigenBase {
     return p;
   }
   set(id, txt) { const e = this.$(id); if (e) e.textContent = txt; }
-  line(id, v, inward) { const e = this.$(id); if (!e) return; const on = Math.abs(v) >= 0.01; e.classList.toggle('on', on); e.classList.toggle('rev', on && !inward); }
+  line(id, v, inward) { sgSetLine(this.$(id), v, inward); }
   async loadLive() {
     const d = await this.get('/api/live');
     this.showErr(d.ok ? '' : 'Falownik: ' + (d.error || 'błąd odczytu'));
@@ -284,12 +308,13 @@ class SigenLiveCard extends SigenBase {
     this.set('s-grid', og ? 'zanik sieci' : d.grid > 0.01 ? 'pobór' : d.grid < -0.01 ? 'oddawanie' : '');
     this.set('v-bat', sgKw(Math.abs(d.bat)));
     this.set('s-bat', d.bat > 0.01 ? 'ładowanie' : d.bat < -0.01 ? 'rozładowanie' : 'bezczynny');
-    this.set('v-soc-c', d.soc.toFixed(0) + '%');
+    this.set('v-soc-c', d.soc.toFx(0) + '%');
     const bf = this.$('bat-fill');
     if (bf) { const fh = Math.max(0, Math.min(100, d.soc)) / 100 * 42; bf.setAttribute('height', fh.toFixed(1)); bf.setAttribute('y', (21 - fh).toFixed(1)); }
     this.line('l-pv', d.pv, true); this.line('l-load', d.load, false); this.line('l-bat', d.bat, d.bat < 0); this.line('l-grid', d.grid, d.grid > 0);
-    this.set('soc', d.soc.toFixed(1) + ' %');
-    const sb = this.$('socbar'); if (sb) sb.style.width = Math.min(100, d.soc) + '%';
+    sgBranches(id => this.$(id), d);                 // 1.169: galezie jak w aplikacji (sigen-common.js)
+    this.set('soc', d.soc.toFx(1) + ' %');
+    this.socSeg(d.soc);
     this.set('k-pv', sgKw(d.pv)); this.set('k-load', sgKw(d.load));
     this.set('k-bat', (d.bat > 0 ? '+' : '') + sgKw(d.bat));
     this.set('k-grid', og ? 'brak sieci' : (d.grid > 0 ? 'pobór ' : 'oddawanie ') + sgKw(Math.abs(d.grid)));
@@ -301,8 +326,17 @@ class SigenLiveCard extends SigenBase {
     if (og) {
       this.set('og-t', d.grid_mode === 2 ? 'Praca wyspowa (off-grid) – włączona ręcznie' : 'Brak sieci – praca wyspowa (off-grid)');
       this.set('og-s', (d.offgrid_since ? 'od ' + sgHm(d.offgrid_since) + ' (' + sgDur(Date.now() / 1000 - d.offgrid_since) + ') · ' : '') +
-        'dom zasilany z magazynu' + (d.pv > 0.05 ? ' i PV' : '') + ' · SOC ' + d.soc.toFixed(0) + ' %');
+        'dom zasilany z magazynu' + (d.pv > 0.05 ? ' i PV' : '') + ' · SOC ' + d.soc.toFx(0) + ' %');
     }
+  }
+  async socSeg(soc) {        // 1.169: pasek SOC wg pochodzenia energii (z PV / z sieci) - /api/bat_origin co 60 s
+    const box = this.$('socseg'); if (!box) return;
+    if (!this._boTs || Date.now() - this._boTs > 60000) {
+      this._boTs = Date.now();
+      try { const b = await this.get('/api/bat_origin'); this._bo = b && b.ok ? b : null; } catch (e) { this._bo = null; }
+    }
+    const p = SIGEN_PAL[this._dark ? 'dark' : 'light'], r = sgSocSeg(soc, this._bo, { pv: p.pv, grid: p.grid, other: '#8a8a8a' });
+    box.innerHTML = r.bar; this.$('socseg-leg').innerHTML = r.leg;
   }
   async loadStrat() {
     const s = await this.get('/api/strategy');
@@ -311,8 +345,13 @@ class SigenLiveCard extends SigenBase {
   }
   async loadCtl() { this._ctl = await this.get('/api/inverter/ctl'); this.renderNow(this._ctl); }
   renderNow(c) {
-    const box = this.$('now'); if (!box) return;
     const r = sgNowMode(c, this._strat);
+    const cm = this.$('curmode');
+    if (cm) {               // 1.169: „Obecny tryb” jak w aplikacji (sgCurMode)
+      const m = sgCurMode(c, r.mode, r.cls, this._strat);
+      cm.className = 'curmode ' + m.cls; this.set('cm-mode', m.mode); this.set('cm-src', m.src); this.set('cm-next', m.next);
+    }
+    const box = this.$('now'); if (!box) return;
     box.className = 'now ' + r.cls;
     this.set('now-mode', r.mode); this.set('now-src', r.src); this.set('now-why', r.why); this.set('now-next', r.next);
   }
@@ -334,8 +373,8 @@ function sgChartJs(api) {
   return window.__sgChartP;
 }
 // kafle jak w aplikacji: wartość + opis w dymku (najechanie / dotknięcie)
-const sgTile = (cls, t, v, unit, note) => `<div class="tile ${cls || ''}"><div class="t">${t}</div><div class="v">${v ?? '–'} <small>${v == null ? '' : unit || ''}</small></div>` +
-  (note ? `<div class="n">${note}</div>` : '') + '</div>';
+const sgTile = (cls, t, v, unit, note, kwhDec) => (v = sgNum(v, unit, kwhDec), `<div class="tile ${cls || ''}"><div class="t">${t}</div><div class="v">${v ?? '–'} <small>${v == null ? '' : unit || ''}</small></div>` +
+  (note ? `<div class="n">${note}</div>` : '') + '</div>');
 const SIGEN_TILE_CSS = `
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 4px 0 12px; }
   .tile { position: relative; border: 1px solid var(--sg-border); border-radius: 10px; padding: 8px 10px; cursor: help; min-width: 0; }
@@ -641,27 +680,31 @@ class SigenStrategyCard extends SigenBase {
   render(d) {
     const P = d.params || {};
     const pe = d.pradcast && d.pradcast.eval || {};
-    const peTxt = Object.entries(pe).map(([h, v]) => `${h} ±${v.mae.toFixed(2)} zł${v.mape != null ? ' (' + v.mape + ' %)' : ''}`).join(' · ');
+    const peTxt = Object.entries(pe).map(([h, v]) => `${h} ±${v.mae.toFx(2)} zł${v.mape != null ? ' (' + v.mape + ' %)' : ''}`).join(' · ');
     const inf = this.$('info'); if (inf) inf.textContent = `ceny: ${d.price_source || '–'}` + (peTxt ? ` · trafność Pradcast: ${peTxt}` : '');
     this.renderTiles(d, P); this.renderChart(d); this.renderTable(d);
   }
   renderTiles(d, P) {
     const box = this.$('tiles'); if (!box) return;
     const esc = s => this.esc(s), T = d.totals || {}, n = d.now || {}, x = d.next;
-    const f1 = v => v.toFixed(1).replace('.', ','), f2 = v => v == null ? '–' : v.toFixed(2).replace('.', ',');
+    const f1 = v => v.toFx(1), f2 = v => v == null ? '–' : v.toFx(2);
     const col = v => v >= 0.005 ? 'c-green' : v <= -0.005 ? 'c-red' : 'c-blue';
-    const sav = (lbl, t) => !t ? '' : sgTile(col(t.saving_total), lbl, t.saving_total.toFixed(2), 'zł',
-      `plan ${t.plan.toFixed(2)} zł · bez strategii ${t.base.toFixed(2)} zł` + (t.grid_charge ? ` · z sieci do magazynu ${t.grid_charge.toFixed(1)} kWh` : '') +
-      (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFixed(1)} kWh` : '') +
-      (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFixed(2)} zł` : ''));
-    let h = sgTile('', 'Teraz wg planu', esc((n.label || '–').split(' – ')[0]), '',
+    const sav = (lbl, t) => !t ? '' : sgTile(col(t.saving_total), lbl, t.saving_total.toFx(2), 'zł',
+      `plan ${t.plan.toFx(2)} zł · bez strategii ${t.base.toFx(2)} zł` + (t.grid_charge ? ` · z sieci do magazynu ${t.grid_charge.toFx(1)} kWh` : '') +
+      (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFx(1)} kWh` : '') +
+      (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFx(2)} zł` : ''));
+    const fb = P.floor_block;   // 1.150: pulap sprzedazy blokuje sprzedaz w trybie auto
+    let h = (fb ? `<div class="ctl" style="grid-column:1/-1"><span class="warn">Pułap sprzedaży ${fb.floor.toFx(2)} zł blokuje sprzedaż w trybie auto: ` +
+        `${fb.n} godz. z zyskiem po kosztach > ${(P.auto_margin ?? 0).toFx(2)} zł/kWh (najwyżej ${fb.max_sell.toFx(2)} zł, ` +
+        `${new Date(fb.max_ts * 1000).toLocaleString('pl-PL', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}). Obniż albo wyczyść pułap.</span></div>` : '') +
+      sgTile('', 'Teraz wg planu', esc((n.label || '–').split(' – ')[0]), '',
         ((n.label || '').includes(' – ') ? esc(n.label) + ' · ' : '') + `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)`) +
       sgTile('', 'Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? 'na: ' + esc(x.label) : 'bez zmian do końca planu') +
       sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
-      (d.total_saving != null ? sgTile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
-        `zużycie baterii ${(P.wear ?? 0).toFixed(2)} zł/kWh · ` + (P.price_mode === 'auto' ? `tryb auto: sprzedaż z magazynu przy zysku po kosztach ≥ ${(P.auto_margin ?? 0).toFixed(2)} zł/kWh`
-          : P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap w aplikacji)') +
-        (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFixed(2)} zł${P.tarcza && P.tarcza.active ? ' (z Tarczą bez progu)' : ''}` : '') +
+      (d.total_saving != null ? sgTile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFx(2), 'zł',
+        `zużycie baterii ${(P.wear ?? 0).toFx(2)} zł/kWh · ` + (P.price_mode === 'auto' ? `tryb auto: sprzedaż z magazynu przy zysku po kosztach ≥ ${(P.auto_margin ?? 0).toFx(2)} zł/kWh`
+          : P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFx(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap w aplikacji)') +
+        (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFx(2)} zł${P.tarcza && P.tarcza.active ? ' (z Tarczą bez progu)' : ''}` : '') +
         ` · moc ładowania z sieci ≤ ${P.p_charge ?? P.p_max_kw} kW, sprzedaży ≤ ${P.p_discharge ?? P.p_max_kw} kW`) : '');
     if (P.horizon) {
       const Z = P.horizon, endTxt = new Date(Z.end * 1000).toLocaleString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -707,8 +750,8 @@ class SigenStrategyCard extends SigenBase {
     const expPv = h => h.grid < 0 && h.pv != null && h.load != null ? Math.min(-h.grid, Math.max(h.pv - h.load, 0)) : h.grid < 0 ? -h.grid : 0;
     const expBat = h => h.grid < 0 ? Math.max(-h.grid - expPv(h), 0) : 0;
     const imp = h => h.grid > 0 ? h.grid : 0;
-    const KINDS = [{ k: 'pv', label: 'Sprzedaż PV', color: pal.sell }, { k: 'bat', label: 'Sprzedaż z magazynu', color: '#39d353' },
-      { k: 'buy', label: 'Zakup (rzeczywisty)', color: pal.buy }, { k: 'grid', label: 'Zakup celowy (plan)', color: '#9e1b1e' }, { k: 'home', label: 'Pobór domu (plan)', color: '#f19d9c' }];
+    const KINDS = [{ k: 'pv', label: 'Sprzedaż PV', color: pal.sell }, { k: 'bat', label: 'Sprzedaż z magazynu', color: pal.sellbat },
+      { k: 'buy', label: 'Zakup (rzeczywisty)', color: pal.buy }, { k: 'grid', label: 'Zakup celowy (plan)', color: pal.buygrid }, { k: 'home', label: 'Pobór domu (plan)', color: pal.buyhome }];
     const kindOf = (h, i) => expBat(h) > 0.005 ? 'bat' : expPv(h) > 0.005 ? 'pv' : imp(h) > 0.005 ? (i < nowI ? 'buy' : h.mode === 'grid' ? 'grid' : 'home') : null;
     const amt = h => h.grid < 0 ? -h.grid : imp(h), kinds = H.map(kindOf);
     const maxExp = Math.max(0.3, ...H.map(h => h.grid < 0 ? -h.grid : 0)), maxImp = Math.max(0.3, ...H.map(imp));
@@ -720,7 +763,7 @@ class SigenStrategyCard extends SigenBase {
       ln('SOC – bez strategii', H.map(h => h.base_soc), muted, { yAxisID: 'y', borderDash: [4, 4] }),
       ln('Cena sprzedaży', H.map(h => h.sell), pal.sell, { yAxisID: 'y1', stepped: 'middle', borderWidth: 1.5, pointRadius: 0, $price: 'sell' }),
       ln('Cena zakupu (w dół)', H.map(h => h.buy == null ? null : -h.buy), pal.buy, { yAxisID: 'y1', stepped: 'middle', borderWidth: 1.5, pointRadius: 0, $price: 'buy' }),
-      ...(P.sell_floor != null ? [ln('Próg sprzedaży z magazynu', H.map(() => P.sell_floor), '#39d353', { yAxisID: 'y1', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, $skipTip: true })] : []),
+      ...(P.sell_floor != null ? [ln('Próg sprzedaży z magazynu', H.map(() => P.sell_floor), pal.sellbat, { yAxisID: 'y1', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, $skipTip: true })] : []),
       ln('0 zł', H.map(() => 0), text2, { yAxisID: 'y1', borderWidth: 1.2, pointRadius: 0, $skipTip: true, $hide: true }),
       ...KINDS.map(K => {
         const data = H.map((h, i) => kinds[i] === K.k ? (K.k === 'pv' || K.k === 'bat' ? (h.sell ?? 0) : -(h.buy ?? 0)) : null);
@@ -730,9 +773,9 @@ class SigenStrategyCard extends SigenBase {
       }),
       (() => { const data = H.map(h => (h.legal_cut || 0) > 0.05 ? (h.sell ?? 0) : null);
         return { label: 'Sprzedaż wstrzymana – limit arbitrażu', data, yAxisID: 'y2', type: 'bar', borderWidth: 0, stack: 'cut', $kind: 'cut',
-          $empty: data.every(v => v == null), backgroundColor: H.map(h => rgba('#facc15', 0.45 + 0.5 * Math.min(1, (h.legal_cut || 0) / maxExp))), borderColor: '#facc15' }; })(),
+          $empty: data.every(v => v == null), backgroundColor: H.map(h => rgba(pal.arb, 0.45 + 0.5 * Math.min(1, (h.legal_cut || 0) / maxExp))), borderColor: pal.arb }; })(),
     ];
-    const zl2 = v => v.toFixed(2).replace('.', ','), narrow = cvs.parentElement.clientWidth < 520;
+    const zl2 = v => v.toFx(2), narrow = cvs.parentElement.clientWidth < 520;
     const nowLine = { id: 'sgNow', afterDatasetsDraw: ch => {
       const i = ch.$nowIdx; if (i == null || i < 0) return;
       const xx = ch.scales.x.getPixelForValue(i), { top, bottom } = ch.chartArea, c = ch.ctx;
@@ -747,7 +790,7 @@ class SigenStrategyCard extends SigenBase {
           x: { stacked: true, ticks: { color: muted, maxTicksLimit: narrow ? 6 : 12, autoSkip: true, maxRotation: 0 }, grid: { display: false } },
           y: { min: 0, max: 100, ticks: { color: muted, callback: v => v + ' %' }, grid: { color: gridC }, border: { display: false } },
           y1: { position: 'right', grid: { display: false }, title: { display: !narrow, text: '↑ sprzedaż · cena zł/kWh · zakup ↓', color: muted },
-            ticks: { color: muted, callback: v => Math.abs(v).toFixed(2).replace('.', ',') + (narrow ? '' : ' zł') } },
+            ticks: { color: muted, callback: v => Math.abs(v).toFx(2) + (narrow ? '' : ' zł') } },
           y2: { display: false, stacked: true } },
         plugins: {
           legend: { position: 'top', align: 'start', labels: { color: text2, boxWidth: narrow ? 8 : 10, boxHeight: narrow ? 8 : 10, padding: narrow ? 6 : 10, font: { size: narrow ? 10 : 12 }, useBorderRadius: true, borderRadius: 3,
@@ -757,9 +800,9 @@ class SigenStrategyCard extends SigenBase {
             callbacks: {
               label: c => {
                 const h = this._chart.$h[c.dataIndex], q = c.dataset;
-                if (q.yAxisID === 'y') return ` ${q.label}: ${c.parsed.y.toFixed(0)} %`;
-                if (q.$price === 'sell') return ` Cena sprzedaży: ${c.parsed.y.toFixed(3)} zł/kWh`;
-                if (q.$price === 'buy') return ` Cena zakupu: ${(-c.parsed.y).toFixed(3)} zł/kWh` + (h && h.tarcza ? ' (z Tarczą)' : '');
+                if (q.yAxisID === 'y') return ` ${q.label}: ${c.parsed.y.toFx(0)} %`;
+                if (q.$price === 'sell') return ` Cena sprzedaży: ${c.parsed.y.toFx(3)} zł/kWh`;
+                if (q.$price === 'buy') return ` Cena zakupu: ${(-c.parsed.y).toFx(3)} zł/kWh` + (h && h.tarcza ? ' (z Tarczą)' : '');
                 if (!h) return '';
                 if (q.$kind === 'cut') return ` Przekroczony arbitraż o ${zl2(h.legal_cut)} kWh (≈ ${zl2(h.legal_cut * h.sell)} zł)`;
                 if (q.$kind === 'pv' || q.$kind === 'bat') { const v = q.$kind === 'bat' ? expBat(h) : expPv(h); return ` ${q.label}: ${zl2(v)} kWh × ${zl2(h.sell)} zł = ${zl2(v * h.sell)} zł`; }
@@ -773,7 +816,7 @@ class SigenStrategyCard extends SigenBase {
   }
   renderTable(d) {
     const tb = this.$('tb'); if (!tb) return;
-    const P = d.params || {}, H = d.hours || [], f = (v, k) => v == null ? '–' : v.toFixed(k);
+    const P = d.params || {}, H = d.hours || [], f = (v, k) => v == null ? '–' : v.toFx(k);
     const cut12 = (() => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(12, 0, 0, 0); return t.getTime() / 1000; })();
     const arch = this.$('arch').checked, to12 = this.$('to12').checked, now = Date.now() / 1000;
     tb.innerHTML = H.filter(h => (arch || h.mode !== 'past') && (to12 || h.ts < cut12)).map(h =>
@@ -801,7 +844,7 @@ function sgChartBase(card, unit, narrow) {
         padding: narrow ? 6 : 10, font: { size: narrow ? 10 : 12 }, useBorderRadius: true, borderRadius: 3 } },
       tooltip: { enabled: !narrow, callbacks: {} } },
     scales: { x: { ticks: { color: muted, maxTicksLimit: narrow ? 6 : 12, autoSkip: true, maxRotation: 0 }, grid: { display: false } },
-      y: { ticks: { color: muted, callback: v => +v.toFixed(2) + ' ' + unit }, grid: { color: gridC }, border: { display: false } } } };
+      y: { ticks: { color: muted, callback: v => (+v.toFixed(2)).toLocaleString('pl-PL') + ' ' + unit }, grid: { color: gridC }, border: { display: false } } } };
 }
 function sgNowLinePlugin(card) {
   return { id: 'sgNow', afterDatasetsDraw: ch => {
@@ -869,7 +912,7 @@ class SigenPricesCard extends SigenChartCard {
     const PS = d.pstryk && T.pstryk, psMap = {};
     if (PS) [...T.pstryk.points, ...((J.pstryk && J.pstryk.points) || [])].forEach(p => psMap[p.ts] = p);
     const psAt = p => psMap[Math.floor(p.ts / 3600) * 3600], psNow = now ? psAt(now) : null;
-    const zl = v => v == null ? null : v.toFixed(3);
+    const zl = v => v == null ? null : v.toFx(3);
     const jc = PS && J.pstryk && J.pstryk.cheapest.length ? J.pstryk.cheapest : J.cheapest;
     const ch = jc.length ? jc : PS ? T.pstryk.cheapest : T.cheapest;
     const box = this.$('tiles');
@@ -878,9 +921,9 @@ class SigenPricesCard extends SigenChartCard {
         sgTile('c-green', 'Teraz – sprzedaż', zl(now && now.sell), 'zł/kWh') +
         sgTile('', 'Śr. zakup dziś', zl(T.avg_buy), 'zł/kWh') +
         sgTile('', 'Śr. zakup jutro', zl(J.avg_buy), 'zł/kWh', J.points.length ? '' : 'jeszcze brak cen (PSE publikuje ok. 13:40)') +
-        (PS ? sgTile('c-blue', 'Teraz – Pstryk (brutto)', zl(psNow && psNow.price), 'zł/kWh', psNow && psNow.pros != null ? `prosument ${psNow.pros.toFixed(3)} zł` : '') : '') +
+        (PS ? sgTile('c-blue', 'Teraz – Pstryk (brutto)', zl(psNow && psNow.price), 'zł/kWh', psNow && psNow.pros != null ? `prosument ${psNow.pros.toFx(3)} zł` : '') : '') +
         sgTile('', (jc.length ? 'Najtańsze godziny jutro' : 'Najtańsze godziny dziś') + (PS ? ' (Pstryk)' : ''),
-          ch.length ? ch.map(c => c.hour.slice(0, 2)).join(', ') : null, '', ch.length ? ch.map(c => `${c.hour} ${c.buy.toFixed(3)} zł`).join(' · ') : '');
+          ch.length ? ch.map(c => c.hour.slice(0, 2)).join(', ') : null, '', ch.length ? ch.map(c => `${c.hour} ${c.buy.toFx(3)} zł`).join(' · ') : '');
       sgPopTiles(box);
     }
     const nt = this.$('note');
@@ -894,13 +937,13 @@ class SigenPricesCard extends SigenChartCard {
     const pal = SIGEN_PAL[this._dark ? 'dark' : 'light'], labels = pts.map(p => `${p.day} ${p.t}`);
     const ln = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, fill: false });
     const sets = [ln('Zakup', pts.map(p => p.buy), pal.buy), ln('Sprzedaż', pts.map(p => p.sell), pal.sell)];
-    if (psAt) sets.push(ln('Pstryk (brutto)', pts.map(p => { const q = psAt(p); return q ? q.price : null; }), this._dark ? '#9085e9' : '#6250d6'));
+    if (psAt) sets.push(ln('Pstryk (brutto)', pts.map(p => { const q = psAt(p); return q ? q.price : null; }), pal.fc2));
     if (!this._chart) {
       const o = sgChartBase(this, 'zł', this.narrow);
-      o.scales.y.ticks.callback = v => v.toFixed(2) + (this.narrow ? '' : ' zł');
-      o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(3)} zł/kWh`;
+      o.scales.y.ticks.callback = v => v.toFx(2) + (this.narrow ? '' : ' zł');
+      o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFx(3)} zł/kWh`;
       o.plugins.tooltip.callbacks.afterBody = it => { const p = this._pts[it[0].dataIndex];
-        return p && p.obsluga != null ? [`strefa: ${p.zone}`, `prąd z obsługą ${p.obsluga.toFixed(2)} + dystrybucja ${p.dist.toFixed(2)} + podatki ${p.podatki.toFixed(2)}`] : []; };
+        return p && p.obsluga != null ? [`strefa: ${p.zone}`, `prąd z obsługą ${p.obsluga.toFx(2)} + dystrybucja ${p.dist.toFx(2)} + podatki ${p.podatki.toFx(2)}`] : []; };
       this._chart = new Chart(cvs, { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [sgNowLinePlugin(this)] });
     } else this._chart.data = { labels, datasets: sets };
     this._pts = pts; this._chart.$nowIdx = nowIdx >= 0 ? nowIdx : null; this._chart.update();
@@ -910,16 +953,38 @@ class SigenPricesCard extends SigenChartCard {
 
 // ---------------------------------------------------------------------------------------------------------------
 // K3: Aktualne pomiary – Dziś / Tydzień / Miesiąc: kafle energii, autokonsumpcja / samowystarczalność, straty, wykres słupkowy
-// opcje: okres: day | week | month (domyślny), losses: false – bez kafli zużycia własnego w miesiącu
+// opcje: okres: day | week | month | year (domyślny), losses: false – bez kafli zużycia własnego w miesiącu, sankey: false – bez przepływu
 class SigenPeriodCard extends SigenChartCard {
   static defTitle = 'Aktualne pomiary';
   static css = SIGEN_TILE_CSS + SIGEN_CHART_CSS + `
     @container (max-width: 520px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-      .tile { padding: 6px 7px; } .tile .t { font-size: 11px; } .tile .v { font-size: 16px; } .tile .v small { font-size: 11px; } }`;
+      .tile { padding: 6px 7px; } .tile .t { font-size: 11px; } .tile .v { font-size: 16px; } .tile .v small { font-size: 11px; } }
+    /* 1.169: ‹ data › jak w aplikacji, przeplyw energii (Sankey), strzalki porownania z poprzednim okresem */
+    .pnav { display: flex; align-items: center; gap: 8px; margin: -2px 0 10px; }
+    .pnav .t { min-width: 140px; text-align: center; font-weight: 600; font-size: 14px; }
+    @container (max-width: 520px) { .pnav .t { min-width: 0; flex: 1; } }
+    .pnav button { font: inherit; font-size: 13px; min-width: 34px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--sg-border);
+      background: transparent; color: var(--sg-text); cursor: pointer; }
+    .pnav button:disabled { opacity: .4; cursor: default; }
+    .tile .v .dl { font-size: 11px; font-weight: 650; margin-left: 5px; color: var(--sg-muted); }
+    .tile .v .dl.good { color: var(--sg-sell); } .tile .v .dl.bad { color: var(--sg-buy); }
+    .skh { font-size: 13px; font-weight: 600; margin: 4px 0 6px; }
+    #sankey .sk-link { fill: none; stroke-opacity: .32; }
+    #sankey .sk-link:hover { stroke-opacity: .65; }
+    #sankey .sk-anim { fill: none; stroke: #fff; stroke-opacity: .55; stroke-linecap: round; stroke-dasharray: .1 16; animation: skflow 2s linear infinite; pointer-events: none; }
+    @keyframes skflow { to { stroke-dashoffset: -16.1; } }
+    #sankey .sk-n { font-size: 11px; font-weight: 700; letter-spacing: .03em; fill: #1b1b1b; }
+    #sankey .sk-v { font-size: 17px; font-weight: 750; fill: #1b1b1b; }
+    #sankey .sk-u { font-size: 11px; font-weight: 500; fill: #1b1b1b; }
+    #sankey .sk-p { font-size: 12px; font-weight: 600; fill: #1b1b1b; opacity: .8; }
+    #sankey .empty { font-size: 13px; color: var(--sg-muted); padding: 12px 0; }`;
   body() {
     return `<div class="bar2"><span class="sub" id="ptitle"></span><span class="seg" id="seg">
-        <button type="button" data-p="day">Dziś</button><button type="button" data-p="week">Tydzień</button><button type="button" data-p="month">Miesiąc</button></span></div>
+        <button type="button" data-p="day">Dzień</button><button type="button" data-p="week">Tydzień</button><button type="button" data-p="month">Miesiąc</button><button type="button" data-p="year">Rok</button></span></div>
+      <div class="pnav" id="pnav" hidden><button type="button" id="pprev" title="poprzedni okres">‹</button><span class="t" id="pt">–</span>
+        <button type="button" id="pnext" title="następny okres">›</button><button type="button" id="pnow" title="wróć do bieżącego okresu">Teraz</button></div>
       <div class="tiles" id="tiles"></div>
+      ${this._cfg.sankey !== false ? '<div class="skh">Przepływ energii</div><div id="sankey"></div>' : ''}
       ${this._cfg.losses !== false ? '<h3 id="lmh">Zużycie własne falownika i magazynu</h3><div class="tiles" id="lmt"></div>' : ''}
       <div class="chart"><canvas id="cv"></canvas></div><div class="note" id="note"></div>`;
   }
@@ -929,20 +994,24 @@ class SigenPeriodCard extends SigenChartCard {
       b.classList.toggle('on', b.dataset.p === this._p);
       b.onclick = () => { this._p = b.dataset.p; sgLs.set('sigen_ha_period', this._p);
         this.shadowRoot.querySelectorAll('#seg button').forEach(x => x.classList.toggle('on', x === b));
-        this.load().catch(e => this.onFail(e)); };
+        this._date = ''; this.load().catch(e => this.onFail(e)); };
     });
+    const go = v => { this._date = v; this.load().catch(e => this.onFail(e)); };
+    this.$('pprev').onclick = () => { if (this._nav && this._nav.prev) go(this._nav.prev); };
+    this.$('pnext').onclick = () => { if (this._nav && this._nav.next) go(this._nav.next); };
+    this.$('pnow').onclick = () => go('');
     super.afterBuild();
   }
   polls() { return [[this.load, 300000], ...(this._cfg.losses !== false ? [[this.loadLm, 900000]] : [])]; }
   async load() {
-    const d = await this.get('/api/period?okres=' + (this._p || 'day'));
+    const d = await this.get('/api/period?okres=' + (this._p || 'day') + (this._date ? '&date=' + this._date : ''));
     this._d = d; this.showErr(''); this.setStatus(true, 'odczyt ' + sgHm(Date.now() / 1000));
     this.render(d);
   }
   async loadLm() {
     const box = this.$('lmt'); if (!box) return;
     const m = new Date().toLocaleDateString('sv-SE').slice(0, 7);
-    const r = await this.get('/api/losses_month?month=' + m), T = r.total || {}, f = (v, n = 1) => v == null ? null : v.toFixed(n).replace('.', ',');
+    const r = await this.get('/api/losses_month?month=' + m), T = r.total || {}, f = (v, n = 1) => v == null ? null : v.toFx(n);
     this.$('lmh').textContent = 'Zużycie własne falownika i magazynu – ' + (r.label || m);
     box.innerHTML = sgTile('c-red', 'Razem w miesiącu', f(T.system, 1), 'kWh', `${(r.days || []).length} dni${r.cost != null ? ' · ≈ ' + f(r.cost, 2) + ' zł' : ''}`) +
       sgTile('', 'Średnio na dobę', f(r.avg_day_kwh, 2), 'kWh', r.avg_w != null ? `≈ ${r.avg_w} W bez przerwy (pełne dni: ${r.full_days})` : 'brak pełnych dni') +
@@ -954,21 +1023,36 @@ class SigenPeriodCard extends SigenChartCard {
   }
   render(d) {
     const e = d.energy || {}, src = k => e.src && e.src[k] === 'falownik' ? 'licznik falownika' : 'obliczone z mocy';
-    const st = e.straty || {}, reg = st.regulacja_pobor != null ? st.regulacja_pobor + st.regulacja_oddanie : null, f2 = v => v == null ? null : v.toFixed(2);
-    this.$('ptitle').textContent = d.title || '';
+    const st = e.straty || {}, reg = st.regulacja_pobor != null ? st.regulacja_pobor + st.regulacja_oddanie : null, f2 = v => v == null ? null : v.toFx(2);
+    const nav = !!d.prev;                       // 1.169: ‹ data › (aplikacja od 1.156 / publiczna od 1.30)
+    this._nav = nav ? d : null;
+    this.$('pnav').hidden = !nav;
+    if (nav) { this.$('pt').textContent = d.title || '–'; this.$('pnext').disabled = !d.next; this.$('pnow').hidden = !!d.is_current; }
+    this.$('ptitle').textContent = nav ? '' : d.title || '';
     const box = this.$('tiles');
-    box.innerHTML = sgTile('c-pv', 'Produkcja PV', e.pv, 'kWh', src('pv')) + sgTile('c-blue', 'Zużycie domu', e.load, 'kWh', src('load')) +
-      sgTile('c-red', 'Pobór z sieci', e.imp, 'kWh', src('imp')) + sgTile('c-green', 'Oddane do sieci', e.exp, 'kWh', src('exp')) +
-      sgTile('', 'Ładowanie mag.', e.chg, 'kWh', src('chg')) + sgTile('', 'Rozładowanie mag.', e.dis, 'kWh', src('dis')) +
-      sgTile('c-green', 'Autokonsumpcja', e.autokonsumpcja, '%', e.exp_pv != null ? `PV zużyte w domu i magazynie (do sieci z PV ${e.exp_pv.toFixed(1)} kWh, bez sprzedaży z magazynu)` : '') +
-      sgTile('c-amber', 'Samowystarczalność', e.samowystarczalnosc, '%', e.imp_home != null ? `dom bez prądu z sieci (dom z sieci ${e.imp_home.toFixed(1)} kWh, bez ładowania magazynu z sieci)` : '') +
+    const kd = d.range === 'day' ? 2 : 1;      // 1.166: kWh - 2 miejsca w dniu, 1 w okresach (jak na stronie)
+    const ct = (cls, t, k, unit, note) => {     // 1.169: strzalka porownania z poprzednim okresem (sgCmp - jak w aplikacji)
+      const c = sgCmp(e, d.cmp, k, unit, kd, x => this.esc(x));
+      return sgTile(cls, t, e[k], unit, [note, ...c.extra].filter(Boolean).join(' · '), kd).replace('</small></div>', '</small>' + c.badge + '</div>');
+    };
+    box.innerHTML = ct('c-pv', 'Produkcja PV', 'pv', 'kWh', src('pv')) + ct('c-blue', 'Zużycie domu', 'load', 'kWh', src('load')) +
+      ct('c-red', 'Pobór z sieci', 'imp', 'kWh', src('imp')) + ct('c-green', 'Oddane do sieci', 'exp', 'kWh', src('exp')) +
+      ct('', 'Ładowanie mag.', 'chg', 'kWh', src('chg')) + ct('', 'Rozładowanie mag.', 'dis', 'kWh', src('dis')) +
+      ct('c-green', 'Autokonsumpcja', 'autokonsumpcja', '%', e.exp_pv != null ? `PV zużyte w domu i magazynie (do sieci z PV ${e.exp_pv.toFx(1)} kWh, bez sprzedaży z magazynu)` : '') +
+      ct('c-amber', 'Samowystarczalność', 'samowystarczalnosc', '%', e.imp_home != null ? `dom bez prądu z sieci (dom z sieci ${e.imp_home.toFx(1)} kWh, bez ładowania magazynu z sieci)` : '') +
       sgTile('', 'Straty konwersji', f2(st.konwersja), 'kWh', 'przetwarzanie PV, magazynu i AC') +
-      sgTile('', 'Czuwanie', f2(st.czuwanie), 'kWh', st.czuwanie_sr_w != null ? `śr. ${st.czuwanie_sr_w} W przez ${(st.h_czuwanie || 0).toFixed(1)} h bez przetwarzania` : 'gdy falownik nic nie przetwarza') +
+      sgTile('', 'Czuwanie', f2(st.czuwanie), 'kWh', st.czuwanie_sr_w != null ? `śr. ${st.czuwanie_sr_w} W przez ${(st.h_czuwanie || 0).toFx(1)} h bez przetwarzania` : 'gdy falownik nic nie przetwarza') +
       sgTile('', 'Odchyłki regulacji', f2(reg), 'kWh', reg != null ? `pobór z sieci ${f2(st.regulacja_pobor)} · oddanie ${f2(st.regulacja_oddanie)} kWh` : '') +
       sgTile('', 'Sprawność falownika', e.sprawnosc, '%', 'konwersja + czuwanie');
     sgPopTiles(box);
     this.$('note').textContent = (d.partial ? 'Historia miesięcy jest jeszcze przeliczana w tle – odśwież za kilka minut. ' : '') +
       'Autokonsumpcja i samowystarczalność bez arbitrażu (sprzedaż z magazynu i ładowanie z sieci nie zaniżają wyniku).';
+    const sk = this.$('sankey');
+    if (sk) {
+      const p = SIGEN_PAL[this._dark ? 'dark' : 'light'];
+      sk.innerHTML = e.flows ? (sgSankeySvg(e.flows, sk.clientWidth || 600, { pv: p.pv, bat: p.bat, grid: p.grid, load: p.load, loss: p.loss }) ||
+        '<div class="empty">Brak danych o przepływach w tym okresie.</div>') : '<div class="empty">Przepływy – zaktualizuj aplikację Sigen.</div>';
+    }
     this.chart(d.buckets || []);
   }
   async chart(B) {
@@ -978,11 +1062,11 @@ class SigenPeriodCard extends SigenChartCard {
     const rgba = (hex, a) => { const n = parseInt(hex.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
     const bar = (label, k, color, axis) => ({ label, data: B.map(b => b[k]), backgroundColor: color, borderColor: color, type: 'bar', yAxisID: axis, borderRadius: 3, maxBarThickness: 28 });
     const sets = [bar('Produkcja PV', 'pv', pal.pv, 'y'), bar('Zużycie domu', 'load', pal.load, 'y'),
-      bar('Autokonsumpcja', 'autokonsumpcja', rgba(pal.bat, 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', 'rgba(250,204,21,0.8)', 'y1')];
+      bar('Autokonsumpcja', 'autokonsumpcja', rgba(pal.bat, 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', rgba(pal.arb, 0.8), 'y1')];
     if (!this._chart) {
       const o = sgChartBase(this, 'kWh', this.narrow);
       o.scales.y1 = { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { color: this.cv('--sg-muted') || '#888', callback: v => v + ' %' } };
-      o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? '' : ` ${c.dataset.label}: ${c.parsed.y.toFixed(c.dataset.yAxisID === 'y1' ? 0 : 1)} ${c.dataset.yAxisID === 'y1' ? '%' : 'kWh'}`;
+      o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? '' : ` ${c.dataset.label}: ${c.parsed.y.toFx(c.dataset.yAxisID === 'y1' ? 0 : 1)} ${c.dataset.yAxisID === 'y1' ? '%' : 'kWh'}`;
       this._chart = new Chart(cvs, { type: 'bar', data: { labels, datasets: sets }, options: o });
     } else { this._chart.data = { labels, datasets: sets }; this._chart.update(); }
   }
@@ -1051,7 +1135,7 @@ class SigenEffCard extends SigenBase {
     if (!b || !b.ok) { box.innerHTML = ''; return; }
     const I = b.idle || {};
     box.innerHTML = sgTile(b.round_trip == null ? 'c-blue' : b.round_trip >= 90 ? 'c-green' : b.round_trip >= 80 ? 'c-blue' : 'c-red', 'Sprawność magazynu (round-trip)',
-        b.round_trip == null ? null : b.round_trip.toFixed(1), '%',
+        b.round_trip == null ? null : b.round_trip.toFx(1), '%',
         `ładowanie ${b.chg_kwh} kWh · rozładowanie ${b.dis_kwh} kWh · SOC ${b.soc_start} → ${b.soc_end} % w ${Math.round(b.period_h)} h (${days === 1 ? 'doba' : days + ' dni'}) – im dłuższy okres, tym dokładniej`) +
       sgTile('c-blue', 'Magazyn w czuwaniu – z ogniw', I.cells_w, 'W', I.hours ? `spadek SOC ${I.soc_drop_pct_h} %/h w ${I.hours} h (${I.runs} odcinki ≥ 3 h bez pracy magazynu); ok. 0 W = BMS zasilany z sieci` : 'brak odcinków ≥ 3 h bez pracy magazynu') +
       sgTile('c-blue', 'Czuwanie – pobór z sieci', I.grid_w, 'W', I.hours ? 'pobór falownika z AC w tych samych odcinkach (zużycie własne systemu)' : '');
@@ -1060,13 +1144,13 @@ class SigenEffCard extends SigenBase {
   renderTable(d) {
     const hide = this.$('hide').checked, range = b => b.do == null ? `≥ ${b.od}` : `${b.od}–${b.do}`;
     const pct = v => { const c = v >= 90 ? '--sg-sell' : v >= 70 ? '--sg-grid' : '--sg-buy';
-      return `<span class="effbar" style="width:${Math.max(4, Math.min(60, (v - 50) * 1.2))}px;background:var(${c})"></span><span style="color:var(${c});font-weight:600">${v.toFixed(1)} %</span>`; };
+      return `<span class="effbar" style="width:${Math.max(4, Math.min(60, (v - 50) * 1.2))}px;background:var(${c})"></span><span style="color:var(${c});font-weight:600">${v.toFx(1)} %</span>`; };
     const cell = b => {
       if (!b || (hide && b.mala_probka)) return '<td class="mu">–</td>';
-      const tip = `${range(b)} kW: ${b.godzin.toFixed(2)} h, śr. moc ${b.moc_sr_kw.toFixed(2)} kW, energia wej. ${b.e_in.toFixed(2)} kWh, straty ${b.straty_kwh.toFixed(3)} kWh (śr. ${b.strata_sr_w} W)` +
+      const tip = `${range(b)} kW: ${b.godzin.toFx(2)} h, śr. moc ${b.moc_sr_kw.toFx(2)} kW, energia wej. ${b.e_in.toFx(2)} kWh, straty ${b.straty_kwh.toFx(3)} kWh (śr. ${b.strata_sr_w} W)` +
         (b.mala_probka ? ' – mniej niż 15 min danych' : '');
       return `<td title="${tip}"${b.mala_probka ? ' style="opacity:.55"' : ''}>${b.sprawnosc == null ? '–' : pct(b.sprawnosc)}${b.mala_probka ? ' *' : ''}` +
-        `<div class="sub">${b.godzin.toFixed(1)} h · ${b.strata_sr_w} W</div></td>`;
+        `<div class="sub">${b.godzin.toFx(1)} h · ${b.strata_sr_w} W</div></td>`;
     };
     const by = a => Object.fromEntries((a || []).map(b => [b.od, b]));
     const G = by(d.bins), C = by(d.ladowanie), D = by(d.rozladowanie);
@@ -1074,8 +1158,8 @@ class SigenEffCard extends SigenBase {
     let rows = ods.filter(od => [G[od], C[od], D[od]].some(b => b && !(hide && b.mala_probka)))
       .map(od => `<tr><td>${range(G[od] || C[od] || D[od])}</td>${cell(G[od])}${cell(C[od])}${cell(D[od])}</tr>`).join('');
     const I = d.czuwanie, W = d.slabe_pv;
-    if (W) rows = `<tr class="dim"><td>świt / zmierzch</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFixed(1) + ' %'}<div class="sub">niemiarodajne</div></td><td class="mu">–</td><td class="mu">–</td></tr>` + rows;
-    if (I) rows = `<tr class="dim"><td>czuwanie</td><td>${I.sr_w} W<div class="sub">pobór z sieci, ${I.godzin.toFixed(1)} h</div></td><td class="mu">–</td><td class="mu">–</td></tr>` + rows;
+    if (W) rows = `<tr class="dim"><td>świt / zmierzch</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFx(1) + ' %'}<div class="sub">niemiarodajne</div></td><td class="mu">–</td><td class="mu">–</td></tr>` + rows;
+    if (I) rows = `<tr class="dim"><td>czuwanie</td><td>${I.sr_w} W<div class="sub">pobór z sieci, ${I.godzin.toFx(1)} h</div></td><td class="mu">–</td><td class="mu">–</td></tr>` + rows;
     this.$('tb').innerHTML = rows || '<tr><td colspan="4" class="mu">Brak danych.</td></tr>';
     this.$('info').textContent = `dni z danymi: ${d.n_days ?? '–'}`;
   }
@@ -1130,33 +1214,33 @@ class SigenPstrykCard extends SigenBase {
     const st = d.status || {}, D = d.day || {}, M = d.month || {}, S = d.sigen || {}, I = d.invoice;
     this.showErr(st.error ? 'Pstryk: ' + st.error : '');
     this.setStatus(!st.error, st.last ? 'synchronizacja ' + sgHm(st.last) : 'pierwsza synchronizacja…');
-    const z2 = v => v == null ? null : v.toFixed(2);
+    const z2 = v => v == null ? null : v.toFx(2);
     const MN = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
     const mn = (key, k = 0) => { const m = +key.split('-')[1]; return MN[(m - 1 + k + 12) % 12]; };
     const sigenOk = S.imp != null && (S.imp > 0 || S.exp > 0);
-    const diff = (a, b) => a == null || b == null || !sigenOk ? '' : `Sigen: ${b.toFixed(2)} kWh (różnica ${(a - b >= 0 ? '+' : '') + (a - b).toFixed(2)})`;
+    const diff = (a, b) => a == null || b == null || !sigenOk ? '' : `Sigen: ${b.toFx(2)} kWh (różnica ${(a - b >= 0 ? '+' : '') + (a - b).toFx(2)})`;
     const lastH = D.last_ts ? new Date(D.last_ts * 1000).getHours() + 1 : null;
     const upto = D.hours && D.hours < 24 && lastH ? ` · dane do ${String(lastH).padStart(2, '0')}:00` : '';
     const bal = (t, b) => b == null ? sgTile('c-blue', t, null, 'zł') : sgTile('bal ' + (b > 0.005 ? 'c-red' : b < -0.005 ? 'c-green' : 'c-blue'), t,
-      (b < -0.005 ? '+' : b > 0.005 ? '−' : '') + Math.abs(b).toFixed(2), 'zł', b > 0.005 ? 'koszt większy od sprzedaży' : b < -0.005 ? 'sprzedaż większa od kosztu' : 'koszt = sprzedaż');
+      (b < -0.005 ? '+' : b > 0.005 ? '−' : '') + Math.abs(b).toFx(2), 'zł', b > 0.005 ? 'koszt większy od sprzedaży' : b < -0.005 ? 'sprzedaż większa od kosztu' : 'koszt = sprzedaż');
     this.$('dt').textContent = 'Dziś' + (upto ? ' (' + upto.slice(3) + ')' : '');
     this.$('day').innerHTML = !D.hours ? '<div class="note">Brak danych licznika dla dzisiaj.</div>' :
-      sgTile('c-red', 'Pobór (licznik)', D.imp.toFixed(3), 'kWh', diff(D.imp, S.imp)) + sgTile('c-green', 'Oddanie (licznik)', D.exp.toFixed(3), 'kWh', diff(D.exp, S.exp)) +
+      sgTile('c-red', 'Pobór (licznik)', D.imp.toFx(3), 'kWh', diff(D.imp, S.imp)) + sgTile('c-green', 'Oddanie (licznik)', D.exp.toFx(3), 'kWh', diff(D.exp, S.exp)) +
       sgTile('c-red', 'Koszt dnia', z2(D.cost), 'zł', `w tym stałe ok. ${z2(D.fixed_gross)} zł${upto}`) + sgTile('c-green', 'Sprzedaż energii', z2(D.sold), 'zł') + bal('Bilans dnia', D.balance);
     this.$('mt').textContent = `Miesiąc: ${M.label || ''}` + (M.days ? ` (${M.days} ${M.days === 1 ? 'dzień' : 'dni'} z danymi)` : '');
     this.$('month').innerHTML = !M.hours ? '<div class="note">Brak danych w tym miesiącu.</div>' :
-      sgTile('c-red', 'Koszt miesiąca', z2(M.cost), 'zł', `w tym stałe ok. ${z2(M.fixed_gross)} zł`) + sgTile('c-red', 'Pobór', M.imp.toFixed(2), 'kWh') +
-      sgTile('c-green', 'Oddanie', M.exp.toFixed(2), 'kWh') +
-      (I && I.tarcza_avg != null ? sgTile(I.tarcza > 0.005 ? 'c-green' : 'c-blue', 'Tarcza Pstryk', '≈' + I.tarcza.toFixed(2), 'zł',
-        `średni koszt energii z opłatą za obsługę ≈ ${I.tarcza_avg.toFixed(3)} zł/kWh · limit ${I.tarcza_cap.toFixed(2)} zł/kWh` + (I.tarcza > 0.005 ? ' – zniżka na fakturze' : ' – bez zniżki')) : '') +
-      (I ? sgTile('c-green', `Depozyt na fakturę (${mn(I.month)})`, I.deposit.toFixed(2), 'zł', `${this.esc(I.deposit_src)} · zarobiony w ${mn(I.month, -1)} (poprawka depozytu – w aplikacji)`) +
-        sgTile(I.to_pay > 0.005 ? 'c-red' : 'c-green', `Faktura za ${mn(I.month)} (szac.)`, I.to_pay > 0.005 ? I.to_pay.toFixed(2) : '0,00', 'zł',
-          `koszt ${I.cost.toFixed(2)} (energia ${I.parts.energy.toFixed(2)} + dystrybucja ${I.parts.dist.toFixed(2)} + obsługa ${I.parts.service.toFixed(2)}) − Tarcza ${I.tarcza.toFixed(2)} − depozyt ${I.deposit.toFixed(2)} zł` +
-          (I.left > 0.005 ? ` · reszta ${I.left.toFixed(2)} zł depozytu przechodzi na ${mn(I.month, 1)}` : '')) +
-        sgTile('c-green', `Depozyt na ${mn(I.month, 1)}`, (I.next_deposit + I.left).toFixed(2), 'zł', `oddanie w ${mn(I.month)} ${I.next_deposit.toFixed(2)} zł` +
-          (I.left > 0.005 ? ` + reszta ${I.left.toFixed(2)} zł` : '') + ` – pomniejszy fakturę za ${mn(I.month, 1)} (do teraz)`) : '');
+      sgTile('c-red', 'Koszt miesiąca', z2(M.cost), 'zł', `w tym stałe ok. ${z2(M.fixed_gross)} zł`) + sgTile('c-red', 'Pobór', M.imp.toFx(2), 'kWh') +
+      sgTile('c-green', 'Oddanie', M.exp.toFx(2), 'kWh') +
+      (I && I.tarcza_avg != null ? sgTile(I.tarcza > 0.005 ? 'c-green' : 'c-blue', 'Tarcza Pstryk', '≈' + I.tarcza.toFx(2), 'zł',
+        `średni koszt energii z opłatą za obsługę ≈ ${I.tarcza_avg.toFx(3)} zł/kWh · limit ${I.tarcza_cap.toFx(2)} zł/kWh` + (I.tarcza > 0.005 ? ' – zniżka na fakturze' : ' – bez zniżki')) : '') +
+      (I ? sgTile('c-green', `Depozyt na fakturę (${mn(I.month)})`, I.deposit.toFx(2), 'zł', `${this.esc(I.deposit_src)} · zarobiony w ${mn(I.month, -1)} (poprawka depozytu – w aplikacji)`) +
+        sgTile(I.to_pay > 0.005 ? 'c-red' : 'c-green', `Faktura za ${mn(I.month)} (szac.)`, I.to_pay > 0.005 ? I.to_pay.toFx(2) : '0,00', 'zł',
+          `koszt ${I.cost.toFx(2)} (energia ${I.parts.energy.toFx(2)} + dystrybucja ${I.parts.dist.toFx(2)} + obsługa ${I.parts.service.toFx(2)}) − Tarcza ${I.tarcza.toFx(2)} − depozyt ${I.deposit.toFx(2)} zł` +
+          (I.left > 0.005 ? ` · reszta ${I.left.toFx(2)} zł depozytu przechodzi na ${mn(I.month, 1)}` : '')) +
+        sgTile('c-green', `Depozyt na ${mn(I.month, 1)}`, (I.next_deposit + I.left).toFx(2), 'zł', `oddanie w ${mn(I.month)} ${I.next_deposit.toFx(2)} zł` +
+          (I.left > 0.005 ? ` + reszta ${I.left.toFx(2)} zł` : '') + ` – pomniejszy fakturę za ${mn(I.month, 1)} (do teraz)`) : '');
     this.shadowRoot.querySelectorAll('.tiles').forEach(sgPopTiles);
-    const f = (v, n) => v == null ? '–' : v.toFixed(n);
+    const f = (v, n) => v == null ? '–' : v.toFx(n);
     this.$('hrs').innerHTML = (d.hours || []).map(h => `<tr class="${h.cost == null && h.sold == null ? '' : (h.cost || 0) > (h.sold || 0) ? 'buy' : (h.sold || 0) > (h.cost || 0) ? 'sell' : ''}">` +
       `<td>${sgHm(h.ts)}</td><td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td><td>${f(h.price_pros, 3)}</td></tr>`).join('') ||
       '<tr><td colspan="7">Brak danych.</td></tr>';
@@ -1174,11 +1258,11 @@ class SigenPstrykCard extends SigenBase {
     }
     if (!r.enabled || !(r.months || []).length) return;
     this.$('g13box').hidden = false;
-    const z = v => v.toFixed(2).replace('.', ',');
+    const z = v => v.toFx(2);
     tb.innerHTML = r.months.map(m => {
       const opts = [['p', m.pstryk.to_pay], ['s', m.g13_same.to_pay], ['n', m.g13_night.to_pay]], b = opts.reduce((x, y) => y[1] < x[1] ? y : x)[0];
       const c = (k, v, t) => `<td title="${t}"${b === k ? ' class="best"' : ''}>${z(v)} zł</td>`;
-      return `<tr><td>${m.label}${m.partial ? ` (${m.days} dni)` : ''}</td><td>${m.imp.toFixed(0)}</td>` +
+      return `<tr><td>${m.label}${m.partial ? ` (${m.days} dni)` : ''}</td><td>${m.imp.toFx(0)}</td>` +
         c('p', m.pstryk.to_pay, `koszt ${z(m.pstryk.cost)} − Tarcza ${z(m.pstryk.tarcza)} − depozyt ${z(m.pstryk.deposit)} zł`) +
         c('s', m.g13_same.to_pay, `energia ${z(m.g13_same.energy)} − depozyt ${z(m.g13_same.deposit_used)} + dystrybucja ${z(m.g13_same.dist)} + stałe ${z(m.g13_same.fixed)} zł`) +
         c('n', m.g13_night.to_pay, `energia ${z(m.g13_night.energy)} − depozyt ${z(m.g13_night.deposit_used)} + dystrybucja ${z(m.g13_night.dist)} + stałe ${z(m.g13_night.fixed)} zł`) +
@@ -1248,7 +1332,7 @@ class SigenForecastCard extends SigenChartCard {
       return d.groups[k] + (s.error ? ' – błąd: ' + s.error : s.updated ? ' ' + sgDT(s.updated) : ''); }).join(' · ');
     const range = when => { const v = (d.models || []).map(m => S[m] && S[m][when] && S[m][when].total_kwh).filter(x => x != null); return v.length ? [Math.min(...v), Math.max(...v)] : null; };
     const note = (r, fs, ec, om) => [d.main !== 'open_meteo' && om ? `Open-Meteo ${om.total_kwh}` : '', d.main !== 'om_ecmwf' && ec ? `ECMWF ${ec.total_kwh}` : '',
-      d.main !== 'forecast_solar' && fs ? `forecast.solar ${fs.total_kwh}` : '', r ? `modele ${r[0].toFixed(1)}–${r[1].toFixed(1)}` : ''].filter(Boolean).join(' · ');
+      d.main !== 'forecast_solar' && fs ? `forecast.solar ${fs.total_kwh}` : '', r ? `modele ${r[0].toFx(1)}–${r[1].toFx(1)}` : ''].filter(Boolean).join(' · ');
     const when = f => !f ? '' : f.kind === 'dzien_wczesniej' ? ` · prognoza z dnia poprzedniego (${f.fetched ? sgDT(f.fetched) : '–'})` : '';
     const nowHM = sgMin(d.now_min || 0), fcSrc = T ? `${N[d.main]}${T.kind === 'dzien_wczesniej' ? ' z ' + sgDT(T.fetched) : ' (bieżąca)'}` : '';
     const pct = T && d.forecast_until_now_kwh > 0.05 ? Math.round(100 * d.actual_kwh / d.forecast_until_now_kwh) : null;
@@ -1277,7 +1361,7 @@ class SigenForecastCard extends SigenChartCard {
       const err = r.actual_kwh > 0.3 ? Math.abs(r.actual_kwh - v) / r.actual_kwh : null;
       return `<td${err != null ? ` style="${tint(err / 0.5)}"` : ''}>${v}</td>`; };
     this.$('accb').innerHTML = acc.days.length ? (ranked.length ? '<tr><td><b>Średnie odchylenie</b></td><td class="mu">' + Math.max(...ranked.map(k => mean[k].n)) + ' dni</td>' +
-      cols.map(k => mean[k] ? `<td style="${tint(rankT(k))}"><b>±${mean[k].mae.toFixed(2)}</b> <span class="mu">(${mean[k].pct != null ? mean[k].pct.toFixed(0) + ' %' : '–'})</span></td>` : '<td>–</td>').join('') + '</tr>' : '') +
+      cols.map(k => mean[k] ? `<td style="${tint(rankT(k))}"><b>±${mean[k].mae.toFx(2)}</b> <span class="mu">(${mean[k].pct != null ? mean[k].pct.toFx(0) + ' %' : '–'})</span></td>` : '<td>–</td>').join('') + '</tr>' : '') +
       acc.days.map(r => `<tr><td>${r.day}</td><td>${r.actual_kwh}</td>${cols.map(k => cell(r, k)).join('')}</tr>`).join('')
       : `<tr><td colspan="${2 + cols.length}" class="mu">Pierwsze wyniki po pierwszym pełnym dniu z prognozą z dnia poprzedniego.</td></tr>`;
   }
@@ -1286,7 +1370,7 @@ class SigenForecastCard extends SigenChartCard {
     this.$('corh').innerHTML = '<tr><th>Źródło</th>' + CL.map(([, n]) => `<th>${n}</th>`).join('') + '</tr>';
     this.$('corb').innerHTML = Object.keys(CR).length ? Object.entries(CR).sort((a, b) => (b[0] === d.main) - (a[0] === d.main)).map(([k, v]) =>
       `<tr><td>${this.esc(N[k] || k)}${k === d.main ? ' (główna)' : ''}</td>` + CL.map(([c]) => { const x = v[c];
-        return !x || x.factor == null ? '<td>–</td>' : `<td style="${x.active ? 'font-weight:600' : 'color:var(--sg-muted)'}">×${x.factor.toFixed(2)} <span class="mu">${x.days} dni</span></td>`; }).join('') + '</tr>').join('')
+        return !x || x.factor == null ? '<td>–</td>' : `<td style="${x.active ? 'font-weight:600' : 'color:var(--sg-muted)'}">×${x.factor.toFx(2)} <span class="mu">${x.days} dni</span></td>`; }).join('') + '</tr>').join('')
       : '<tr><td colspan="4" class="mu">Brak danych.</td></tr>';
     this.$('corn').textContent = `Współczynnik = rzeczywista ÷ prognoza z dnia poprzedniego (ostatnie ${CC.learn_days || 45} dni); pogrubione działają (od ${CC.min_days || 5} dni w klasie).` +
       (T && T.correction && T.correction !== 1 ? ` Dziś główna po korekcie ${T.total_kwh} kWh (surowa ${T.raw_kwh} kWh).` : '');
@@ -1306,8 +1390,8 @@ class SigenForecastCard extends SigenChartCard {
       return ls.length ? [grid.map((_, i) => Math.min(...ls.map(l => l[i]))), grid.map((_, i) => Math.max(...ls.map(l => l[i])))] : [null, null]; };
     const [tMin, tMax] = band('today'), [jMin, jMax] = band('tomorrow');
     const pal = SIGEN_PAL[this._dark ? 'dark' : 'light'];
-    const COL = { open_meteo: pal.load, om_srednia: '#6250d6', om_ecmwf: pal.sell, om_icon_eu: pal.grid, om_ukmo: '#6250d6', om_gfs: pal.pv,
-      ens_p50: pal.load, ens_p10: '#6250d6', ens_p90: pal.pv, forecast_solar: pal.grid };
+    const COL = { open_meteo: pal.load, om_srednia: pal.fc2, om_ecmwf: pal.sell, om_icon_eu: pal.grid, om_ukmo: pal.fc2, om_gfs: pal.pv,
+      ens_p50: pal.load, ens_p10: pal.fc2, ens_p90: pal.pv, forecast_solar: pal.grid };
     const srcKeys = Object.keys(N).filter(k => S[k] && (S[k].today || S[k].tomorrow));
     let pick; try { pick = JSON.parse(sgLs.get('sigen_ha_fcpick') || 'null'); } catch (e) { pick = null; }
     if (!Array.isArray(pick) || !pick.some(k => srcKeys.includes(k))) pick = [d.main, d.main === 'om_ecmwf' ? 'open_meteo' : 'om_ecmwf'].filter(k => srcKeys.includes(k));
@@ -1325,14 +1409,14 @@ class SigenForecastCard extends SigenChartCard {
     pick.filter(k => srcKeys.includes(k)).forEach(k => { const c = COL[k] || '#888';
       if (S[k].today) sets.push(ln(`${N[k]} dziś`, line(S[k].today), c, { borderDash: [6, 4], borderWidth: 2 }));
       if (S[k].tomorrow) sets.push(ln(`${N[k]} jutro`, line(S[k].tomorrow), c, { borderDash: [2, 3], borderWidth: 1.5 })); });
-    if (!pick.includes('_band') && tMin) sets.push(bs('_tmin', tMin, pal.load, false), bs('Rozrzut modeli dziś', tMax, pal.load, '-1'), bs('_jmin', jMin, '#6250d6', false), bs('Rozrzut modeli jutro', jMax, '#6250d6', '-1'));
+    if (!pick.includes('_band') && tMin) sets.push(bs('_tmin', tMin, pal.load, false), bs('Rozrzut modeli dziś', tMax, pal.load, '-1'), bs('_jmin', jMin, pal.fc2, false), bs('Rozrzut modeli jutro', jMax, '#6250d6', '-1'));
     const labels = grid.map(sgMin), nowIdx = d.now_min >= from && d.now_min <= to ? (d.now_min - from) / 10 : null;
     if (!this._chart) {
       const o = sgChartBase(this, 'kW', this.narrow); o.scales.y.min = 0;
       Object.assign(o.plugins.legend.labels, { usePointStyle: true, boxWidth: 20,
         filter: (it, dd) => !it.text.startsWith('_') && (dd.datasets[it.datasetIndex].data || []).some(v => v != null && v > 0) });
       o.plugins.tooltip.filter = it => !it.dataset.label.startsWith('_') && it.parsed.y != null;
-      o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)} kW`;
+      o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFx(2)} kW`;
       this._chart = new Chart(cvs, { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [sgNowLinePlugin(this)] });
     } else this._chart.data = { labels, datasets: sets };
     this._chart.$nowIdx = nowIdx; this._chart.update();
@@ -1396,7 +1480,7 @@ class SigenStringsCard extends SigenChartCard {
     const labels = M.map(m => m.label);
     if (!this._chart) {
       const o = sgChartBase(this, 'kWh', this.narrow); o.scales.y.min = 0; o.plugins.legend.display = false;
-      o.plugins.tooltip.callbacks.label = c => ` Produkcja PV: ${c.parsed.y.toFixed(1)} kWh`;
+      o.plugins.tooltip.callbacks.label = c => ` Produkcja PV: ${c.parsed.y.toFx(1)} kWh`;
       o.plugins.tooltip.callbacks.footer = it => { const m = this._m[it[0].dataIndex]; return m ? [`${m.days} dni z odczytami`] : []; };
       this._chart = new Chart(cvs, { type: 'bar', data: { labels, datasets: sets }, options: o });
     } else this._chart.data = { labels, datasets: sets };
@@ -1456,7 +1540,7 @@ class SigenInverterCard extends SigenBase {
     const d = await this.get('/api/live'); if (d.soc == null) return;
     this._soc = d.soc;
     const n = this.shadowRoot.querySelector('.socg-now');
-    if (n) { n.style.left = Math.max(0, Math.min(100, d.soc)) + '%'; n.firstChild.textContent = d.soc.toFixed(0) + ' %'; }
+    if (n) { n.style.left = Math.max(0, Math.min(100, d.soc)) + '%'; n.firstChild.textContent = d.soc.toFx(0) + ' %'; }
     else if (this._d) this.render(this._d);
   }
   async load() {
@@ -1472,7 +1556,7 @@ class SigenInverterCard extends SigenBase {
     const cl = x => Math.max(0, Math.min(100, x)), axl = x => `<span style="left:${cl(x)}%;transform:translateX(${x >= 95 ? -100 : x <= 5 ? 0 : -50}%)">${x} %</span>`;
     return `<div class="socg"><div class="socg-bar"><div class="socg-off" style="left:0;width:${cl(lo)}%"></div><div class="socg-on" style="left:${cl(lo)}%;width:${cl(hi - lo)}%"></div>` +
       `<div class="socg-off" style="left:${cl(hi)}%;width:${100 - cl(hi)}%"></div>` + (bk != null ? `<div class="socg-bk" style="left:${cl(bk)}%"></div>` : '') +
-      (soc != null ? `<div class="socg-now" style="left:${cl(soc)}%"><span>${soc.toFixed(0)} %</span></div>` : '') + `</div><div class="socg-ax">${axl(lo)}${axl(hi)}</div>` +
+      (soc != null ? `<div class="socg-now" style="left:${cl(soc)}%"><span>${soc.toFx(0)} %</span></div>` : '') + `</div><div class="socg-ax">${axl(lo)}${axl(hi)}</div>` +
       `<div class="socg-leg"><span><i style="background:color-mix(in srgb, var(--sg-bat) 55%, transparent)"></i>zakres pracy ${lo}–${hi} %</span>` +
       (bk != null ? `<span><i style="background:var(--sg-grid);width:3px"></i>rezerwa ${bk} %</span>` : '') + (soc != null ? `<span><i style="background:var(--sg-text);width:3px"></i>teraz</span>` : '') + '</div></div>';
   }
@@ -1503,7 +1587,7 @@ class SigenInverterCard extends SigenBase {
 const SIGEN_CARDS = [
   ['sigen-live-card', SigenLiveCard, 'Sigen – teraz', 'Przepływy energii PV / dom / magazyn / sieć, SOC i strategia teraz (aplikacja Sigen Dashboard).'],
   ['sigen-prices-card', SigenPricesCard, 'Sigen – ceny energii', 'Ceny zakupu i sprzedaży dziś i jutro (PSE / Pstryk), najtańsze godziny.'],
-  ['sigen-period-card', SigenPeriodCard, 'Sigen – aktualne pomiary', 'Dziś / Tydzień / Miesiąc: produkcja PV, zużycie, sieć, magazyn, autokonsumpcja, straty, wykres słupkowy.'],
+  ['sigen-period-card', SigenPeriodCard, 'Sigen – aktualne pomiary', 'Dzień / Tydzień / Miesiąc / Rok z ‹ data ›: produkcja PV, zużycie, sieć, magazyn, przepływ energii, porównanie z poprzednim okresem, wykres słupkowy.'],
   ['sigen-forecast-card', SigenForecastCard, 'Sigen – prognoza PV', 'Prognoza produkcji PV dziś i jutro: kafle, wykres źródeł i rozrzutu modeli, trafność, korekta.'],
   ['sigen-strings-card', SigenStringsCard, 'Sigen – połacie PV', 'Realna produkcja połaci (Dziś / Tydzień / Miesiąc) i produkcja w miesiącach.'],
   ['sigen-inverter-card', SigenInverterCard, 'Sigen – ustawienia falownika', 'Alarmy, granice SOC (pasek), limity przyłącza, Remote EMS i historia zmian (tylko odczyt).'],

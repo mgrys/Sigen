@@ -7,9 +7,9 @@ Karty pobierają dane z aplikacji Sigen PV Monitor (musi działać w tej samej s
 
 | Karta | Co pokazuje |
 |---|---|
-| `custom:sigen-live-card` | Teraz: przepływy PV / dom / magazyn / sieć, SOC, strategia teraz |
+| `custom:sigen-live-card` | Teraz: „Obecny tryb”, przepływy PV / dom / magazyn / sieć (gałęzie z kropkami), SOC wg pochodzenia energii, strategia teraz |
 | `custom:sigen-strategy-card` | Strategia osobista: kafle, wykres planu, plan godzinowy, ustawienia strategii i sterowanie (PIN) |
-| `custom:sigen-period-card` | Aktualne pomiary – Dziś / Tydzień / Miesiąc, zużycie własne falownika, wykres słupkowy |
+| `custom:sigen-period-card` | Aktualne pomiary – Dzień / Tydzień / Miesiąc / Rok z ‹ data ›, przepływ energii (`sankey: false` ukrywa), porównanie z poprzednim okresem, zużycie własne falownika, wykres słupkowy |
 | `custom:sigen-prices-card` | Ceny energii dziś i jutro |
 | `custom:sigen-forecast-card` | Prognoza produkcji PV, trafność, korekta wg zachmurzenia |
 | `custom:sigen-strings-card` | Połacie PV (Dziś / Tydzień / Miesiąc) i produkcja w miesiącach |

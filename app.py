@@ -15,7 +15,7 @@ import time
 
 from fastapi import Body, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pymodbus.client import ModbusTcpClient
 
 import config
@@ -36,7 +36,7 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.30.0"
+__version__ = "1.31.0"
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -474,6 +474,7 @@ def index(request: Request):
             f"&&!u.startsWith('//')&&!u.startsWith('{pre}/')?'{pre}'+u:u,o)}})(window.fetch.bind(window));</script>")
     html = html.replace("<head>", "<head>" + shim, 1)
     html = html.replace('href="/static/', f'href="{pre}/static/').replace('src="/static/', f'src="{pre}/static/')
+    html = html.replace('src="/ha/', f'src="{pre}/ha/')      # 1.31: wspolny sigen-common.js
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
@@ -492,6 +493,10 @@ def ha_card_file(name: str):
     path = STATIC / "ha" / name
     if path.parent != STATIC / "ha" or not path.is_file() or path.suffix != ".js":
         return JSONResponse({"error": "nie znaleziono"}, status_code=404)
+    if name == "sigen-cards.js":        # 1.31: wspolny kod strony i kart (kolory, liczby, rysowanie) doklejany przed karty
+        common = STATIC / "ha" / "sigen-common.js"
+        body = (common.read_text(encoding="utf-8") if common.is_file() else "") + "\n" + path.read_text(encoding="utf-8")
+        return Response(body, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
     return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 
@@ -1090,7 +1095,8 @@ def api_period(okres: str = "day", date: str = ""):
         e = dd["energy"]
         en_all = energy(rows)
         e["flows"] = {k[2:]: en_all[k] for k in FLOW_KEYS}
-        return {"range": "day", "title": title, "energy": e, "buckets": buckets, "series": dd["series"], **nav}
+        return {"range": "day", "title": title, "energy": e, "buckets": buckets, "series": dd["series"], **nav,
+                "cmp": _period_cmp_day(d)}
     days = _period_days(a, min(b, today), compute_missing=400 if okres == "year" else 60)
     e = _period_sum(list(days.values()))
     buckets = []
@@ -1109,7 +1115,69 @@ def api_period(okres: str = "day", date: str = ""):
             x += dt.timedelta(days=1)
     n_want = (min(b, today) - a).days + 1
     empty = sum(1 for k, v in _period_cache().items() if k != "_ver" and v == {} and a.isoformat() <= k <= b.isoformat())
-    return {"range": okres, "title": title, "energy": e, "buckets": buckets, "partial": len(days) + empty < n_want - 1, **nav}
+    return {"range": okres, "title": title, "energy": e, "buckets": buckets, "partial": len(days) + empty < n_want - 1, **nav,
+            "cmp": _period_cmp(okres, a, b, nav)}
+
+
+# --- 1.31: C6 - porownanie z poprzednim okresem (strzalki w kaflach): dzien - wczoraj i ten sam dzien tydzien temu, dzis
+# do tej samej godziny; tydzien / miesiac / rok - poprzedni okres, biezacy do tego samego dnia. Wartosci z pomiarow / podsumowan.
+CMP_KEYS = ("pv", "load", "imp", "exp", "chg", "dis", "autokonsumpcja", "samowystarczalnosc")
+
+
+def _period_cmp_day(d):
+    today = dt.date.today()
+    now = time.time()
+    out = []
+    for k, lab in ((1, "wczoraj" if d == today else "dzień wcześniej"), (7, "tydzień temu")):
+        x = d - dt.timedelta(days=k)
+        s0, e0 = day_range(x)
+        cut = None
+        if d == today:                                  # dzis - porownanie do tej samej godziny
+            cut = s0 + int(now - day_range(today)[0])
+            e0 = min(e0, cut)
+        con = db_connect()
+        try:
+            rows = day_rows(con, s0, e0)
+        finally:
+            con.close()
+        if len(rows) < 2:
+            continue
+        en = energy(rows)
+        out.append({"label": lab + (f" (do {time.strftime('%H:%M', time.localtime(cut))})" if cut else ""),
+                    "date": x.isoformat(), "energy": {k2: en.get(k2) for k2 in CMP_KEYS}})
+    if out:                 # kafle sa z licznikow - do porownania te same wartosci z pomiarow (dzis - do teraz)
+        s0, e0 = day_range(d)
+        con = db_connect()
+        try:
+            rows = day_rows(con, s0, min(e0, int(now) + 60))
+        finally:
+            con.close()
+        if len(rows) >= 2:
+            en = energy(rows)
+            for c in out:
+                c["cur"] = {k2: en.get(k2) for k2 in CMP_KEYS}
+    return out
+
+
+def _period_cmp(okres, a, b, nav):
+    today = dt.date.today()
+    if not nav.get("prev"):
+        return []
+    pa = dt.date.fromisoformat(nav["prev"])
+    pb = a - dt.timedelta(days=1)
+    lab = {"week": "poprzedni tydzień", "month": "poprzedni miesiąc", "year": "poprzedni rok"}.get(okres, "poprzedni okres")
+    if a <= today <= b:                                  # biezacy okres - poprzedni do tego samego dnia
+        n = (today - a).days
+        pb = min(pb, pa + dt.timedelta(days=n))
+        lab += f" (do {pb.day}.{pb.month:02d})"
+    days = _period_days(pa, pb, compute_missing=40)
+    if not days:
+        return []
+    want = (pb - pa).days + 1
+    if len(days) < want * 0.8:                            # za malo danych z poprzedniego okresu
+        return []
+    e = _period_sum(list(days.values()))
+    return [{"label": lab, "from": pa.isoformat(), "to": pb.isoformat(), "energy": {k: e.get(k) for k in CMP_KEYS}}]
 
 
 def period_warmup():
@@ -2524,6 +2592,127 @@ def api_strategy_limits(payload: dict = Body(...)):
     _strat_cache.update(ts=0, data=None)
     _hour_lock.clear()             # nowe pulapy / limity - biezaca godzina liczona od nowa
     return {"ok": True, "limits": strat_limits()}
+
+
+# --- 1.31: C7 - oszczednosc strategii ZREALIZOWANA (nie plan): rzeczywisty koszt godzin vs symulacja pracy bez strategii -------
+# Dla kazdej zamknietej godziny: srednie z pomiarow (siec, dom, PV), ceny jak w strategii (Pstryk / PSE + taryfa, Tarcza wg
+# strefy, sprzedaz x sell_factor). Bez strategii = strategy.baseline (sama autokonsumpcja) od SOC o polnocy z tym samym PV i domem.
+# Oszczednosc = koszt bez strategii - koszt rzeczywisty (+ zuzycie baterii za kWh oddana) + roznica energii w magazynie na
+# koniec doby wyceniona srednia cena zakupu x sprawnosc. Zamkniete dni w realized_daily.json, dzis na biezaco.
+REAL_CACHE = config.DATA_DIR / "realized_daily.json"
+REAL_VER = 2
+_real = {"data": None, "lock": threading.Lock()}
+
+
+def _realized_day(con, d, cap, smin, smax, upto=None):
+    s, e = day_range(d)
+    e = min(e, upto) if upto else e
+    if e - s < 3600:
+        return None
+    rows = con.execute('SELECT ts / 3600, AVG(soc), AVG(grid), AVG("load"), AVG(pv), AVG(bat) FROM samples '
+                       'WHERE ts >= ? AND ts < ? GROUP BY ts / 3600 ORDER BY 1', (s, e)).fetchall()
+    if len(rows) < 1 or rows[0][1] is None:
+        return None
+    pr, src = _hourly_prices(con, d)
+    tz = tarcza_info(strat_limits(), now=s + 43200)
+    wear = STRAT["wear"]
+    hours, act_cost, act_dis, n = [], 0.0, 0.0, 0
+    for h, soc, g, ld, pv, bat in rows:
+        ts = int(h) * 3600
+        if ts + 3600 > e or ts not in pr:
+            continue
+        buy, sell = pr[ts]
+        if buy is None:
+            continue
+        sell = (sell or 0.0) * STRAT["sell_factor"]
+        if tz.get("active") and tz.get("eff_buy"):
+            buy = _tarcza_buy(tz, ts)
+        g, ld, pv = float(g or 0), max(float(ld or 0), 0.0), max(float(pv or 0), 0.0)
+        act_cost += g * buy if g > 0 else g * sell
+        act_dis += max(-float(bat or 0), 0.0)                              # rozladowanie [kWh w godzinie]
+        hours.append({"ts": ts, "load": ld, "pv": pv, "buy": buy, "sell": sell})
+        n += 1
+    if not hours:
+        return None
+    st0 = min(max(float(rows[0][1]) / 100 * cap, smin), smax)
+    bl = strategy.baseline(hours, st0, smin, smax, p_max_kw(), STRAT["eta_c"], STRAT["eta_d"])
+    base_cost = sum((b["grid"] * h["buy"] if b["grid"] > 0 else b["grid"] * h["sell"]) + wear * max(-b["d"], 0.0)
+                    for h, b in zip(hours, bl))
+    act_cost += wear * act_dis
+    last = con.execute("SELECT soc FROM samples WHERE ts < ? ORDER BY ts DESC LIMIT 1", (hours[-1]["ts"] + 3600,)).fetchone()
+    act_end = float(last[0]) / 100 * cap if last and last[0] is not None else bl[-1]["stored"]
+    avg_buy = sum(h["buy"] for h in hours) / len(hours)
+    end_diff = (act_end - bl[-1]["stored"]) * avg_buy * STRAT["eta_d"]
+    return {"hours": n, "act": round(act_cost, 2), "base": round(base_cost, 2), "end_diff": round(end_diff, 2),
+            "saving": round(base_cost - act_cost + end_diff, 2), "src": src, "tarcza": bool(tz.get("active"))}
+
+
+def realized_saving(date=None):
+    """{"day", "month", "year", "days": [...]} - oszczednosc zrealizowana: dzien (dzis do pelnej godziny), miesiac i rok do dnia."""
+    with lock:
+        regs = dict(registers_state["values"])
+        sv = dict(settings_state["values"])
+    cap = STRAT["cap_kwh"] or regs.get("cap_ess") or regs.get("cap_bat")
+    if not cap:
+        return {"ok": False, "error": "brak pojemności magazynu"}
+    cap = float(cap)
+    smin = float(sv.get("soc_discharge_cut") or 10) / 100 * cap
+    smax = float(sv.get("soc_charge_cut") or 100) / 100 * cap
+    today = dt.date.today()
+    d = min(dt.date.fromisoformat(date), today) if date else today
+    y0 = d.replace(month=1, day=1)
+    out_days = {}
+    with _real["lock"]:
+        if _real["data"] is None:
+            try:
+                c = json.loads(REAL_CACHE.read_text(encoding="utf-8")) if REAL_CACHE.exists() else {}
+            except Exception:  # noqa: BLE001
+                c = {}
+            _real["data"] = c if c.get("_ver") == REAL_VER else {"_ver": REAL_VER}
+        cache, changed, budget = _real["data"], False, 60
+        con = db_connect()
+        try:
+            first = con.execute("SELECT MIN(ts) FROM samples").fetchone()[0]      # od pierwszych danych (nie od 1.01)
+            x = max(y0, dt.date.fromtimestamp(first)) if first else d
+            while x <= d:
+                k = x.isoformat()
+                if x < today and k in cache:
+                    r = cache[k]
+                elif x < today and budget > 0:
+                    r = _realized_day(con, x, cap, smin, smax) or {}
+                    cache[k], changed, budget = r, True, budget - 1
+                elif x == today:
+                    r = _realized_day(con, x, cap, smin, smax, upto=int(time.time()) // 3600 * 3600) or {}
+                else:
+                    r = {}
+                if r:
+                    out_days[k] = r
+                x += dt.timedelta(days=1)
+        finally:
+            con.close()
+        if changed:
+            try:
+                REAL_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+            except OSError:
+                pass
+
+    def tot(keys):
+        sel = [out_days[k] for k in keys if k in out_days]
+        if not sel:
+            return None
+        return {k: round(sum(x[k] for x in sel), 2) for k in ("act", "base", "end_diff", "saving")} | {"days": len(sel)}
+    ks = sorted(out_days)
+    return {"ok": True, "date": d.isoformat(), "day": out_days.get(d.isoformat()),
+            "month": tot([k for k in ks if k[:7] == d.isoformat()[:7]]), "year": tot(ks),
+            "days": [{"date": k, **out_days[k]} for k in ks if k[:7] == d.isoformat()[:7]]}
+
+
+@app.get("/api/strategy/realized")
+def api_strategy_realized(date: str = ""):
+    try:
+        return realized_saving(date or None)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
 @app.get("/api/strategy")

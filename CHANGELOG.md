@@ -2,6 +2,31 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.31.0] - 2026-11-20
+
+### Dodano
+- **Porównanie z poprzednim okresem** w Aktualnych pomiarach: strzałka ↑↓ przy wartości kafla (zielona – lepiej, czerwona –
+  gorzej). Dzień – wczoraj (dziś do tej samej godziny) i ten sam dzień tydzień temu; tydzień / miesiąc / rok – poprzedni
+  okres do tego samego dnia. Szczegóły w dymku kafla; `/api/period` zwraca `cmp`.
+- **Oszczędność strategii zrealizowana** (karta Strategia: dziś / miesiąc / rok): rzeczywisty koszt każdej godziny vs
+  symulacja samej autokonsumpcji z tym samym PV i zużyciem domu (ceny jak w strategii, Tarcza wg strefy, zużycie baterii,
+  różnica energii w magazynie na koniec doby). `/api/strategy/realized`, zamknięte dni w `realized_daily.json`.
+- Zwijanie każdej karty (▾ przy tytule, stan zapamiętany w przeglądarce).
+- Telefon: wąski pasek SOC / PV / dom / sieć przyklejony u góry, gdy schemat „Teraz” jest poza ekranem.
+- Linia „teraz” na słupkach dnia w Aktualnych pomiarach.
+
+### Zmieniono
+- Kolejność kart zakładki PV: Teraz → Aktualne pomiary → Strategia → Ceny → Prognoza → Połacie → Pstryk → Sprawność →
+  Ustawienia.
+- Liczby z przecinkiem dziesiętnym (kafle, dymki, osie); kafle: kWh 2 miejsca w dniu / 1 w okresach, zł 2, % i °C 1, W 0.
+- Jeden styl tabel (nagłówek na tle, podświetlenie wiersza, w przewijanych tabelach przyklejona pierwsza kolumna) i nagłówków
+  kart (tytuł · ustawienia · status · przełącznik okresu); objaśnienia „Jak to działa / jak liczone” w dymku ⓘ przy tytule.
+- Wspólny kod strony i kart Home Assistant: `web/static/ha/sigen-common.js` (kolory serii, liczby, kafle, schemat, pasek SOC,
+  przepływ energii, porównania) – strona wczytuje go w `<head>`, `/ha/sigen-cards.js` podawany razem z nim.
+- Karty Home Assistant jak strona: „Sigen – teraz” – „Obecny tryb”, gałęzie przepływu z kropkami, pasek SOC wg pochodzenia
+  energii; „Aktualne pomiary” – Dzień / Tydzień / Miesiąc / Rok z ‹ data ›, przepływ energii (opcja `sankey: false`),
+  strzałki porównania.
+
 ## [1.30.0] - 2026-11-19
 
 ### Dodano

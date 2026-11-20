@@ -6,12 +6,13 @@
 <title>Sigen PV Monitor</title>
 <link rel="icon" href="/static/favicon.png">
 <script src="/static/chart.umd.min.js"></script>
+<script src="/ha/sigen-common.js"></script>
 <style>
 :root {
   color-scheme: light;
   --bg: #f4f4f2; --surface: #fcfcfb; --border: #e3e2de;
   --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984; --grid: #ecebe7;
-  --s-load: #2a78d6; --s-pv: #eb6834; --s-bat: #1baf7a; --s-grid: #eda100; --s-loss: #e87ba4; --s-fc: #2a78d6; --s-fc2: #6250d6; --s-pin: #008300; --s-buy: #e34948; --s-sell: #008300; --s-ecmwf: #008300; --s-south: #eb6834; --s-east: #eda100; --s-west: #6250d6; --eff-good: #008300; --eff-mid: #e07b00; --eff-bad: #e34948;
+  --s-load: #2a78d6; --s-pv: #eb6834; --s-bat: #1baf7a; --s-grid: #eda100; --s-loss: #e87ba4; --s-fc: #2a78d6; --s-fc2: #6250d6; --s-pin: #008300; --s-buy: #e34948; --s-sell: #008300; --s-sellbat: #39d353; --s-buygrid: #9e1b1e; --s-buyhome: #f19d9c; --s-arb: #facc15; --s-ecmwf: #008300; --s-south: #eb6834; --s-east: #eda100; --s-west: #6250d6; --eff-good: #008300; --eff-mid: #e07b00; --eff-bad: #e34948;
   --ok: #1baf7a; --err: #e34948;
 }
 @media (prefers-color-scheme: dark) {
@@ -19,7 +20,7 @@
     color-scheme: dark;
     --bg: #111110; --surface: #1a1a19; --border: #2c2c2a;
     --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c86; --grid: #262624;
-    --s-load: #3987e5; --s-pv: #d95926; --s-bat: #199e70; --s-grid: #c98500; --s-loss: #d55181; --s-fc: #3987e5; --s-fc2: #9085e9; --s-pin: #2f9e2f; --s-buy: #e66767; --s-sell: #2f9e2f; --s-ecmwf: #2f9e2f; --s-south: #d95926; --s-east: #c98500; --s-west: #9085e9; --eff-good: #2f9e2f; --eff-mid: #e08a1e; --eff-bad: #e66767;
+    --s-load: #3987e5; --s-pv: #d95926; --s-bat: #199e70; --s-grid: #c98500; --s-loss: #d55181; --s-fc: #3987e5; --s-fc2: #9085e9; --s-pin: #2f9e2f; --s-buy: #e66767; --s-sell: #2f9e2f; --s-sellbat: #39d353; --s-buygrid: #c0392b; --s-buyhome: #f19d9c; --s-arb: #facc15; --s-ecmwf: #2f9e2f; --s-south: #d95926; --s-east: #c98500; --s-west: #9085e9; --eff-good: #2f9e2f; --eff-mid: #e08a1e; --eff-bad: #e66767;
     --ok: #199e70; --err: #e66767;
   }
 }
@@ -50,6 +51,24 @@ h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-2); font-weight: 600; 
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .dot.ok { background: var(--ok); } .dot.err { background: var(--err); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+/* 1.31: A5 - zwijanie kart (przycisk przy tytule, stan w przegladarce) */
+.cfold { font: inherit; font-size: 13px; line-height: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  border-radius: 6px; padding: 3px 7px; margin-left: 6px; cursor: pointer; vertical-align: middle; }
+.cfold::before { content: '▾'; display: inline-block; transition: transform .15s; }
+.card.folded .cfold::before { transform: rotate(-90deg); }
+.card.folded > *:not(.fold-head) { display: none !important; }
+.card.folded > .fold-head { margin-bottom: 0; }
+.card.folded > .fold-head > *:not(h2):not(.fold-keep) { display: none !important; }
+.card.folded { padding-top: 12px; padding-bottom: 12px; }
+/* 1.31: A4 - telefon: przyklejony pasek SOC / PV / dom / siec, gdy schemat „Teraz” jest poza ekranem */
+#minibar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: none; gap: 6px; justify-content: space-around; align-items: center;
+  padding: 6px 10px calc(6px); padding-top: calc(6px + env(safe-area-inset-top)); background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+#minibar.show { display: flex; }
+#minibar span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#minibar i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+#minibar b { font-weight: 700; }
+@media (min-width: 761px) { #minibar.show { display: none; } }
 .live { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
 /* 1.30: C4 - kafel „Obecny tryb” (jak w Sigen) nad schematem: tryb, zrodlo (Remote EMS / falownik / recznie / pauza), zmiana za */
 .curmode { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px;
@@ -169,6 +188,11 @@ svg.flow { width: 100%; height: auto; display: block; }
 .kv span:nth-child(even) { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
 .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .daynav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+/* 1.31: B3 - naglowek karty: tytul · ustawienia · status (po prawej, drobnym drukiem) · przelacznik okresu */
+.card > .daynav > h2 { margin: 0; flex: 1 1 auto; order: 0; }
+.card > .daynav > :not(h2):not(.status):not(.per-seg) { order: 1; }
+.card > .daynav > .status { order: 2; font-size: 12px; color: var(--muted); }
+.card > .daynav > .per-seg { order: 3; }
 .daynav h2 { margin: 0; flex: 1; }
 button, input[type=date] { font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
@@ -178,6 +202,8 @@ button, input[type=date] { font: inherit; font-size: 14px; background: var(--sur
 .tile .v { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .tile .v small { font-size: 13px; font-weight: 500; color: var(--text-2); }
 .tile .n { font-size: 11px; color: var(--muted); }
+.tile .dl { font-size: 11px; font-weight: 650; margin-left: 6px; color: var(--muted); white-space: nowrap; }   /* 1.31: porownanie */
+.tile .dl.good { color: var(--eff-good); } .tile .dl.bad { color: var(--eff-bad); }
 select { font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
 .regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
@@ -253,11 +279,10 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .vtiles .tile { display: flex; flex-direction: column; justify-content: center; min-height: 92px; }
 .vtiles .tile .v { font-size: 24px; }
 .vtiles .tile .sub { font-size: 12px; color: var(--text-2); line-height: 1.35; margin-top: 2px; }
-.nw-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 10px; border-radius: 8px;
+.optrow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 10px; border-radius: 8px;
   border: 1px solid var(--border); }
-.nw-row > span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.nwbox { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
-:root { --nw: var(--s-load); }
+.optrow > span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.subbox { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
 .spcol { display: flex; flex-direction: column; gap: 12px; }
 .spcol .fanbox h3 { margin-top: 0; }
 .socgrp { grid-column: 1 / -1; }
@@ -308,6 +333,13 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .ttlinfo .ib { color: var(--muted); font-weight: 400; font-size: .85em; }
 .ttlinfo .infopop { left: 0; right: auto; font-weight: 400; font-size: 12px; }
 .infopop::before { content: ''; position: absolute; top: -8px; left: 0; right: 0; height: 8px; }
+/* 1.31: B2 - jedno objasnienie karty: ⓘ przy tytule (dymek po najechaniu / dotknieciu), zamiast „Jak to dziala” / „ⓘ Jak liczone” */
+h2 .ttlinfo.cardinfo .ib { cursor: pointer; padding: 0 3px; font-size: .9em; }
+.ttlinfo.cardinfo .infopop { max-height: 70vh; overflow: auto; width: min(620px, 90vw); }
+.infopop .ip-sec + .ip-sec { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.infopop .ip-sec > b:first-child { display: block; color: var(--text); margin-bottom: 4px; }
+.infopop p.status:not([id]), .infopop .status { display: block !important; }
+@media (max-width: 640px) { .ttlinfo.cardinfo .infopop { position: fixed; left: 4vw; right: 4vw; top: 12vh; width: auto; max-height: 76vh; } }
 .stm { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .stm.past { color: var(--muted); } .stm.auto { color: var(--s-bat); } .stm.standby { color: var(--s-grid); } .stm.grid { color: var(--s-buy); } .stm.export { color: var(--s-sell); font-weight: 600; } .stm.pvchg { color: var(--s-pv); font-weight: 600; } .stm.nodis { color: var(--s-bat); font-weight: 600; }
 .pvsplit { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
@@ -316,7 +348,7 @@ select { font: inherit; font-size: 14px; background: var(--surface); color: var(
 .tiles.pvs3 .tile .v { font-size: 18px; }
 .tiles.pvs3 .tile .t { font-size: 11px; }
 .pvmon { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
-.pvmon .chart { height: 260px; }
+.pvmon .chart { height: 300px; }
 .pvmon-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 650; color: var(--text-2); margin-bottom: 4px; }
 @media (max-width: 860px) { .pvsplit { grid-template-columns: 1fr; } }
 .tiles.bt6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -372,6 +404,14 @@ summary { cursor: pointer; color: var(--text-2); }
 table { border-collapse: collapse; width: 100%; margin-top: 8px; font-variant-numeric: tabular-nums; }
 th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--border); }
 th:first-child, td:first-child { text-align: left; }
+/* 1.31: B6 - jeden styl tabel: naglowek na tle, podswietlenie wiersza, w przewijanej tabeli (.tw / .tscroll) przyklejona 1. kolumna */
+th { font-size: 12px; font-weight: 600; color: var(--text-2); background: color-mix(in srgb, var(--text) 5%, var(--surface)); vertical-align: bottom; }
+tbody tr:hover > td { background-image: linear-gradient(color-mix(in srgb, var(--text) 4%, transparent), color-mix(in srgb, var(--text) 4%, transparent)); }
+.tw { overflow-x: auto; }
+:is(.tw, .tscroll) > table :is(th, td):first-child { position: sticky; left: 0; z-index: 1; background-color: var(--surface); }
+:is(.tw, .tscroll) > table th:first-child { background-color: color-mix(in srgb, var(--text) 5%, var(--surface)); }
+:is(.tw, .tscroll) > table tr.ps-buy td:first-child { background-color: color-mix(in srgb, var(--s-buy) 10%, var(--surface)); }
+:is(.tw, .tscroll) > table tr.ps-sell td:first-child { background-color: color-mix(in srgb, var(--s-sell) 12%, var(--surface)); }
 td.status { display: table-cell; text-align: left; white-space: normal; }   /* .status to flex - w tabeli psul uklad kolumn */
 .empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
 .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
@@ -405,6 +445,11 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     <span class="sub2" id="og-sub"></span></div>
 
   <div id="tab-pv" role="tabpanel">
+  <div id="minibar" aria-hidden="true" title="dotknij – przewiń do schematu">
+    <span><i style="background:var(--s-bat)"></i><b id="mb-soc">–</b></span>
+    <span><i style="background:var(--s-pv)"></i>PV <b id="mb-pv">–</b></span>
+    <span><i style="background:var(--s-load)"></i>dom <b id="mb-load">–</b></span>
+    <span><i style="background:var(--s-grid)"></i><span id="mb-gl">sieć</span> <b id="mb-grid">–</b></span></div>
   <section class="card live">
     <div class="curmode" id="curmode" title="tryb pracy falownika teraz – jak „Obecny tryb” w aplikacji Sigen">
       <span class="cm-dot"></span><span class="cm-h">Obecny tryb</span><b id="cm-mode">–</b><span class="cm-src" id="cm-src"></span>
@@ -491,46 +536,40 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2>Prognoza produkcji PV</h2>
-      <span class="status" id="fcstatus"></span>
+      <h2 id="daytitle">Aktualne pomiary</h2>
+      <div class="per-seg" id="per-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button><button type="button" class="fs-btn" data-p="year">Rok</button></div>
     </div>
-    <div class="tiles popn ctiles" id="fctiles"></div>
-    <div class="fc-pick" id="fc-pick"></div>
-    <div class="chart"><canvas id="cFc"></canvas></div>
-    <div class="empty" id="fcempty" hidden>Brak prognozy – aplikacja pobierze ją z Open-Meteo i forecast.solar, gdy będzie dostęp do internetu.</div>
+    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="per-prev" title="poprzedni okres">‹</button>
+      <span id="per-title">–</span><button type="button" class="fs-btn" id="per-next" title="następny okres">›</button>
+      <button type="button" class="fs-btn" id="per-now" title="wróć do bieżącego okresu">Teraz</button></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="sankey-wrap"><div class="sankey-h">Przepływ energii <span class="status" id="sk-note" style="display:inline"></span></div>
+      <div id="sankey"></div></div>
+    <details data-expl style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
+      <p class="status" style="display:block;margin:6px 0 0">Podział jak w <a href="https://solar.htw-berlin.de/publikationen/energy-storage-inspection-2026/" target="_blank" rel="noopener">Energy Storage Inspection (HTW Berlin)</a>:
+      <b>straty konwersji</b> – przy przetwarzaniu energii PV, magazynu i AC (wejście PV = moc DC stringów);
+      <b>zużycie własne (czuwanie)</b> – pobór falownika i magazynu, gdy nic nie przetwarzają (PV i magazyn &lt; 30 W);
+      <b>odchyłki regulacji</b> – energia pobrana z sieci, choć magazyn rozładowywał się i miał zapas, oraz oddana do sieci, choć magazyn się ładował i miał miejsce
+      (to nie strata w falowniku, tylko niedokładność sterowania). Minuty z rozjechanymi odczytami są pomijane, więc sumy są przybliżone.</p></details>
+    <div class="card-sub" id="lm-box" style="margin:0 0 12px;border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;flex:1" id="lm-title">Zużycie własne falownika i magazynu – miesiąc</h3></div>
+      <div class="tiles" id="lm-tiles"></div>
+      <details><summary style="font-size:13px">Dzień po dniu i jak liczone</summary>
+        <p style="font-size:12px;color:var(--text-2);margin:6px 0"><b>Razem = falownik + bateria.</b> Falownik: straty konwersji (przetwarzanie PV, magazynu i AC)
+          i czuwanie (elektronika, gdy nic nie przetwarza) – z metody minutowej: wejście = moc DC stringów PV + rozładowanie, wyjście = AC + ładowanie.
+          Bateria: ładowanie − rozładowanie − zmiana zapasu (SOC × pojemność) z liczników – straty w ogniwach i BMS; pojedyncze dni bywają ujemne
+          (dokładność SOC), w sumie miesiąca to się wyrównuje. Uwaga: „zużycie domu” z falownika jest liczone po stronie AC i <b>zawiera</b> straty
+          i czuwanie falownika, więc rzeczywiste zużycie domu jest o tę wartość mniejsze. Koszt – po cenie zakupu w tym miesiącu
+          (przy Tarczy: stała cena za kWh, inaczej średnia z faktury Pstryka bez opłat stałych).</p>
+        <div id="lm-days" class="tw" style="font-size:12px;overflow-x:auto"></div></details>
+    </div>
+    <div class="chart"><canvas id="cPower"></canvas></div>
+    <div class="empty" id="empty" hidden>Brak danych dla tego okresu.</div>
+    <div class="status" id="per-note" style="display:block;font-size:12px"></div>
     <details>
-      <summary>Trafność prognoz (prognoza z dnia poprzedniego vs rzeczywista produkcja)</summary>
-      <div style="overflow-x:auto"><table><thead id="acchead"></thead><tbody id="accbody"></tbody></table></div>
-      <p class="status" id="accsugg" style="margin-top:8px"></p>
-    </details>
-  </section>
-
-  <section class="card">
-    <div class="daynav">
-      <h2 style="flex:1">Realna produkcja PV – połacie <span class="status" id="pvsstatus" style="display:inline"></span></h2>
-      <div class="per-seg" id="pvs-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
-    </div>
-    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="pvs-prev" title="poprzedni okres">‹</button><span class="pn-t" id="pvs-title">–</span><button type="button" class="fs-btn" id="pvs-next" title="następny okres">›</button><button type="button" class="fs-btn" id="pvs-now" title="wróć do bieżącego okresu" hidden>Teraz</button></div>
-    <div class="pvsplit">
-      <div class="tiles pvs3" id="pvstiles"></div>
-      <div class="pvmon">
-        <div class="pvmon-h"><span>Produkcja w miesiącach</span><span class="status" id="pvmstatus"></span></div>
-        <div class="chart"><canvas id="cPvm"></canvas></div>
-      </div>
-    </div>
-    <div class="empty" id="pvsempty" hidden>Brak danych ze stringów w tym okresie – zapis co 60 s.</div>
-    <p class="status" style="margin-top:10px">Moc połaci = napięcie × prąd stringu (po stronie DC, przed falownikiem).</p>
-  </section>
-
-  <section class="card">
-    <div class="daynav">
-      <h2><span class="infowrap ttlinfo">Ceny energii – dziś i jutro <span class="ib">ⓘ</span><span class="infopop" id="prformula"></span></span></h2>
-      <span class="status" id="prstatus"></span>
-    </div>
-    <details id="prdet"><summary class="status" style="display:list-item;cursor:pointer">Pokaż ceny i wykres</summary>
-    <div class="tiles" id="prtiles" style="margin-top:8px"></div>
-    <div class="chart"><canvas id="cPrice"></canvas></div>
-    <div class="empty" id="prempty" hidden>Brak cen – pobieram z PSE (ceny na jutro po ok. 13:40).</div>
+      <summary>Tabela godzinowa (średnie kW)</summary>
+      <table class="mh6"><thead><tr><th>Godz.</th><th>PV</th><th>Dom</th><th>Magazyn</th><th>Sieć</th><th>Straty</th><th>SOC %</th></tr></thead>
+      <tbody id="tbody"></tbody></table>
     </details>
   </section>
 
@@ -540,6 +579,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <span class="status" id="ststatus"></span>
     </div>
     <div class="tiles popn" id="sttiles"></div>
+    <div class="tiles popn" id="strealtiles"></div>
     <div class="stgrp"><div class="stgrp-h">Pułapy i limity</div>
     <div class="stgrid">
       <span title="progi ręczne: sprzedaż z magazynu tylko przy cenie ≥ „Sprzedawaj od”, ładowanie z sieci tylko przy cenie ≤ „Ładuj do”. auto: plan sam sprzedaje i kupuje, gdy po wszystkich kosztach (sprawność ładowania i rozładowania, zużycie baterii, wartość energii zostawionej w magazynie) zysk na kWh oddanej z magazynu wynosi co najmniej „min. zysk”; pułapy działają wtedy jako bezpieczniki (puste = bez)">Tryb cen
@@ -593,7 +633,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
     </div>
     <details id="st-ctldet" hidden>
       <summary>Dziennik sterowania falownikiem</summary>
-      <div style="overflow-x:auto"><table><thead><tr><th>Kiedy</th><th>Tryb: poprzedni → nowy</th><th>Źródło</th><th>SOC</th><th style="text-align:left">Szczegóły</th></tr></thead><tbody id="st-ctllog"></tbody></table></div>
+      <div class="tw"><table><thead><tr><th>Kiedy</th><th>Tryb: poprzedni → nowy</th><th>Źródło</th><th>SOC</th><th style="text-align:left">Szczegóły</th></tr></thead><tbody id="st-ctllog"></tbody></table></div>
       <p class="status" id="st-ctltime" style="display:block;margin-top:6px"></p>
     </details>
     <div class="chart"><canvas id="cSt"></canvas></div>
@@ -603,7 +643,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <div class="bp-row" style="justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;margin:6px 0">
         <label title="Pokaż też godziny, które już minęły (rzeczywiste odczyty od północy)"><input type="checkbox" id="st-arch"> Archiwalne</label>
         <label title="Domyślnie plan kończy się jutro o 12:00 (dalej zmieni się po nowych cenach). Zaznacz, żeby pokazać też godziny po 12:00 jutro"><input type="checkbox" id="st-to12"> Po 12:00 jutro</label></div>
-      <div style="overflow-x:auto"><table class="sttab mh2 mh4 mh5 mh7 mh9"><thead><tr><th>Godz.</th><th>Cena zakupu</th><th>Cena sprzedaży</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
+      <div class="tw"><table class="sttab mh2 mh4 mh5 mh7 mh9"><thead><tr><th>Godz.</th><th>Cena zakupu</th><th>Cena sprzedaży</th><th>Dom kWh</th><th>PV kWh</th><th>Plan</th>
         <th>Z sieci kWh</th><th>SOC plan</th><th>SOC bez strategii</th><th>Koszt plan / bez</th></tr></thead><tbody id="stbody"></tbody></table></div>
       <div id="stnotes" class="status" style="display:block;font-size:12px;margin-top:4px"></div>
     </details>
@@ -639,41 +679,48 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2 id="daytitle" style="flex:1">Aktualne pomiary</h2>
-      <div class="per-seg" id="per-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button><button type="button" class="fs-btn" data-p="year">Rok</button></div>
+      <h2><span class="infowrap ttlinfo">Ceny energii – dziś i jutro <span class="ib">ⓘ</span><span class="infopop" id="prformula"></span></span></h2>
+      <span class="status" id="prstatus"></span>
     </div>
-    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="per-prev" title="poprzedni okres">‹</button>
-      <span id="per-title">–</span><button type="button" class="fs-btn" id="per-next" title="następny okres">›</button>
-      <button type="button" class="fs-btn" id="per-now" title="wróć do bieżącego okresu">Teraz</button></div>
-    <div class="tiles" id="tiles"></div>
-    <div class="sankey-wrap"><div class="sankey-h">Przepływ energii <span class="status" id="sk-note" style="display:inline"></span></div>
-      <div id="sankey"></div></div>
-    <details data-expl style="margin:-6px 0 12px"><summary class="status" style="display:list-item">Jak liczone są straty (metodyka HTW Berlin)</summary>
-      <p class="status" style="display:block;margin:6px 0 0">Podział jak w <a href="https://solar.htw-berlin.de/publikationen/energy-storage-inspection-2026/" target="_blank" rel="noopener">Energy Storage Inspection (HTW Berlin)</a>:
-      <b>straty konwersji</b> – przy przetwarzaniu energii PV, magazynu i AC (wejście PV = moc DC stringów);
-      <b>zużycie własne (czuwanie)</b> – pobór falownika i magazynu, gdy nic nie przetwarzają (PV i magazyn &lt; 30 W);
-      <b>odchyłki regulacji</b> – energia pobrana z sieci, choć magazyn rozładowywał się i miał zapas, oraz oddana do sieci, choć magazyn się ładował i miał miejsce
-      (to nie strata w falowniku, tylko niedokładność sterowania). Minuty z rozjechanymi odczytami są pomijane, więc sumy są przybliżone.</p></details>
-    <div class="card-sub" id="lm-box" style="margin:0 0 12px;border:1px solid var(--border);border-radius:10px;padding:8px 10px">
-      <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;flex:1" id="lm-title">Zużycie własne falownika i magazynu – miesiąc</h3></div>
-      <div class="tiles" id="lm-tiles"></div>
-      <details><summary style="font-size:13px">Dzień po dniu i jak liczone</summary>
-        <p style="font-size:12px;color:var(--text-2);margin:6px 0"><b>Razem = falownik + bateria.</b> Falownik: straty konwersji (przetwarzanie PV, magazynu i AC)
-          i czuwanie (elektronika, gdy nic nie przetwarza) – z metody minutowej: wejście = moc DC stringów PV + rozładowanie, wyjście = AC + ładowanie.
-          Bateria: ładowanie − rozładowanie − zmiana zapasu (SOC × pojemność) z liczników – straty w ogniwach i BMS; pojedyncze dni bywają ujemne
-          (dokładność SOC), w sumie miesiąca to się wyrównuje. Uwaga: „zużycie domu” z falownika jest liczone po stronie AC i <b>zawiera</b> straty
-          i czuwanie falownika, więc rzeczywiste zużycie domu jest o tę wartość mniejsze. Koszt – po cenie zakupu w tym miesiącu
-          (przy Tarczy: stała cena za kWh, inaczej średnia z faktury Pstryka bez opłat stałych).</p>
-        <div id="lm-days" style="font-size:12px;overflow-x:auto"></div></details>
-    </div>
-    <div class="chart"><canvas id="cPower"></canvas></div>
-    <div class="empty" id="empty" hidden>Brak danych dla tego okresu.</div>
-    <div class="status" id="per-note" style="display:block;font-size:12px"></div>
-    <details>
-      <summary>Tabela godzinowa (średnie kW)</summary>
-      <table class="mh6"><thead><tr><th>Godz.</th><th>PV</th><th>Dom</th><th>Magazyn</th><th>Sieć</th><th>Straty</th><th>SOC %</th></tr></thead>
-      <tbody id="tbody"></tbody></table>
+    <details id="prdet"><summary class="status" style="display:list-item;cursor:pointer">Pokaż ceny i wykres</summary>
+    <div class="tiles" id="prtiles" style="margin-top:8px"></div>
+    <div class="chart"><canvas id="cPrice"></canvas></div>
+    <div class="empty" id="prempty" hidden>Brak cen – pobieram z PSE (ceny na jutro po ok. 13:40).</div>
     </details>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Prognoza produkcji PV</h2>
+      <span class="status" id="fcstatus"></span>
+    </div>
+    <div class="tiles popn ctiles" id="fctiles"></div>
+    <div class="fc-pick" id="fc-pick"></div>
+    <div class="chart"><canvas id="cFc"></canvas></div>
+    <div class="empty" id="fcempty" hidden>Brak prognozy – aplikacja pobierze ją z Open-Meteo i forecast.solar, gdy będzie dostęp do internetu.</div>
+    <details>
+      <summary>Trafność prognoz (prognoza z dnia poprzedniego vs rzeczywista produkcja)</summary>
+      <div class="tw"><table><thead id="acchead"></thead><tbody id="accbody"></tbody></table></div>
+      <p class="status" id="accsugg" style="margin-top:8px"></p>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="daynav">
+      <h2>Realna produkcja PV – połacie</h2>
+      <span class="status" id="pvsstatus"></span>
+      <div class="per-seg" id="pvs-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button></div>
+    </div>
+    <div class="per-nav" role="group" aria-label="Wybór okresu"><button type="button" class="fs-btn" id="pvs-prev" title="poprzedni okres">‹</button><span class="pn-t" id="pvs-title">–</span><button type="button" class="fs-btn" id="pvs-next" title="następny okres">›</button><button type="button" class="fs-btn" id="pvs-now" title="wróć do bieżącego okresu" hidden>Teraz</button></div>
+    <div class="pvsplit">
+      <div class="tiles pvs3" id="pvstiles"></div>
+      <div class="pvmon">
+        <div class="pvmon-h"><span>Produkcja w miesiącach</span><span class="status" id="pvmstatus"></span></div>
+        <div class="chart"><canvas id="cPvm"></canvas></div>
+      </div>
+    </div>
+    <div class="empty" id="pvsempty" hidden>Brak danych ze stringów w tym okresie – zapis co 60 s.</div>
+    <p class="status" style="margin-top:10px">Moc połaci = napięcie × prąd stringu (po stronie DC, przed falownikiem).</p>
   </section>
 
   <section class="card" id="pscard" hidden>
@@ -692,7 +739,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         nadwyżka depozytu przechodzi dalej. „Ładowanie w najtańszej strefie” – cały pobór po cenie najtańszej strefy (tyle dałaby strategia dopasowana do taryfy).</p>
       <div class="bp-row" id="cmp-prices" style="flex-wrap:wrap;gap:6px 12px;justify-content:flex-start"></div>
       <div class="status" id="cmp-msg" style="display:block;font-size:12px"></div>
-      <div style="overflow-x:auto"><table class="mh2 mh6"><thead><tr><th>Miesiąc</th><th>Pobór kWh</th><th>Pstryk</th><th>Taryfa – te same godziny</th>
+      <div class="tw"><table class="mh2 mh6"><thead><tr><th>Miesiąc</th><th>Pobór kWh</th><th>Pstryk</th><th>Taryfa – te same godziny</th>
         <th>Taryfa – ładowanie w najtańszej strefie</th><th>Depozyt niewykorzystany</th></tr></thead><tbody id="cmprows"></tbody></table></div>
     </details>
     <details>
@@ -711,7 +758,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 
   <section class="card">
     <div class="daynav">
-      <h2 style="flex:1">Sprawność falownika wg mocy przetwarzanej</h2>
+      <h2>Sprawność falownika wg mocy przetwarzanej</h2>
       <div class="per-seg" id="eff-seg" role="group" aria-label="Okres"><button type="button" class="fs-btn primary" data-p="day">Dzień</button><button type="button" class="fs-btn" data-p="week">Tydzień</button><button type="button" class="fs-btn" data-p="month">Miesiąc</button><button type="button" class="fs-btn" data-p="year">Rok</button><button type="button" class="fs-btn" data-p="all">Całość</button></div>
       <label class="status" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="effhide"> ukryj przedziały z * (&lt; 15 min danych)</label>
       <span class="infowrap"><button class="fs-btn infobtn" type="button" aria-expanded="false" aria-controls="effpop">ⓘ Jak liczone</button>
@@ -738,12 +785,13 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <b>Świt / zmierzch</b> – tylko słabe PV (&lt; 0,25 kW): stałe zużycie falownika nie jest wtedy widoczne w pomiarach, więc wynik jest
       niemiarodajny i nie wchodzi do przedziałów. Pod wartością: czas w przedziale i średnia strata; najedź, aby zobaczyć szczegóły.</p>
     </div>
-    <div style="overflow-x:auto">
+    <div class="tw">
     <table class="efftab"><thead><tr><th>Moc [kW]</th><th>Sprawność falownika (całość)</th><th>Ładowanie magazynu</th><th>Rozładowanie magazynu</th></tr></thead>
       <tbody id="effbody"></tbody></table>
     </div>
 
   </section>
+
   <section class="card">
     <div class="daynav">
       <h2>Ustawienia falownika <span style="font-weight:400">(tylko odczyt)</span></h2>
@@ -890,7 +938,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <div id="fs-log" style="font-size:12px;color:var(--text-2)"></div>
       </div>
     </div>
-    <div class="nwbox" id="br-box" style="margin-top:10px">
+    <div class="subbox" id="br-box" style="margin-top:10px">
       <div class="daynav" style="margin-bottom:4px"><h3 style="margin:0;flex:1">Bilans wzorcowy i parametry pracy</h3>
         <label style="font-size:13px"><input type="checkbox" id="br-notify"> powiadom przy odchylce</label></div>
       <div id="br-st" style="font-size:13px"></div>
@@ -956,7 +1004,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         <div class="bp-row"><span>Lato (miesiące)</span><span><input class="bp-num" id="sp-months" style="width:120px" placeholder="5,6,7,8,9"></span></div>
         <div class="bp-row"><span>Lato i wywiew ≥ <input class="bp-num" id="sp-hot" type="number" step="0.5"> °C → nastawa</span><span><input class="bp-num" id="sp-st" type="number" step="1"> °C</span></div>
         <div class="bp-row"><span>Wywiew ≤ <input class="bp-num" id="sp-cold" type="number" step="0.5"> °C → nastawa</span><span><input class="bp-num" id="sp-nt" type="number" step="1"> °C</span></div>
-        <div class="nw-row" style="margin:6px 0">
+        <div class="optrow" style="margin:6px 0">
           <span title="Poza miesiącami letnimi nastawa w 1. kolejności wg temperatury na zewnątrz (średnia z 30 min): przy pierwszej temperaturze i niżej – pierwsza nastawa, przy drugiej – druga, pomiędzy liniowo (zaokrąglone do 1 °C). Powyżej drugiej temperatury (+1 °C histerezy) – nastawa normalna. Praca nagrzewnicy obniża nastawę dodatkowo o 1 °C (wiersz „nagrzewnica”), a gdy nagrzewnica nie pracuje przez 60 min – nastawa wraca o 1 °C w górę do krzywej."><label><input type="checkbox" id="sp-con"> Wg temperatury zewnętrznej:</label></span>
           <span title="automatyczna: krzywa wyuczona z historii – dla każdej temperatury zewnętrznej najwyższa nastawa, przy której nagrzewnica prawie nie pracowała (ze zmian nastawy, temperatury i poboru rekuperatora z ostatnich 90 dni, przeliczana co godzinę). Bez danych – punkty ręczne.">krzywa
             <select id="sp-cmode" class="fs-btn"><option value="auto">automatyczna (z historii)</option><option value="reczna">ręczna (2 punkty)</option></select></span>
@@ -986,13 +1034,13 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <div class="fanbox">
         <h3>Ustawienie w rekuperatorze</h3>
         <div class="bp-row"><span>Teraz</span><b id="df-cur">–</b></div>
-        <div class="nw-row" style="margin:6px 0">
+        <div class="optrow" style="margin:6px 0">
           <span>sposób <select id="df-mode" class="fs-btn"><option value="0">obejście wymiennika (nawiew dogrzewany)</option><option value="1">zatrzymanie wentylatora nawiewu</option></select></span>
           <span id="df-trow" title="Tylko przy obejściu: do tej temperatury nagrzewnica dogrzewa nawiew, gdy wymiennik się rozmraża (zwykle kilka minut).">nawiew podczas odszraniania <input class="bp-num" id="df-temp" type="number" step="1" style="width:56px"> °C</span>
           <button class="fs-btn primary" id="df-save">Zapisz w rekuperatorze</button>
         </div>
         <div id="df-msg" style="font-size:13px"></div>
-        <div class="nwbox" style="font-size:12px;color:var(--text-2)">
+        <div class="subbox" style="font-size:12px;color:var(--text-2)">
           <b>Obejście wymiennika:</b> powietrze z zewnątrz omija wymiennik, a ciepły wywiew go rozmraża. Do domu idzie powietrze prosto z mrozu,
           więc nagrzewnica grzeje je do podanej temperatury przez cały czas odszraniania – to zwykle największy pobór nagrzewnicy przy mrozie.<br>
           <b>Zatrzymanie wentylatora nawiewu:</b> nawiew staje na kilka minut, wywiew rozmraża wymiennik – nagrzewnica nie grzeje.
@@ -1014,7 +1062,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       <div class="fanbox">
         <h3>Automat prędkości zimowej</h3>
         <label class="fs-auto"><input type="checkbox" id="ws-on"> Przy chłodzie zmniejszaj przepływ (prędkość „W domu”)</label>
-        <div class="nw-row" style="margin:6px 0">
+        <div class="optrow" style="margin:6px 0">
           <span title="Średnia temperatura na zewnątrz z 30 min. Poniżej progu automat zmniejsza prędkość, od progu +1 °C wraca do prędkości normalnej.">zewn. poniżej <input class="bp-num" id="ws-t" type="number" step="0.5" style="width:60px"> °C</span>
           <span title="Szacowany przepływ nawiewu z obrotów wentylatora, liczony tylko z minut bez podbicia przez CO₂ / wilgotność. Prędkość schodzi o 1 % co 30 min, aż przepływ dojdzie do tej wartości.">min. przepływ <input class="bp-num" id="ws-flow" type="number" step="5" style="width:64px"> m³/h</span>
           <span title="Średnia wilgotność z 30 min. Od tej wartości prędkość rośnie o 1 % (ochrona przed kondensacją).">wilgotność ≥ <input class="bp-num" id="ws-rh" type="number" step="1" style="width:56px"> % → +1 %</span>
@@ -1022,7 +1070,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
         </div>
         <div class="row" style="margin-top:8px"><button class="fs-btn" id="ws-save">Zapisz</button></div>
         <div id="ws-st" style="font-size:13px;margin-top:8px"></div>
-        <div class="nwbox" style="font-size:12px;color:var(--text-2)">
+        <div class="subbox" style="font-size:12px;color:var(--text-2)">
           <b>Jak działa:</b> przy chłodzie mniejszy przepływ = dłuższy kontakt powietrza z wymiennikiem (wyższa sprawność, cieplejszy nawiew za wymiennikiem),
           mniej m³ ciepłego powietrza wyrzucanego na zewnątrz, rzadsza praca nagrzewnicy i mniejszy pobór wentylatorów, a zimą mniej przesuszone powietrze.
           Automat obniża prędkość „W domu” o 1 % co 30 min, aż szacowany przepływ nawiewu (bez podbić) zejdzie do minimum, nie niżej niż <span id="ws-minp">20</span> %.
@@ -1232,6 +1280,7 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
 </main>
 
 <script>
+sgPalCss();   // 1.31: B8 - kolory serii (--s-*) z SIGEN_PAL w sigen-common.js - jedno zrodlo dla strony i kart HA
 // --- dostep z innych urzadzen: PIN dla zmian (access.py) ---
 const _fetch = window.fetch.bind(window);
 let _pinWait = null;
@@ -1276,7 +1325,7 @@ async function accInfo() {
 accInfo();
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const kw = v => (Math.abs(v) < 1 ? (v * 1000).toFixed(0) + ' W' : v.toFixed(2) + ' kW');
+const kw = v => (Math.abs(v) < 1 ? (v * 1000).toFx(0) + ' W' : v.toFx(2) + ' kW');
 const todayStr = () => new Date().toLocaleDateString('sv-SE');
 let current = todayStr();
 
@@ -1284,49 +1333,15 @@ let current = todayStr();
 // 1.30: pasek SOC z 10 segmentow; kolory: z PV (kolor PV), z sieci (kolor sieci), wczesniej / nieznane (szary);
 // pochodzenie z /api/bat_origin (co 60 s), granice SOC (min / maks.) jako kreski
 let boData = null, boTs = 0;
-async function renderSocSeg(soc) {
+async function renderSocSeg(soc) {     // 1.31: rysowanie wspolne z kartami HA (sgSocSeg w sigen-common.js)
   if (Date.now() - boTs > 60000) { boTs = Date.now(); try { boData = await (await fetch('/api/bat_origin')).json(); } catch (e) {} }
-  const B = boData && boData.ok ? boData : null, s = Math.max(0, Math.min(100, soc ?? (B ? B.soc : 0)));
-  const sh = B ? B.pct : { pv: 0, grid: 0, other: 100 };
-  const pvEnd = s * (sh.pv || 0) / 100, grEnd = pvEnd + s * (sh.grid || 0) / 100;
-  const cPv = css('--s-pv'), cGr = css('--s-grid'), cOt = css('--muted') || '#888';
-  let h = '';
-  for (let i = 0; i < 10; i++) {
-    const a = i * 10, fill = Math.max(0, Math.min(10, s - a)) / 10, mid = a + Math.min(10, Math.max(0, s - a)) / 2;
-    const col = mid < pvEnd ? cPv : mid < grEnd ? cGr : cOt;
-    h += `<i>${fill > 0 ? `<b style="width:${(fill * 100).toFixed(0)}%;background:${col}"></b>` : ''}</i>`;
-  }
-  const lim = v => v == null ? '' : `<span class="lim" style="left:calc(${v}% - 1px)" title="granica SOC ${v} %"></span>`;
-  if (B) h += lim(B.soc_min) + (B.soc_max != null && B.soc_max < 100 ? lim(B.soc_max) : '');
-  $('socseg').innerHTML = h;
-  const f = v => (v ?? 0).toFixed(1).replace('.', ',');
-  $('socseg-leg').innerHTML = B ? `<span><em style="background:${cPv}"></em>z PV ${f(B.kwh.pv)} kWh</span>` +
-    `<span><em style="background:${cGr}"></em>z sieci ${f(B.kwh.grid)} kWh</span>` +
-    (B.kwh.other >= 0.05 ? `<span><em style="background:${cOt}"></em>wcześniej ${f(B.kwh.other)} kWh</span>` : '') +
-    `<span title="ładowanie z PV / z sieci liczone z pomiarów z ostatnich ${B.days} dni, rozładowanie zabiera po równo">ⓘ</span>` : '';
+  const B = boData && boData.ok ? boData : null;
+  const r = sgSocSeg(soc, B, { pv: css('--s-pv'), grid: css('--s-grid'), other: css('--muted') || '#888' });
+  $('socseg').innerHTML = r.bar; $('socseg-leg').innerHTML = r.leg;
 }
 // 1.30: chwilowy podzial jak w Sankeyu (app.py _flows): PV -> dom, magazyn, siec; dom z magazynu, potem z sieci
-function liveBranches(d) {
-  const pv = Math.max(d.pv || 0, 0), load = Math.max(d.load || 0, 0), chg = Math.max(d.bat || 0, 0), dis = Math.max(-(d.bat || 0), 0);
-  const imp = Math.max(d.grid || 0, 0), exp = Math.max(-(d.grid || 0), 0);
-  const pl = Math.min(pv, load), pb = Math.min(pv - pl, chg), pg = Math.min(pv - pl - pb, exp);
-  const bl = Math.min(dis, load - pl), gl = Math.min(imp, load - pl - bl), gb = Math.min(imp - gl, chg - pb), bg = Math.min(dis - bl, exp - pg);
-  const N = { pv: 'PV', load: 'dom', grid: 'sieć', bat: 'magazyn' };
-  [['pv-load', pl], ['pv-grid', pg], ['pv-bat', pb], ['grid-load', gl], ['grid-bat', gb], ['bat-load', bl], ['bat-grid', bg]].forEach(([id, v]) => {
-    const el = $('b-' + id); if (!el) return;
-    setLine('b-' + id, v, true);
-    const [a, b] = id.split('-');
-    el.firstElementChild.textContent = `${N[a]} → ${N[b]}: ${v >= 1 ? v.toFixed(2) + ' kW' : Math.round(v * 1000) + ' W'}`;
-  });
-}
-function setLine(id, value, inward) {
-  const el = $(id), kw = Math.abs(value || 0), on = kw >= 0.01;
-  el.classList.toggle('on', on);
-  el.classList.toggle('rev', on && !inward);
-  // 1.30: grubosc i predkosc wg mocy - 0,1 kW: cienko i wolno, 5 kW i wiecej: grubo i szybko
-  el.style.strokeWidth = on ? (3 + Math.min(5, kw * 1.1)).toFixed(1) : '';
-  el.style.setProperty('--fd', on ? Math.max(0.35, 1.8 - 0.3 * kw).toFixed(2) + 's' : '1s');
-}
+function liveBranches(d) { sgBranches($, d); }          // 1.31: wspolne z kartami HA (sigen-common.js)
+function setLine(id, value, inward) { sgSetLine($(id), value, inward); }
 const hms = t => new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 const ddmm = t => new Date(t * 1000).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
 function durTxt(s) { s = Math.max(0, Math.round(s)); return s >= 3600 ? Math.floor(s / 3600) + ' h ' + Math.floor(s % 3600 / 60) + ' min' : s >= 60 ? Math.floor(s / 60) + ' min' + (s % 60 && s < 600 ? ' ' + s % 60 + ' s' : '') : s + ' s'; }
@@ -1338,7 +1353,7 @@ function showGrid(d) {
   if (og) {
     $('og-txt').textContent = d.grid_mode === 2 ? 'Praca wyspowa (off-grid) – włączona ręcznie' : 'Brak sieci – praca wyspowa (off-grid)';
     $('og-sub').textContent = (d.offgrid_since ? 'od ' + hms(d.offgrid_since) + ' (' + durTxt(Date.now() / 1000 - d.offgrid_since) + ') · ' : '') +
-      'dom zasilany z magazynu' + (d.pv > 0.05 ? ' i PV' : '') + ' · SOC ' + d.soc.toFixed(0) + ' %';
+      'dom zasilany z magazynu' + (d.pv > 0.05 ? ' i PV' : '') + ' · SOC ' + d.soc.toFx(0) + ' %';
     $('v-grid').textContent = 'brak';
     $('s-grid').textContent = 'zanik sieci';
     $('k-grid').textContent = 'brak sieci';
@@ -1376,20 +1391,22 @@ async function refreshLive() {
     $('s-grid').textContent = d.grid > 0.01 ? 'pobór' : d.grid < -0.01 ? 'oddawanie' : '';
     $('v-bat').textContent = kw(Math.abs(d.bat));
     $('s-bat').textContent = d.bat > 0.01 ? 'ładowanie' : d.bat < -0.01 ? 'rozładowanie' : 'bezczynny';
-    $('v-soc-c').textContent = d.soc.toFixed(0) + '%';
+    $('v-soc-c').textContent = d.soc.toFx(0) + '%';
     const fh = Math.max(0, Math.min(100, d.soc)) / 100 * 42;
     $('bat-fill').setAttribute('height', fh.toFixed(1)); $('bat-fill').setAttribute('y', (21 - fh).toFixed(1));
-    $('soc').textContent = d.soc.toFixed(1) + ' %';
+    $('soc').textContent = d.soc.toFx(1) + ' %';
     $('socbar').style.width = Math.min(100, d.soc) + '%';
     renderSocSeg(d.soc);
     window.lastSoc = d.soc;
-    const sn = document.querySelector('.socg-now'); if (sn) { sn.style.left = Math.max(0, Math.min(100, d.soc)) + '%'; sn.firstChild.textContent = d.soc.toFixed(0) + ' %'; }
+    const sn = document.querySelector('.socg-now'); if (sn) { sn.style.left = Math.max(0, Math.min(100, d.soc)) + '%'; sn.firstChild.textContent = d.soc.toFx(0) + ' %'; }
     $('k-pv').textContent = kw(d.pv);
     $('k-load').textContent = kw(d.load);
     $('k-bat').textContent = (d.bat > 0 ? '+' : '') + kw(d.bat);
     $('k-grid').textContent = (d.grid > 0 ? 'pobór ' : 'oddawanie ') + kw(Math.abs(d.grid));
     $('k-plant').textContent = kw(d.plant);
     $('k-loss').textContent = d.loss == null ? '–' : kw(d.loss) + (d.loss_mode === 'czuwanie' ? ' (czuwanie)' : '');
+    $('mb-soc').textContent = d.soc.toFixed(0) + ' %'; $('mb-pv').textContent = kw(d.pv); $('mb-load').textContent = kw(d.load);
+    $('mb-gl').textContent = d.grid > 0.01 ? 'pobór' : d.grid < -0.01 ? 'oddaw.' : 'sieć'; $('mb-grid').textContent = kw(Math.abs(d.grid));
     liveBranches(d);   // 1.30: galezie zrodlo -> odbior zamiast 4 szprych (szprychy zostaja jako tlo)
     showGrid(d);
   } catch (e) {
@@ -1402,6 +1419,7 @@ async function refreshLive() {
 let cPower;
 // 1.130: na telefonie bez dymkow na wykresach (zaslanialy caly wykres) - legenda i osie zostaja
 if (window.Chart && matchMedia('(max-width: 760px)').matches) Chart.defaults.plugins.tooltip.enabled = false;
+if (window.Chart) Chart.defaults.locale = 'pl-PL';     // 1.31: B5 - osie wykresow z przecinkiem dziesietnym
 function baseOpts(unit) {
   return {
     responsive: true, maintainAspectRatio: false, animation: false,
@@ -1409,11 +1427,11 @@ function baseOpts(unit) {
     plugins: {
       legend: { position: 'top', align: 'start',
         labels: { color: css('--text-2'), boxWidth: 10, boxHeight: 10, useBorderRadius: true, borderRadius: 3 } },
-      tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(unit === '%' ? 1 : 2)} ${unit}` } }
+      tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFx(unit === '%' ? 1 : 2)} ${unit}` } }
     },
     scales: {
       x: { ticks: { color: css('--muted'), maxTicksLimit: innerWidth < 600 ? 6 : 12, autoSkip: true, maxRotation: 0 }, grid: { display: false } },
-      y: { ticks: { color: css('--muted'), callback: v => +v.toFixed(2) + ' ' + unit }, grid: { color: css('--grid') },
+      y: { ticks: { color: css('--muted'), callback: v => (+v.toFixed(2)).toLocaleString('pl-PL') + ' ' + unit }, grid: { color: css('--grid') },
            border: { display: false } }
     },
     elements: { point: { radius: 0, hoverRadius: 4 }, line: { borderWidth: 2, tension: 0.2 } }
@@ -1439,7 +1457,11 @@ function popTiles(box) {
 function ctile(cls, t, v, unit, note) {
   return tile(t, v, unit, note).replace('<div class="tile">', `<div class="tile ${cls}">`);
 }
+// 1.31: B5 - liczby w kaflach jednolicie: przecinek, kWh 2 miejsca (dzien) / 1 (tydzien, miesiac, rok - tileKwhDec), zl 2, % i °C 1, W 0
+let tileKwhDec = 2;
+const tileNum = (v, unit) => sgNum(v, unit, tileKwhDec);   // 1.31: B8 - wspolne z kartami HA
 function tile(t, v, unit, note) {
+  v = tileNum(v, unit);
   return `<div class="tile"><div class="t">${t}</div><div class="v">${v ?? '–'} <small>${v == null ? '' : unit}</small></div>` +
     (note ? `<div class="n">${note}</div>` : '') + '</div>';
 }
@@ -1482,54 +1504,15 @@ const dayNav = date => {                      // nawigacja po dniach liczona w p
 // 1.30: przeplyw energii (Sankey) - zrodla (PV, magazyn, siec) -> odbiory (dom, magazyn, siec, straty); wlasny SVG
 let skLast = null, skRT = null;
 window.addEventListener('resize', () => { clearTimeout(skRT); skRT = setTimeout(() => { if (skLast) renderSankey(skLast); }, 250); });
-function renderSankey(F) {
+function renderSankey(F) {      // 1.31: rysowanie wspolne z karta HA (sgSankeySvg)
   const box = $('sankey');
-  const kw = v => (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)).replace('.', ',');
-  const S = [{ id: 'pv', n: 'Słońce', c: css('--s-pv') }, { id: 'bat', n: 'Magazyn', c: css('--s-bat') }, { id: 'grid', n: 'Sieć', c: css('--s-grid') }];
-  const T = [{ id: 'load', n: 'Dom', c: css('--s-load') }, { id: 'bat', n: 'Magazyn', c: css('--s-bat') }, { id: 'grid', n: 'Sieć', c: css('--s-grid') },
-    { id: 'loss', n: 'Straty', c: css('--s-loss') || '#e87ba4' }];
-  const L = [['pv', 'load'], ['pv', 'bat'], ['pv', 'grid'], ['bat', 'load'], ['bat', 'grid'], ['grid', 'load'], ['grid', 'bat']]
-    .map(([a, b]) => ({ a, b, v: +(F[a + '_' + b] || 0) })).filter(x => x.v >= 0.005);
-  const lossBy = { pv: 0, bat: 0, grid: 0 };
-  if ((F.loss || 0) >= 0.005) { const tot = S.reduce((x, n) => x + L.filter(l => l.a === n.id).reduce((y, l) => y + l.v, 0), 0) || 1;
-    S.forEach(n => { lossBy[n.id] = F.loss * (L.filter(l => l.a === n.id).reduce((y, l) => y + l.v, 0) / tot); });
-    S.forEach(n => { if (lossBy[n.id] >= 0.005) L.push({ a: n.id, b: 'loss', v: lossBy[n.id] }); }); }
-  const out = id => L.filter(l => l.a === id).reduce((x, l) => x + l.v, 0), inn = id => L.filter(l => l.b === id).reduce((x, l) => x + l.v, 0);
-  const sN = S.filter(n => out(n.id) > 0), tN = T.filter(n => inn(n.id) > 0);
-  const tot = Math.max(sN.reduce((x, n) => x + out(n.id), 0), tN.reduce((x, n) => x + inn(n.id), 0));
-  if (!(tot > 0.01)) { box.innerHTML = '<div class="empty">Brak danych o przepływach w tym okresie.</div>'; return; }
-  // 1.30: bloki wezlow jak w Sigen - szerokie, z nazwa, kWh i % w srodku; laczniki z plynacymi kropkami
-  const W = Math.max(320, Math.round(box.clientWidth || 640)), narrow = W < 560;
-  const NW = Math.round(Math.min(150, Math.max(92, W * 0.22))), GAP = 8, MINH = 54, X0 = 0, X1 = W - NW;
-  const H = narrow ? 380 : 420;
-  const tot2 = Math.max(sN.length, tN.length);
-  const k = (H - GAP * (tot2 - 1) - MINH * tot2 * 0.25) / tot;
-  const place = (arr, val) => { let y = 0; return arr.map(n => { const h = Math.max(1, val(n.id) * k), bh = Math.max(h, MINH), r = { ...n, y, h, bh };
-    y += bh + GAP; return r; }); };
-  const sP = place(sN, out), tP = place(tN, inn);
-  const sOff = {}, tOff = {}; sP.forEach(n => sOff[n.id] = n.y + (n.bh - n.h) / 2); tP.forEach(n => tOff[n.id] = n.y + (n.bh - n.h) / 2);
-  const order = [...L].sort((p, q) => sP.findIndex(n => n.id === p.a) - sP.findIndex(n => n.id === q.a) || tP.findIndex(n => n.id === p.b) - tP.findIndex(n => n.id === q.b));
-  const pct = (v, all) => all > 0 ? (100 * v / all).toFixed(v / all < 0.1 ? 1 : 0).replace('.', ',') + ' %' : '';
-  const srcTot = sN.reduce((x, n) => x + out(n.id), 0);
-  let g = '', anim = '';
-  order.forEach(l => {
-    const sn = sP.find(n => n.id === l.a), tn = tP.find(n => n.id === l.b), h = Math.max(1, l.v * k);
-    const y0 = sOff[l.a] + h / 2, y1 = tOff[l.b] + h / 2; sOff[l.a] += h; tOff[l.b] += h;
-    const xa = X0 + NW, xb = X1, xm = (xa + xb) / 2, d = `M${xa},${y0} C${xm},${y0} ${xm},${y1} ${xb},${y1}`;
-    g += `<path class="sk-link" d="${d}" stroke="${sn.c}" stroke-width="${h}"><title>${sn.n} → ${tn.n}: ${kw(l.v)} kWh (${pct(l.v, srcTot)})</title></path>`;
-    if (h >= 1.5) anim += `<path class="sk-anim" d="${d}" stroke-width="${Math.min(Math.max(h * 0.5, 2), 4).toFixed(1)}" style="animation-duration:${(0.9 + 1.2 * Math.random()).toFixed(2)}s"/>`;
-  });
-  const node = (n, x, val) => {
-    const cx = x + NW / 2, my = n.y + n.bh / 2, tall = n.bh >= 78;
-    return `<rect x="${x}" y="${n.y}" width="${NW}" height="${n.bh}" rx="8" fill="${n.c}"><title>${n.n}: ${kw(val)} kWh</title></rect>` +
-      `<text class="sk-n" x="${cx}" y="${tall ? my - 16 : my - 7}" text-anchor="middle">${n.n.toUpperCase()}</text>` +
-      `<text class="sk-v" x="${cx}" y="${tall ? my + 6 : my + 12}" text-anchor="middle">${kw(val)}<tspan class="sk-u"> kWh</tspan></text>` +
-      (tall ? `<text class="sk-p" x="${cx}" y="${my + 24}" text-anchor="middle">${pct(val, srcTot)}</text>` : '');
-  };
-  g += anim + sP.map(n => node(n, X0, out(n.id))).join('') + tP.map(n => node(n, X1, inn(n.id))).join('');
-  const hh = Math.max(...[...sP, ...tP].map(n => n.y + n.bh));
   skLast = F;
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${hh}" style="width:100%;height:auto;display:block" role="img" aria-label="Przepływ energii">${g}</svg>`;
+  const svg = sgSankeySvg(F || {}, box.clientWidth || 640, { pv: css('--s-pv'), bat: css('--s-bat'), grid: css('--s-grid'), load: css('--s-load'), loss: css('--s-loss') });
+  box.innerHTML = svg || '<div class="empty">Brak danych o przepływach w tym okresie.</div>';
+}
+function ctile_c(d, t, k, unit, note) {      // 1.31: porownanie wspolne z karta HA (sgCmp)
+  const r = sgCmp(d.energy, d.cmp, k, unit, tileKwhDec, esc);
+  return tile(t, d.energy[k], unit, [note, ...r.extra].filter(Boolean).join(' · ')).replace('</small></div>', '</small>' + r.badge + '</div>');
 }
 async function loadPeriod() {
   let d; try { d = await (await fetch('/api/period?okres=' + perSel + (perDate ? '&date=' + perDate : ''))).json(); } catch (e) { return; }
@@ -1540,14 +1523,15 @@ async function loadPeriod() {
   renderSankey(F);
   $('sk-note').textContent = '· z pomiarów co 5 s' + (F.loss >= 0.05 ? ' · straty = różnica wejść i wyjść falownika' : '');
   const e = d.energy;
+  tileKwhDec = perSel === 'day' ? 2 : 1;
   $('tiles').innerHTML =
-    tile('Produkcja PV', e.pv, 'kWh', srcNote(e, 'pv')) + tile('Zużycie domu', e.load, 'kWh', srcNote(e, 'load')) +
-    tile('Pobór z sieci', e.imp, 'kWh', srcNote(e, 'imp')) + tile('Oddane do sieci', e.exp, 'kWh', srcNote(e, 'exp')) +
-    tile('Ładowanie mag.', e.chg, 'kWh', srcNote(e, 'chg')) + tile('Rozładowanie mag.', e.dis, 'kWh', srcNote(e, 'dis')) +
-    tile('Autokonsumpcja', e.autokonsumpcja, '%', e.exp_pv != null ? `PV zużyte w domu i magazynie (do sieci z PV ${e.exp_pv.toFixed(1)} kWh, bez sprzedaży z magazynu)` : '') +
-    tile('Samowystarczalność', e.samowystarczalnosc, '%', e.imp_home != null ? `dom bez prądu z sieci (dom z sieci ${e.imp_home.toFixed(1)} kWh, bez ładowania magazynu z sieci)` : '') +
+    ctile_c(d, 'Produkcja PV', 'pv', 'kWh', srcNote(e, 'pv')) + ctile_c(d, 'Zużycie domu', 'load', 'kWh', srcNote(e, 'load')) +
+    ctile_c(d, 'Pobór z sieci', 'imp', 'kWh', srcNote(e, 'imp')) + ctile_c(d, 'Oddane do sieci', 'exp', 'kWh', srcNote(e, 'exp')) +
+    ctile_c(d, 'Ładowanie mag.', 'chg', 'kWh', srcNote(e, 'chg')) + ctile_c(d, 'Rozładowanie mag.', 'dis', 'kWh', srcNote(e, 'dis')) +
+    ctile_c(d, 'Autokonsumpcja', 'autokonsumpcja', '%', e.exp_pv != null ? `PV zużyte w domu i magazynie (do sieci z PV ${e.exp_pv.toFx(1)} kWh, bez sprzedaży z magazynu)` : '') +
+    ctile_c(d, 'Samowystarczalność', 'samowystarczalnosc', '%', e.imp_home != null ? `dom bez prądu z sieci (dom z sieci ${e.imp_home.toFx(1)} kWh, bez ładowania magazynu z sieci)` : '') +
     lossTiles(e);
-
+  tileKwhDec = 2;
   popTiles($('tiles'));
   const B = d.buckets || [];
   $('empty').hidden = B.length > 0;
@@ -1557,16 +1541,17 @@ async function loadPeriod() {
   const bar = (label, k, color, axis) => ({ label, data: B.map(b => b[k]), backgroundColor: color, borderColor: color, type: 'bar', yAxisID: axis,
     borderRadius: 3, maxBarThickness: 28 });
   const sets = [bar('Produkcja PV', 'pv', css('--s-pv'), 'y'), bar('Zużycie domu', 'load', css('--s-load'), 'y'),
-    bar('Autokonsumpcja', 'autokonsumpcja', rgbaHex(css('--s-bat'), 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', 'rgba(250,204,21,0.8)', 'y1')];
+    bar('Autokonsumpcja', 'autokonsumpcja', rgbaHex(css('--s-bat'), 0.55), 'y1'), bar('Samowystarczalność', 'samowystarczalnosc', rgbaHex(css('--s-arb'), 0.8), 'y1')];
   if (cPower && cPower.config.type !== 'bar') { cPower.destroy(); cPower = null; }
   if (!cPower) {
     const o = baseOpts('kWh');
     o.scales.y1 = { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { color: css('--muted'), callback: v => v + ' %' } };
-    o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? '' : ` ${c.dataset.label}: ${c.parsed.y.toFixed(c.dataset.yAxisID === 'y1' ? 0 : 1)} ${c.dataset.yAxisID === 'y1' ? '%' : 'kWh'}`;
-    cPower = new Chart($('cPower'), { type: 'bar', data: { labels, datasets: sets }, options: o });
+    o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? '' : ` ${c.dataset.label}: ${c.parsed.y.toFx(c.dataset.yAxisID === 'y1' ? 0 : 1)} ${c.dataset.yAxisID === 'y1' ? '%' : 'kWh'}`;
+    cPower = new Chart($('cPower'), { type: 'bar', data: { labels, datasets: sets }, options: o, plugins: [nowLine] });
   } else {
-    cPower.data = { labels, datasets: sets }; cPower.update();
+    cPower.data = { labels, datasets: sets };
   }
+  cPower.$nowIdx = perSel === 'day' && d.is_current ? nowLabelIdx(labels) : null; cPower.update();
   if (perSel !== 'day') { $('tbody').innerHTML = '<tr><td colspan="7" class="empty">Tabela godzinowa – tylko dla „Dzień”.</td></tr>'; return; }
   const s = d.series || [];
 
@@ -1579,8 +1564,8 @@ async function loadPeriod() {
   const avg = (a, k) => (a.reduce((x, p) => x + p[k], 0) / a.length);
   $('tbody').innerHTML = Object.keys(hours).map(h => {
     const a = hours[h];
-    return `<tr><td>${String(h).padStart(2, '0')}:00</td><td>${avg(a, 'pv').toFixed(2)}</td><td>${avg(a, 'load').toFixed(2)}</td>` +
-      `<td>${avg(a, 'bat').toFixed(2)}</td><td>${avg(a, 'grid').toFixed(2)}</td><td>${avg(a, 'loss').toFixed(3)}</td><td>${avg(a, 'soc').toFixed(0)}</td></tr>`;
+    return `<tr><td>${String(h).padStart(2, '0')}:00</td><td>${avg(a, 'pv').toFx(2)}</td><td>${avg(a, 'load').toFx(2)}</td>` +
+      `<td>${avg(a, 'bat').toFx(2)}</td><td>${avg(a, 'grid').toFx(2)}</td><td>${avg(a, 'loss').toFx(3)}</td><td>${avg(a, 'soc').toFx(0)}</td></tr>`;
   }).join('');
 }
 // ---- 1.98 zuzycie wlasne falownika i magazynu w miesiacu ----
@@ -1589,7 +1574,7 @@ async function loadLossMonth(month) {
   if (month === lmMonth && Date.now() - lmTs < 600000) return;
   lmMonth = month; lmTs = Date.now();
   let r; try { r = await (await fetch('/api/losses_month?month=' + month)).json(); } catch (e) { return; }
-  const T = r.total || {}, f = (v, n = 1) => v == null ? null : v.toFixed(n).replace('.', ',');
+  const T = r.total || {}, f = (v, n = 1) => v == null ? null : v.toFx(n);
   $('lm-title').innerHTML = `Zużycie własne falownika i magazynu – ${r.label}`;
   $('lm-tiles').innerHTML =
     ctile('c-red', 'Razem w miesiącu (do dziś)', f(T.system, 1), 'kWh', `${r.days.length} dni · ${r.cost != null ? '≈ ' + f(r.cost, 2) + ' zł' : ''}`) +
@@ -1598,17 +1583,17 @@ async function loadLossMonth(month) {
     tile('w tym bateria', f(T.bat_loss, 1), 'kWh', `ładowanie ${f(T.chg, 1)} − rozładowanie ${f(T.dis, 1)} − zmiana zapasu ${f(T.d_bat, 1)} kWh`) +
     tile('w tym czuwanie', f(T.czuwanie, 1), 'kWh', T.h_czuwanie ? `${Math.round(T.h_czuwanie)} h bez przetwarzania` : 'falownik nic nie przetwarza') +
     tile('w tym konwersja', f(T.konwersja, 1), 'kWh', 'przetwarzanie PV, magazynu i AC');
-  $('lm-days').innerHTML = '<table class="mh6 mh7 mh8" style="width:100%;border-collapse:collapse"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>razem</th><th>bateria</th><th>czuwanie</th><th>konwersja</th><th>PV</th><th>dom</th><th>ładow./rozład.</th></tr>' +
+  $('lm-days').innerHTML = '<table class="mh6 mh7 mh8"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>razem</th><th>bateria</th><th>czuwanie</th><th>konwersja</th><th>PV</th><th>dom</th><th>ładow./rozład.</th></tr>' +
     r.days.slice().reverse().map(x => `<tr style="border-top:1px solid var(--border)"><td>${x.date.slice(8, 10)}.${x.date.slice(5, 7)}</td><td><b>${f(x.system, 2)}</b></td>` +
       `<td>${f(x.bat_loss, 2)}</td><td>${f(x.czuwanie, 2)}</td><td>${f(x.konwersja, 2)}</td><td>${f(x.pv, 1)}</td><td>${f(x.load, 1)}</td><td>${f(x.chg, 1)} / ${f(x.dis, 1)}</td></tr>`).join('') + '</table>';
 }
 function lossTiles(e) {
   const st = e.straty || {};
   const reg = st.regulacja_pobor != null ? st.regulacja_pobor + st.regulacja_oddanie : null;
-  const f = v => v == null ? null : v.toFixed(2);
+  const f = v => v == null ? null : v.toFx(2);
   return tile('Straty konwersji', f(st.konwersja), 'kWh', 'przetwarzanie PV, magazynu i AC') +
     tile('Zużycie własne (czuwanie)', f(st.czuwanie), 'kWh',
-      st.czuwanie_sr_w != null ? `śr. ${st.czuwanie_sr_w} W przez ${st.h_czuwanie.toFixed(1)} h bez przetwarzania` : 'gdy falownik nic nie przetwarza') +
+      st.czuwanie_sr_w != null ? `śr. ${st.czuwanie_sr_w} W przez ${st.h_czuwanie.toFx(1)} h bez przetwarzania` : 'gdy falownik nic nie przetwarza') +
     tile('Odchyłki regulacji', f(reg), 'kWh', reg != null ? `pobór z sieci ${f(st.regulacja_pobor)} · oddanie ${f(st.regulacja_oddanie)} kWh` : '') +
     tile('Sprawność falownika', e.sprawnosc, '%', 'konwersja + czuwanie');
 }
@@ -1623,6 +1608,8 @@ function interp(pts, m) {
   }
   return 0;
 }
+// 1.31: B4 - linia „teraz” takze na wykresach dnia (moc / pobor) - indeks etykiety HH:MM najblizszej biezacej godzinie
+const nowLabelIdx = (labels, date) => sgNowLabelIdx(labels, !date || date === todayStr());   // 1.31: wspolne z kartami HA
 const nowLine = {
   id: 'nowLine',
   afterDatasetsDraw(chart) {
@@ -1661,7 +1648,7 @@ async function loadForecast() {
   const OM = S.open_meteo || {};
   const note = (r, fs, ec, om) => [d.main !== 'open_meteo' && om ? `Open-Meteo ${om.total_kwh}` : '',
     d.main !== 'om_ecmwf' && ec ? `ECMWF ${ec.total_kwh}` : '', d.main !== 'forecast_solar' && fs ? `forecast.solar ${fs.total_kwh}` : '',
-    r ? `modele ${r[0].toFixed(1)}–${r[1].toFixed(1)}` : ''].filter(Boolean).join(' · ');
+    r ? `modele ${r[0].toFx(1)}–${r[1].toFx(1)}` : ''].filter(Boolean).join(' · ');
   const nowHM = hm(d.now_min);
   const fcSrc = T ? `${N[d.main]}${T.kind === 'dzien_wczesniej' ? ' z ' + fmtDT(T.fetched) : ' (bieżąca)'}` : '';
   const pct = T && d.forecast_until_now_kwh > 0.05 ? Math.round(100 * d.actual_kwh / d.forecast_until_now_kwh) : null;
@@ -1707,9 +1694,9 @@ async function loadForecast() {
       const m = mean[k];
       if (!m) return '<td>–</td>';
       const pos = ranked.indexOf(k) + 1;
-      return `<td style="${tint(rankT(k))}" title="średni błąd bezwzględny ${m.mae.toFixed(2)} kWh/dzień = ${m.pct?.toFixed(0)} % produkcji; ` +
-        `prognoza średnio ${m.bias >= 0 ? 'zawyża' : 'zaniża'} o ${Math.abs(m.bias).toFixed(2)} kWh; ${m.n} dni">±${m.mae.toFixed(2)} kWh` +
-        ` <span style="font-size:11px;font-weight:400">(${m.pct != null ? m.pct.toFixed(0) + ' %' : '–'}) · ${pos === 1 ? 'najtrafniejsza' : pos === ranked.length ? 'najmniej trafna' : pos + '.'}</span></td>`;
+      return `<td style="${tint(rankT(k))}" title="średni błąd bezwzględny ${m.mae.toFx(2)} kWh/dzień = ${m.pct?.toFx(0)} % produkcji; ` +
+        `prognoza średnio ${m.bias >= 0 ? 'zawyża' : 'zaniża'} o ${Math.abs(m.bias).toFx(2)} kWh; ${m.n} dni">±${m.mae.toFx(2)} kWh` +
+        ` <span style="font-size:11px;font-weight:400">(${m.pct != null ? m.pct.toFx(0) + ' %' : '–'}) · ${pos === 1 ? 'najtrafniejsza' : pos === ranked.length ? 'najmniej trafna' : pos + '.'}</span></td>`;
     }).join('') + '</tr>' : '';
   $('accbody').innerHTML = acc.days.length ? meanRow + acc.days.map(r =>
     `<tr><td>${r.day}</td><td>${r.actual_kwh}</td>${cols.map(k => cell(r, k)).join('')}</tr>`).join('') +
@@ -1776,8 +1763,8 @@ async function loadForecast() {
     o.plugins.tooltip.callbacks.label = c => {
       const i = c.dataIndex, l = c.dataset.label;
       if (l.startsWith('Rozrzut')) { const b = cFc.$bands || {}; const mn = (l.endsWith('dziś') ? b.tMin : b.jMin)?.[i];
-        return ` ${l}: ${mn?.toFixed(2)}–${c.parsed.y.toFixed(2)} kW`; }
-      return ` ${l}: ${c.parsed.y.toFixed(2)} kW`;
+        return ` ${l}: ${mn?.toFx(2)}–${c.parsed.y.toFx(2)} kW`; }
+      return ` ${l}: ${c.parsed.y.toFx(2)} kW`;
     };
     o.plugins.title = { display: true, text: '', align: 'start', color: css('--muted'),
       font: { size: 12, weight: 'normal' }, padding: { bottom: 4 } };
@@ -1841,10 +1828,10 @@ async function loadPvMonthly() {
     o.scales.y.min = 0;
     o.scales.y.ticks.callback = v => v + ' kWh';
     o.plugins.legend.display = false;
-    o.plugins.tooltip.callbacks.label = c => ` Produkcja PV: ${c.parsed.y.toFixed(1)} kWh`;
+    o.plugins.tooltip.callbacks.label = c => ` Produkcja PV: ${c.parsed.y.toFx(1)} kWh`;
     o.plugins.tooltip.callbacks.footer = it => {
       const m = cPvm.$m[it[0].dataIndex];
-      return m ? [`${m.days} dni z odczytami`].concat(m.pre > 0.05 ? [`w tym ${m.pre.toFixed(1)} kWh sprzed startu zapisu`] : []) : [];
+      return m ? [`${m.days} dni z odczytami`].concat(m.pre > 0.05 ? [`w tym ${m.pre.toFx(1)} kWh sprzed startu zapisu`] : []) : [];
     };
     cPvm = new Chart($('cPvm'), { type: 'bar', data: { labels, datasets: sets }, options: o });
   } else { cPvm.data = { labels, datasets: sets }; }
@@ -1852,27 +1839,27 @@ async function loadPvMonthly() {
 }
 
 // ---- Pstryk (opcjonalnie - tylko z kluczem API) ----
-const zl2 = v => v == null ? null : v.toFixed(2);
+const zl2 = v => v == null ? null : v.toFx(2);
 // 1.95: Tarcza i faktura liczone na serwerze (/api/pstryk -> invoice): srednia energii z oplata za obsluge ponad limit
 const MONTHN = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
 const monthName = (key, d = 0) => { const [y, m] = key.split('-').map(Number), i = (m - 1 + d + 12) % 12; return MONTHN[i]; };
 const tarczaTile = I => !I || I.tarcza_avg == null ? '' :
-  ctile((I.tarcza > 0.005 ? 'c-green' : 'c-blue') + '', 'Tarcza Pstryk', '≈' + I.tarcza.toFixed(2), 'zł',
-    `średni koszt energii z opłatą za obsługę ≈ ${I.tarcza_avg.toFixed(3)} zł/kWh · limit ${I.tarcza_cap.toFixed(2)} zł/kWh` +
+  ctile((I.tarcza > 0.005 ? 'c-green' : 'c-blue') + '', 'Tarcza Pstryk', '≈' + I.tarcza.toFx(2), 'zł',
+    `średni koszt energii z opłatą za obsługę ≈ ${I.tarcza_avg.toFx(3)} zł/kWh · limit ${I.tarcza_cap.toFx(2)} zł/kWh` +
     (I.tarcza > 0.005 ? ' – zniżka na fakturze' : ' – poniżej limitu, bez zniżki'));
 const invoiceTiles = I => !I ? '' :
-  ctile('c-green', `Depozyt na fakturę (${monthName(I.month)})`, I.deposit.toFixed(2), 'zł',
-    `${I.deposit_src}` + (I.deposit_src.startsWith('wg') ? ` · z danych ${I.deposit_prev_calc.toFixed(2)} zł` : '') +
+  ctile('c-green', `Depozyt na fakturę (${monthName(I.month)})`, I.deposit.toFx(2), 'zł',
+    `${I.deposit_src}` + (I.deposit_src.startsWith('wg') ? ` · z danych ${I.deposit_prev_calc.toFx(2)} zł` : '') +
     ` · zarobiony w ${monthName(I.month, -1)} · <a href="#" id="ps-depedit">wpisz wg Pstryka</a>`) +
-  ctile((I.to_pay > 0.005 ? 'c-red' : 'c-green') + '', `Faktura za ${monthName(I.month)} (szac.)`, I.to_pay > 0.005 ? I.to_pay.toFixed(2) : '0,00', 'zł',
-    `koszt ${I.cost.toFixed(2)} (energia ${I.parts.energy.toFixed(2)} + dystrybucja ${I.parts.dist.toFixed(2)} + obsługa ${I.parts.service.toFixed(2)})` +
-    ` − Tarcza ${I.tarcza.toFixed(2)} − depozyt ${I.deposit.toFixed(2)} zł` + (I.left > 0.005 ? ` · reszta ${I.left.toFixed(2)} zł depozytu przechodzi na ${monthName(I.month, 1)}` : '')) +
-  ctile('c-green', `Depozyt na ${monthName(I.month, 1)}`, (I.next_deposit + I.left).toFixed(2), 'zł', `oddanie w ${monthName(I.month)} ${I.next_deposit.toFixed(2)} zł` +
-    (I.left > 0.005 ? ` + reszta z faktury za ${monthName(I.month)} ${I.left.toFixed(2)} zł` : '') + ` – pomniejszy fakturę za ${monthName(I.month, 1)} (do teraz)`);
+  ctile((I.to_pay > 0.005 ? 'c-red' : 'c-green') + '', `Faktura za ${monthName(I.month)} (szac.)`, I.to_pay > 0.005 ? I.to_pay.toFx(2) : '0,00', 'zł',
+    `koszt ${I.cost.toFx(2)} (energia ${I.parts.energy.toFx(2)} + dystrybucja ${I.parts.dist.toFx(2)} + obsługa ${I.parts.service.toFx(2)})` +
+    ` − Tarcza ${I.tarcza.toFx(2)} − depozyt ${I.deposit.toFx(2)} zł` + (I.left > 0.005 ? ` · reszta ${I.left.toFx(2)} zł depozytu przechodzi na ${monthName(I.month, 1)}` : '')) +
+  ctile('c-green', `Depozyt na ${monthName(I.month, 1)}`, (I.next_deposit + I.left).toFx(2), 'zł', `oddanie w ${monthName(I.month)} ${I.next_deposit.toFx(2)} zł` +
+    (I.left > 0.005 ? ` + reszta z faktury za ${monthName(I.month)} ${I.left.toFx(2)} zł` : '') + ` – pomniejszy fakturę za ${monthName(I.month, 1)} (do teraz)`);
 // bilans = koszt - sprzedaz: dodatni (koszt > sprzedaz) czerwony, ujemny (sprzedaz > koszt) zielony
 const balTile = (t, b) => b == null ? ctile('c-blue', t, null, 'zł') :
   ctile('ps-bal ' + (b > 0.005 ? 'c-red' : b < -0.005 ? 'c-green' : 'c-blue'), t,
-    (b < -0.005 ? '+' : b > 0.005 ? '−' : '') + Math.abs(b).toFixed(2), 'zł',
+    (b < -0.005 ? '+' : b > 0.005 ? '−' : '') + Math.abs(b).toFx(2), 'zł',
     b > 0.005 ? 'koszt większy od sprzedaży – do zapłaty' : b < -0.005 ? 'sprzedaż większa od kosztu – nadwyżka' : 'koszt = sprzedaż');
 // 1.24: porownanie Pstryka ze sprzedawca z cena taryfowa (strefy i dystrybucja z wybranej taryfy; depozyt tylko na energie)
 let cmpTs = 0;
@@ -1882,10 +1869,10 @@ async function loadCmp(force) {
   let r; try { r = await (await fetch('/api/porownanie?months=6')).json(); } catch (e) { return; }
   if (!r.enabled || !(r.months || []).length) return;
   $('cmpbox').hidden = false;
-  const T = r.tariff || {}, z = v => v.toFixed(2).replace('.', ',');
+  const T = r.tariff || {}, z = v => v.toFx(2);
   $('cmp-tariff').textContent = `${(T.operator || '').toUpperCase()} ${T.taryfa || ''}`;
   if (document.activeElement?.closest?.('#cmp-prices') == null)
-    $('cmp-prices').innerHTML = (T.zones || []).map(Z => `<label title="${esc(Z.hours || 'cała doba')} · dystrybucja ${Z.dist.toFixed(3)} zł/kWh">Energia – ${esc(Z.label)} ` +
+    $('cmp-prices').innerHTML = (T.zones || []).map(Z => `<label title="${esc(Z.hours || 'cała doba')} · dystrybucja ${Z.dist.toFx(3)} zł/kWh">Energia – ${esc(Z.label)} ` +
       `<input class="bp-num" data-zone="${esc(Z.key)}" type="number" min="0" max="5" step="0.0001" style="width:80px" value="${r.prices[Z.key] ?? ''}"> zł/kWh brutto</label>`).join('') +
       '<button class="fs-btn" id="cmp-save" type="button">Zapisz ceny</button>';
   $('cmp-msg').textContent = r.default_name ? `Puste pola = cena ze zbioru taryf: ${r.default_name} (brutto, z akcyzą) – wpisz ceny swojego sprzedawcy, jeśli są inne.` :
@@ -1900,7 +1887,7 @@ async function loadCmp(force) {
   const best = m => { const a = [['p', m.pstryk.to_pay]]; if (m.same) a.push(['s', m.same.to_pay], ['n', m.night.to_pay]); return a.reduce((x, y) => y[1] < x[1] ? y : x)[0]; };
   $('cmprows').innerHTML = r.months.map(m => {
     const b = best(m), c = (k, v, t) => `<td title="${t}"${b === k ? ' style="color:var(--ok);font-weight:700"' : ''}>${z(v)} zł</td>`;
-    return `<tr><td>${m.label}${m.partial ? ` (${m.days} dni)` : ''}</td><td>${m.imp.toFixed(0)}</td>` +
+    return `<tr><td>${m.label}${m.partial ? ` (${m.days} dni)` : ''}</td><td>${m.imp.toFx(0)}</td>` +
       c('p', m.pstryk.to_pay, `koszt ${z(m.pstryk.cost)} − Tarcza ${z(m.pstryk.tarcza)} − depozyt ${z(m.pstryk.deposit)} zł`) +
       (m.same ? c('s', m.same.to_pay, `energia ${z(m.same.energy)} − depozyt ${z(m.same.deposit_used)} + dystrybucja ${z(m.same.dist)} + stałe ${z(m.same.fixed)} zł`) +
         c('n', m.night.to_pay, `strefa ${m.night.zone}: energia ${z(m.night.energy)} − depozyt ${z(m.night.deposit_used)} + dystrybucja ${z(m.night.dist)} + stałe ${z(m.night.fixed)} zł`) +
@@ -1921,19 +1908,19 @@ async function loadPstryk(date) {
     : (st.last ? 'synchronizacja ' + new Date(st.last * 1000).toLocaleTimeString('pl-PL') : 'pierwsza synchronizacja…') +
       (st.backfill && !st.last ? ' · ' + st.backfill : '');
   const sigenOk = S.imp != null && (S.imp > 0 || S.exp > 0);
-  const diff = (a, b) => a == null || b == null || !sigenOk ? '' : `Sigen: ${b.toFixed(2)} kWh (różnica ${(a - b >= 0 ? '+' : '') + (a - b).toFixed(2)})`;
+  const diff = (a, b) => a == null || b == null || !sigenOk ? '' : `Sigen: ${b.toFx(2)} kWh (różnica ${(a - b >= 0 ? '+' : '') + (a - b).toFx(2)})`;
   const lastH = D.last_ts ? new Date(D.last_ts * 1000).getHours() + 1 : null;
   const upto = D.hours && D.hours < 24 && lastH ? ` · dane do ${String(lastH).padStart(2, '0')}:00` : '';
   $('pstiles').innerHTML = !D.hours ? '<div class="empty">Brak danych licznika dla tego dnia.</div>' :
-    ctile('c-red', 'Pobór (licznik)', D.imp.toFixed(3), 'kWh', diff(D.imp, S.imp)) +
-    ctile('c-green', 'Oddanie (licznik)', D.exp.toFixed(3), 'kWh', diff(D.exp, S.exp)) +
+    ctile('c-red', 'Pobór (licznik)', D.imp.toFx(3), 'kWh', diff(D.imp, S.imp)) +
+    ctile('c-green', 'Oddanie (licznik)', D.exp.toFx(3), 'kWh', diff(D.exp, S.exp)) +
     ctile('c-red', 'Koszt dnia', zl2(D.cost), 'zł', `w tym stałe ok. ${zl2(D.fixed_gross)} zł${upto}`) +
     ctile('c-green', 'Sprzedaż energii', zl2(D.sold), 'zł') +
     balTile('Bilans dnia', D.balance);
   $('psmtitle').textContent = `Miesiąc: ${M.label}` + (M.days ? ` (${M.days} ${M.days === 1 ? 'dzień' : 'dni'} z danymi)` : '');
   $('psmonth').innerHTML = !M.hours ? '<div class="empty">Brak danych w tym miesiącu.</div>' :
     ctile('c-red', 'Koszt miesiąca', zl2(M.cost), 'zł', `w tym stałe ok. ${zl2(M.fixed_gross)} zł`) +
-    ctile('c-red', 'Pobór', M.imp.toFixed(2), 'kWh') + ctile('c-green', 'Oddanie', M.exp.toFixed(2), 'kWh') +
+    ctile('c-red', 'Pobór', M.imp.toFx(2), 'kWh') + ctile('c-green', 'Oddanie', M.exp.toFx(2), 'kWh') +
     tarczaTile(d.invoice) + invoiceTiles(d.invoice);
   const de = $('ps-depedit');
   if (de) de.onclick = async ev => {
@@ -1949,7 +1936,7 @@ async function loadPstryk(date) {
   $('pscost').innerHTML = rows.map(([n, k]) => `<tr><td>${n}</td><td>${zl2(D[k]) ?? '–'}</td><td>${zl2(M[k]) ?? '–'}</td></tr>`).join('') +
     `<tr><td><b>Razem brutto</b></td><td><b>${zl2(D.cost)}</b></td><td><b>${zl2(M.cost)}</b></td></tr>` +
     `<tr><td>Sprzedaż energii</td><td>${zl2(D.sold)}</td><td>${zl2(M.sold)}</td></tr>`;
-  const f = (v, n) => v == null ? '–' : v.toFixed(n);
+  const f = (v, n) => v == null ? '–' : v.toFx(n);
   const rowCls = h => h.cost == null && h.sold == null ? '' : (h.cost || 0) > (h.sold || 0) ? ' class="ps-buy"' : (h.sold || 0) > (h.cost || 0) ? ' class="ps-sell"' : '';
   $('pshours').innerHTML = d.hours.map(h => `<tr${rowCls(h)}><td>${new Date(h.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td>` +
     `<td>${f(h.imp, 3)}</td><td>${f(h.exp, 3)}</td><td>${f(h.cost, 2)}</td><td>${f(h.sold, 2)}</td><td>${f(h.price_gross, 3)}</td><td>${f(h.price_pros, 3)}</td></tr>`).join('') +
@@ -2053,32 +2040,12 @@ function renderStNow(c) {
 }
 // 1.30: C4 - „Obecny tryb”: kto steruje falownikiem i co robi + czas do najblizszej zmiany (plan / koniec recznego / pauzy)
 let cmLast = null;
-function renderCurMode(c, mode, cls) {
+function renderCurMode(c, mode, cls) {     // 1.31: logika wspolna z karta HA (sgCurMode)
   const box = $('curmode'); if (!box) return;
   cmLast = [c, mode, cls];
-  const now = Date.now() / 1000, hm = ts => new Date(ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-  const left = ts => { const s = Math.max(0, ts - now); return s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`; };
-  const paused = c.pause_until && c.pause_until > now;
-  const remote = (c.manual || (c.tryb === 'wl' && !paused)) && c.desired;
-  const x = lastStrat?.next && lastStrat.next.ts > now ? lastStrat.next : null;
-  let m = mode, src, next = '', k = cls.replace('m-stby', '');
-  if (c.manual) {
-    src = 'ręcznie · Zdalny tryb EMS'; k = 'm-man';
-    next = c.manual.do ? `koniec za ${left(c.manual.do)} (${hm(c.manual.do)}) → strategia` : 'do anulowania';
-  } else if (paused) {
-    m = 'Tryb falownika'; src = 'pauza strategii – steruje falownik (mySigen)'; k = '';
-    next = `wznowienie za ${left(c.pause_until)} (${hm(c.pause_until)})`;
-  } else if (remote) {
-    src = 'Zdalny tryb EMS · wg strategii' + (c.applied ? '' : ' · wysyłam…');
-    if (x) next = `zmiana za ${left(x.ts)} → ${x.label}`;
-  } else {
-    m = c.owned ? 'Oddaję sterowanie…' : 'Tryb falownika'; k = '';
-    src = c.tryb === 'probny' ? 'steruje falownik (mySigen) · strategia próbnie, bez zapisu' : 'steruje falownik (mySigen) · strategia tylko symulacją';
-    if (x) next = `plan: ${mode.toLowerCase()} · zmiana za ${left(x.ts)} → ${x.label}`;
-  }
-  if (c.mismatch?.alert || c.error) { k = 'm-warn'; src += c.error ? ' · błąd zapisu' : ' · falownik robi co innego!'; }
-  box.className = 'curmode ' + k;
-  $('cm-mode').textContent = m; $('cm-src').textContent = src; $('cm-next').textContent = next;
+  const r = sgCurMode(c, mode, cls, lastStrat);
+  box.className = 'curmode ' + r.cls;
+  $('cm-mode').textContent = r.mode; $('cm-src').textContent = r.src; $('cm-next').textContent = r.next;
 }
 setInterval(() => { if (cmLast) renderCurMode(...cmLast); }, 30000);
 async function loadCtl() {
@@ -2121,14 +2088,33 @@ async function loadCtl() {
   const mname = v => v == null ? '–' : (MN[v] || v);
   $('st-ctllog').innerHTML = (c.log || []).map(e => e.kind === 'zmiana'
     ? `<tr><td>${hm(e.ts)}</td><td>${esc(mname(e.from))} → <b>${esc(mname(e.to))}</b>${e.dry ? ' <span class="status" style="display:inline">(próbnie)</span>' : ''}</td>` +
-      `<td>${esc(e.src || '')}</td><td>${e.soc != null ? e.soc.toFixed(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.det || '')}</td></tr>`
+      `<td>${esc(e.src || '')}</td><td>${e.soc != null ? e.soc.toFx(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.det || '')}</td></tr>`
     : `<tr><td>${hm(e.ts)}</td><td>${e.kind === 'mail' ? '✉ ' : e.kind === 'blad' ? '✗ ' : e.kind === 'niezgodnosc' ? '⚠ ' : ''}${esc(e.txt || '')}</td><td>${e.kind === 'mail' ? 'powiadomienie' : e.kind === 'blad' ? 'błąd' : e.kind === 'ustawienie' ? 'ustawienie' : e.kind === 'niezgodnosc' ? 'niezgodność' : esc(e.kind || '')}</td>` +
-      `<td>${e.soc != null ? e.soc.toFixed(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.why || '')}</td></tr>`).join('');
+      `<td>${e.soc != null ? e.soc.toFx(0) + ' %' : '–'}</td><td style="text-align:left">${esc(e.why || '')}</td></tr>`).join('');
   const ct = (o) => Object.entries(o || {}).map(([k, v]) => `${k} ${modeDur(v)}`).join(' · ');
   $('st-ctltime').textContent = Object.keys(c.czas_24h || {}).length ? `Czas w trybach – ostatnie 24 h: ${ct(c.czas_24h)}` +
     (Object.keys(c.czas_7d || {}).length ? ` | 7 dni: ${ct(c.czas_7d)}` : '') : '';
 }
+// 1.31: C7 - oszczednosc strategii zrealizowana (rzeczywisty koszt vs symulacja bez strategii): dzis, miesiac, od poczatku roku
+let realTs = 0;
+async function loadRealized() {
+  if (Date.now() - realTs < 5 * 60000) return;
+  realTs = Date.now();
+  let r;
+  try { r = await (await fetch('/api/strategy/realized')).json(); } catch (e) { return; }
+  if (!r.ok) { $('strealtiles').innerHTML = ''; return; }
+  const col = v => v == null ? '' : v > 0.05 ? 'c-green' : v < -0.05 ? 'c-red' : 'c-blue';
+  const t = (lbl, x, what) => !x ? '' : ctile(col(x.saving), lbl, (x.saving >= 0 ? '+' : '') + x.saving.toFx(2), 'zł',
+    `${what}: rzeczywisty koszt ${x.act.toFx(2)} zł · bez strategii (sama autokonsumpcja, te same PV i dom) ${x.base.toFx(2)} zł` +
+    (Math.abs(x.end_diff) >= 0.01 ? ` · różnica energii w magazynie na koniec doby ${(x.end_diff >= 0 ? '+' : '') + x.end_diff.toFx(2)} zł` : '') +
+    (x.days ? ` · ${x.days} dni` : x.hours ? ` · ${x.hours} pełnych godzin` : '') + ' · ceny jak w strategii (zakup z Tarczą wg strefy, zużycie baterii wliczone) · porównanie rzeczywistej pracy magazynu z samą autokonsumpcją – niezależnie od tego, kto sterował (strategia, ręcznie, mySigen)');
+  const D = r.day, M = r.month, Y = r.year;
+  $('strealtiles').innerHTML = t('Zrealizowane – dziś', D, 'dziś do pełnej godziny') +
+    t('Zrealizowane – ' + new Date().toLocaleDateString('pl-PL', { month: 'long' }), M, 'miesiąc do dziś') +
+    t('Zrealizowane – ' + new Date().getFullYear(), Y, 'od początku roku (od pierwszych danych)');
+}
 async function loadStrategy() {
+  loadRealized();
   let d;
   try { d = await (await fetch('/api/strategy')).json(); } catch (e) { loadCtl(); return; }
   if (d.ok) lastStrat = d;
@@ -2138,22 +2124,22 @@ async function loadStrategy() {
   em.hidden = true;
   const P = d.params, T = d.totals, n = d.now, x = d.next;
   const pe = d.pradcast?.eval || {};
-  const peTxt = Object.entries(pe).map(([h, v]) => `${h} ±${v.mae.toFixed(2)} zł${v.mape != null ? ' (' + v.mape + ' %)' : ''}, ${v.days} dni`).join(' · ');
+  const peTxt = Object.entries(pe).map(([h, v]) => `${h} ±${v.mae.toFx(2)} zł${v.mape != null ? ' (' + v.mape + ' %)' : ''}, ${v.days} dni`).join(' · ');
   $('ststatus').textContent = `przeliczono ${new Date(d.ts * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · ceny: ${d.price_source}` +
     (peTxt ? ` · trafność Pradcast: ${peTxt}` : d.pradcast ? ' · trafność Pradcast: zbieram dane' : '');
   const col = v => v >= 0.005 ? 'c-green' : v <= -0.005 ? 'c-red' : 'c-blue';
-  const sav = (lbl, t) => !t ? '' : ctile(col(t.saving_total), lbl, t.saving_total.toFixed(2), 'zł',
-    `plan ${t.plan.toFixed(2)} zł · bez strategii ${t.base.toFixed(2)} zł` + (t.grid_charge ? ` · z sieci do magazynu ${t.grid_charge.toFixed(1)} kWh` : '') +
-    (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFixed(1)} kWh` : '') +
-    (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFixed(2)} zł` : ''));
+  const sav = (lbl, t) => !t ? '' : ctile(col(t.saving_total), lbl, t.saving_total.toFx(2), 'zł',
+    `plan ${t.plan.toFx(2)} zł · bez strategii ${t.base.toFx(2)} zł` + (t.grid_charge ? ` · z sieci do magazynu ${t.grid_charge.toFx(1)} kWh` : '') +
+    (t.bat_export ? ` · sprzedaż z magazynu ${t.bat_export.toFx(1)} kWh` : '') +
+    (t.end_diff ? ` · w tym stan magazynu na koniec ${(t.end_diff >= 0 ? '+' : '') + t.end_diff.toFx(2)} zł` : ''));
   $('sttiles').innerHTML =
     tile('Teraz wg planu', esc(n.label.split(' – ')[0]), '', (n.label.includes(' – ') ? esc(n.label) + ' · ' : '') + `SOC ${P.soc_now} % · magazyn ${P.cap_kwh} kWh (${P.soc_min}–${P.soc_max} %)` +
       (P.hour_lock ? ` · tryb ustalony o ${new Date(P.hour_lock.at * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} na całą godzinę (do ${new Date((P.hour_lock.ts + 3600) * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })})` : '')) +
     tile('Następna zmiana', x ? `${x.day} ${x.t}` : null, '', x ? 'na: ' + esc(x.label) : 'bez zmian do końca jutra') +
     sav('Oszczędność – reszta dnia', T['dziś']) + sav('Oszczędność – jutro', T['jutro']) + sav('Oszczędność – pojutrze', T['pojutrze']) +
-    ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFixed(2), 'zł',
-      `zużycie baterii ${P.wear.toFixed(2)} zł/kWh · ` + (P.price_mode === 'auto' ? `tryb auto: sprzedaż z magazynu przy zysku po kosztach ≥ ${(P.auto_margin ?? 0).toFixed(2)} zł/kWh` + (P.sell_floor != null ? `, nie poniżej ${P.sell_floor.toFixed(2)} zł` : '') : P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFixed(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
-      (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFixed(2)} zł` : '') +
+    ctile('c-blue', T['pojutrze'] ? 'Razem dziś – pojutrze' : 'Razem dziś + jutro', (d.total_saving >= 0 ? '+' : '') + d.total_saving.toFx(2), 'zł',
+      `zużycie baterii ${P.wear.toFx(2)} zł/kWh · ` + (P.price_mode === 'auto' ? `tryb auto: sprzedaż z magazynu przy zysku po kosztach ≥ ${(P.auto_margin ?? 0).toFx(2)} zł/kWh` + (P.sell_floor != null ? `, nie poniżej ${P.sell_floor.toFx(2)} zł` : '') : P.sell_floor != null ? `sprzedaż z magazynu od ${P.sell_floor.toFx(2)} zł` : 'bez sprzedaży z magazynu (ustaw pułap)') +
+      (P.buy_cap != null ? ` · ładowanie z sieci do ${P.buy_cap.toFx(2)} zł` : '') +
       ` · moc ładowania z sieci ≤ ${P.p_charge ?? P.p_max_kw} kW, sprzedaży ≤ ${P.p_discharge ?? P.p_max_kw} kW` +
       (P.standby_below_w ? ` · standby przy poborze < ${P.standby_below_w} W` : '') +
       ((P.eta_curve || []).length ? ' · sprawność rozładowania przy małej mocy (pomiary 30 dni): ' +
@@ -2162,7 +2148,7 @@ async function loadStrategy() {
         P.eta_c_curve.map(c => `${String(c.od).replace('.', ',')}–${String(c.do).replace('.', ',')} kW ${Math.round(c.eta * 100)} %`).join(', ') : '') +
       (P.pvchg_min_kw != null && P.tarcza && P.tarcza.active ? ` · PV do magazynu od ${String(P.pvchg_min_kw).replace('.', ',')} kW` : '')) +
     (P.horizon ? (() => {
-      const Z = P.horizon, f2 = v => v == null ? '–' : v.toFixed(2).replace('.', ',');
+      const Z = P.horizon, f2 = v => v == null ? '–' : v.toFx(2);
       const endTxt = new Date(Z.end * 1000).toLocaleString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       return ctile('c-blue', 'Horyzont planu', Z.hours, 'h',
         `plan liczy ${Z.hours} godzin – do ${endTxt} (${Z.days.join(', ')}); dalej plan nie widzi cen. ` +
@@ -2184,7 +2170,7 @@ async function loadStrategy() {
     })() : '') +
     (P.legal && P.legal.budget != null ? (() => {
       // do sprzedazy teraz = mniejsze z: limit prawny (PV - oddane, N dni) i energia w magazynie ponad min. SOC (po stratach)
-      const f1 = v => v.toFixed(1).replace('.', ',');
+      const f1 = v => v.toFx(1);
       const bat = P.soc_now != null && P.cap_kwh ? Math.max(0, (P.soc_now - (P.soc_min ?? 0)) / 100 * P.cap_kwh * (P.eta_d ?? 0.95)) : null;
       const lim = P.legal.budget, now = bat == null ? lim : Math.min(lim, bat);
       const by = bat == null ? '' : bat < 0.5 ? 'magazyn pusty' : lim < bat ? 'ogranicza limit z PV' : 'ogranicza stan magazynu';
@@ -2207,15 +2193,15 @@ async function loadStrategy() {
       const hh = ts => new Date(ts * 1000).getHours(), txt = bl.slice(0, 3).map(x => `${x.day} ${hh(x.a)}–${hh(x.b) + 1 || 24}`);
       return ctile('c-amber', 'Sprzedaż – bez dużych odbiorników', txt[0], '',
         `planowana sprzedaż z magazynu: ${txt.join(' · ')} – w tych godzinach nie włączaj suszarki, zmywarki, piekarnika, grzania wody; ` +
-        `falownik oddaje pełną moc, więc każda kWh zużyta w domu to kWh mniej sprzedana (do ${bl[0].p.toFixed(2).replace('.', ',')} zł/kWh)`);
+        `falownik oddaje pełną moc, więc każda kWh zużyta w domu to kWh mniej sprzedana (do ${bl[0].p.toFx(2)} zł/kWh)`);
     })() +
     (P.tarcza && P.tarcza.mode !== 'nie' && P.tarcza.reason !== 'brak Pstryka' ? ctile(P.tarcza.active ? 'c-green' : 'c-blue', 'Tarcza Pstryk',
       P.tarcza.active ? 'działa' : 'nie działa', '',
-      esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? (P.tarcza.eff_buy_zones ? ` · zakup w tym miesiącu: limit ${P.tarcza.cap.toFixed(2)} zł (obejmuje też opłatę za obsługę) + dystrybucja strefy taryfy i akcyza = ` +
-          Object.entries(P.tarcza.eff_buy_zones).map(([k, v]) => `${v.toFixed(2)} zł (${esc(k)})`).join(' · ') + ' – plan ładuje z sieci w najtańszej strefie, pod sprzedaż'
-        : ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFixed(2)} zł/kWh` +
-        ` (limit ${P.tarcza.cap.toFixed(2)} – obejmuje też opłatę za obsługę – + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFixed(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż`) +
-        (P.reserve_price ? ` · rezerwa pod sprzedaż do ${P.tarcza_rezerwa} % (wyceniana ${P.reserve_price.toFixed(2)} zł/kWh)` : '') : '')) : '');
+      esc(P.tarcza.reason || '') + (P.tarcza.active && P.tarcza.eff_buy ? (P.tarcza.eff_buy_zones ? ` · zakup w tym miesiącu: limit ${P.tarcza.cap.toFx(2)} zł (obejmuje też opłatę za obsługę) + dystrybucja strefy taryfy i akcyza = ` +
+          Object.entries(P.tarcza.eff_buy_zones).map(([k, v]) => `${v.toFx(2)} zł (${esc(k)})`).join(' · ') + ' – plan ładuje z sieci w najtańszej strefie, pod sprzedaż'
+        : ` · zakup w tym miesiącu liczony po stałej cenie ${P.tarcza.eff_buy.toFx(2)} zł/kWh` +
+        ` (limit ${P.tarcza.cap.toFx(2)} – obejmuje też opłatę za obsługę – + dystrybucja i akcyza ${(P.tarcza.rest ?? 0.10).toFx(2)}) – ładowanie z sieci pod dom się nie opłaca, tylko pod sprzedaż`) +
+        (P.reserve_price ? ` · rezerwa pod sprzedaż do ${P.tarcza_rezerwa} % (wyceniana ${P.reserve_price.toFx(2)} zł/kWh)` : '') : '')) : '');
   popTiles($('sttiles'));
   const ae = document.activeElement?.id;
   if (ae !== 'st-floor') $('st-floor').value = P.sell_floor ?? '';
@@ -2250,10 +2236,10 @@ async function loadStrategy() {
   const nowI = d.now_index || 0;
   const KINDS = [
     { k: 'pv', label: 'Sprzedaż PV', color: css('--s-sell') },
-    { k: 'bat', label: 'Sprzedaż z magazynu', color: '#39d353' },
+    { k: 'bat', label: 'Sprzedaż z magazynu', color: css('--s-sellbat') },
     { k: 'buy', label: 'Zakup (rzeczywisty)', color: css('--s-buy') },
-    { k: 'grid', label: 'Zakup celowy (plan)', color: '#9e1b1e' },
-    { k: 'home', label: 'Pobór domu (plan)', color: '#f19d9c' },
+    { k: 'grid', label: 'Zakup celowy (plan)', color: css('--s-buygrid') },
+    { k: 'home', label: 'Pobór domu (plan)', color: css('--s-buyhome') },
   ];
   const kindOf = (h, i) => {
     if (expBat(h) > 0.005) return 'bat';
@@ -2273,7 +2259,7 @@ async function loadStrategy() {
     { ...ds('SOC – bez strategii', H.map(h => h.base_soc), css('--muted')), yAxisID: 'y', borderDash: [4, 4] },
     { ...ds('Cena sprzedaży', H.map(h => h.sell), css('--s-sell')), yAxisID: 'y1', stepped: 'middle', borderWidth: 1.5, pointRadius: 0, $price: 'sell' },
     { ...ds('Cena zakupu (w dół)', H.map(h => h.buy == null ? null : -h.buy), css('--s-buy')), yAxisID: 'y1', stepped: 'middle', borderWidth: 1.5, pointRadius: 0, $price: 'buy' },
-    ...(P.sell_floor != null ? [{ ...ds('Próg sprzedaży z magazynu', H.map(() => P.sell_floor), '#39d353'), yAxisID: 'y1',
+    ...(P.sell_floor != null ? [{ ...ds('Próg sprzedaży z magazynu', H.map(() => P.sell_floor), css('--s-sellbat')), yAxisID: 'y1',
       borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, $skipTip: true }] : []),
     { ...ds('0 zł', H.map(() => 0), css('--text-2')), yAxisID: 'y1', borderWidth: 1.2, pointRadius: 0, $skipTip: true, $hide: true },
     ...KINDS.map(K => {
@@ -2285,16 +2271,16 @@ async function loadStrategy() {
     // 1.24: zolty - sprzedaz z magazynu, ktora by sie oplacala, ale wstrzymal ja limit arbitrazu (energia z PV)
     (() => { const data = H.map(h => (h.legal_cut || 0) > 0.05 ? (h.sell ?? 0) : null);
       return { label: 'Sprzedaż wstrzymana – limit arbitrażu', data, yAxisID: 'y2', type: 'bar', borderWidth: 0, stack: 'cut', $kind: 'cut',
-        $empty: data.every(v => v == null), backgroundColor: H.map(h => rgba('#facc15', 0.45 + 0.5 * Math.min(1, (h.legal_cut || 0) / maxExp))), borderColor: '#facc15' }; })(),
+        $empty: data.every(v => v == null), backgroundColor: H.map(h => rgba(css('--s-arb'), 0.45 + 0.5 * Math.min(1, (h.legal_cut || 0) / maxExp))), borderColor: css('--s-arb') }; })(),
   ];
-  const zl2 = v => v.toFixed(2).replace('.', ',');
+  const zl2 = v => v.toFx(2);
   if (!cSt) {
     const o = baseOpts('%');
     o.scales.y.min = 0; o.scales.y.max = 100;
     o.scales.x = { ...(o.scales.x || {}), stacked: true };
     o.scales.y1 = { position: 'right', grid: { display: false },
       title: { display: true, text: '↑ sprzedaż · cena zł/kWh · zakup ↓', color: css('--muted') },
-      ticks: { color: css('--muted'), callback: v => Math.abs(v).toFixed(2).replace('.', ',') + ' zł' } };
+      ticks: { color: css('--muted'), callback: v => Math.abs(v).toFx(2) + ' zł' } };
     o.scales.y2 = { display: false, stacked: true };
     o.plugins.legend.labels.filter = (it, data) => { const x = data.datasets[it.datasetIndex]; return !x.$hide && !x.$empty; };
     const genL = Chart.defaults.plugins.legend.labels.generateLabels;
@@ -2302,9 +2288,9 @@ async function loadStrategy() {
     o.plugins.tooltip.filter = it => !it.dataset.$skipTip && it.parsed.y != null && !(it.dataset.yAxisID === 'y2' && it.raw == null);
     o.plugins.tooltip.callbacks.label = c => {
       const h = cSt.$h[c.dataIndex], x = c.dataset;
-      if (x.yAxisID === 'y') return ` ${x.label}: ${c.parsed.y.toFixed(0)} %`;
-      if (x.$price === 'sell') return ` Cena sprzedaży: ${c.parsed.y.toFixed(3)} zł/kWh${c.parsed.y < 0 ? ' (ujemna!)' : ''}`;
-      if (x.$price === 'buy') return ` Cena zakupu: ${(-c.parsed.y).toFixed(3)} zł/kWh` + (h?.tarcza ? ` (z Tarczą; godzinowa ${h.buy_hour?.toFixed(3) ?? '–'})` : '');
+      if (x.yAxisID === 'y') return ` ${x.label}: ${c.parsed.y.toFx(0)} %`;
+      if (x.$price === 'sell') return ` Cena sprzedaży: ${c.parsed.y.toFx(3)} zł/kWh${c.parsed.y < 0 ? ' (ujemna!)' : ''}`;
+      if (x.$price === 'buy') return ` Cena zakupu: ${(-c.parsed.y).toFx(3)} zł/kWh` + (h?.tarcza ? ` (z Tarczą; godzinowa ${h.buy_hour?.toFx(3) ?? '–'})` : '');
       if (!h) return '';
       if (x.$kind === 'cut') return [` Przekroczony arbitraż o ${zl2(h.legal_cut)} kWh`,
         ` tyle plan sprzedałby po ${zl2(h.sell)} zł (≈ ${zl2(h.legal_cut * h.sell)} zł), ale limit sprzedaży energii z PV jest wyczerpany`];
@@ -2322,7 +2308,7 @@ async function loadStrategy() {
   } else { cSt.data = { labels, datasets: sets }; }
   cSt.options.scales.y1.min = cSt.options.scales.y2.min = -M; cSt.options.scales.y1.max = cSt.options.scales.y2.max = M;
   cSt.$h = H; cSt.$nowIdx = d.now_index || null; cSt.update();
-  const f = (v, k) => v == null ? '–' : v.toFixed(k);
+  const f = (v, k) => v == null ? '–' : v.toFx(k);
   // 1.26: domyslnie plan od biezacej godziny do jutra 12:00; archiwalne i godziny po 12:00 jutro - przelaczniki (na urzadzeniu)
   const cut12 = (() => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(12, 0, 0, 0); return t.getTime() / 1000; })();
   const Hv = H.filter(h => ($('st-arch').checked || h.mode !== 'past') && ($('st-to12').checked || h.ts < cut12));
@@ -2341,7 +2327,7 @@ let cPrice;
 try { $('prdet').open = localStorage.getItem('sigen_prices_open') === '1'; } catch (e) {}
 $('prdet').addEventListener('toggle', () => { try { localStorage.setItem('sigen_prices_open', $('prdet').open ? '1' : '0'); } catch (e) {}
   if ($('prdet').open && cPrice) setTimeout(() => cPrice.resize(), 50); });
-const zl = v => v == null ? null : v.toFixed(3);
+const zl = v => v == null ? null : v.toFx(3);
 async function loadPrices() {
   let d;
   try { d = await (await fetch('/api/prices')).json(); } catch (e) { return; }
@@ -2365,10 +2351,10 @@ async function loadPrices() {
     tile('Teraz – sprzedaż', zl(now?.sell), 'zł/kWh') +
     tile('Śr. zakup dziś', zl(T.avg_buy), 'zł/kWh') +
     tile('Śr. zakup jutro', zl(J.avg_buy), 'zł/kWh', J.points.length ? '' : 'jeszcze brak cen') +
-    (PS ? tile('Teraz – Pstryk (brutto)', zl(psNow?.price), 'zł/kWh', psNow?.pros != null ? `prosument ${psNow.pros.toFixed(3)} zł` : '') : '') +
+    (PS ? tile('Teraz – Pstryk (brutto)', zl(psNow?.price), 'zł/kWh', psNow?.pros != null ? `prosument ${psNow.pros.toFx(3)} zł` : '') : '') +
     tile((jc.length ? 'Najtańsze godziny jutro' : 'Najtańsze godziny dziś') + (PS ? ' (Pstryk)' : ''),
       ch.length ? ch.map(c => c.hour.slice(0, 2)).join(', ') : null, '',
-      ch.length ? ch.map(c => `${c.hour} ${c.buy.toFixed(3)} zł`).join(' · ') : '');
+      ch.length ? ch.map(c => `${c.hour} ${c.buy.toFx(3)} zł`).join(' · ') : '');
   $('prformula').textContent = `Zakup = ${d.formula.zakup}. Sprzedaż = ${d.formula.sprzedaz}.` +
     ` Źródła: ceny PSE${d.pstryk ? ' i Pstryk' : ''}${d.tariff?.source ? '; ' + d.tariff.source : ''}`;
   if (!pts.length) return;
@@ -2380,12 +2366,12 @@ async function loadPrices() {
   if (PS) sets.push(ds('Pstryk (brutto)', pts.map(p => psAt(p)?.price ?? null), css('--s-fc2')));
   if (!cPrice) {
     const o = baseOpts('zł');
-    o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(3)} zł/kWh`;
+    o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFx(3)} zł/kWh`;
     o.plugins.tooltip.callbacks.afterBody = items => {
       const p = pts[items[0].dataIndex];
-      return p ? [`strefa: ${p.zone}`, `prąd z obsługą ${p.obsluga.toFixed(2)} + dystrybucja ${p.dist.toFixed(2)} + podatki ${p.podatki.toFixed(2)}`] : [];
+      return p ? [`strefa: ${p.zone}`, `prąd z obsługą ${p.obsluga.toFx(2)} + dystrybucja ${p.dist.toFx(2)} + podatki ${p.podatki.toFx(2)}`] : [];
     };
-    o.scales.y.ticks.callback = v => v.toFixed(2) + ' zł';
+    o.scales.y.ticks.callback = v => v.toFx(2) + ' zł';
     cPrice = new Chart($('cPrice'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [nowLine] });
   } else {
     cPrice.data = { labels, datasets: sets };
@@ -2416,13 +2402,13 @@ async function loadEff() {
   // 1.135: jedna tabela - przedzialy mocy x 3 sprawnosci (calosc / ladowanie / rozladowanie)
   const pct = v => { const c = v >= 90 ? '--eff-good' : v >= 70 ? '--eff-mid' : '--eff-bad';
     return `<span class="effbar" style="width:${Math.max(4, Math.min(60, (v - 50) * 1.2))}px;background:var(${c})"></span>` +
-      `<span style="color:var(${c});font-weight:600">${v.toFixed(1)} %</span>`; };
+      `<span style="color:var(${c});font-weight:600">${v.toFx(1)} %</span>`; };
   const cell = b => {
     if (!b || (hide && b.mala_probka)) return '<td class="muted">–</td>';
-    const tip = `${range(b)}: ${b.godzin.toFixed(2)} h, śr. moc ${b.moc_sr_kw.toFixed(2)} kW, energia wej. ${b.e_in.toFixed(2)} kWh, straty ${b.straty_kwh.toFixed(3)} kWh (śr. ${b.strata_sr_w} W)` +
+    const tip = `${range(b)}: ${b.godzin.toFx(2)} h, śr. moc ${b.moc_sr_kw.toFx(2)} kW, energia wej. ${b.e_in.toFx(2)} kWh, straty ${b.straty_kwh.toFx(3)} kWh (śr. ${b.strata_sr_w} W)` +
       (b.mala_probka ? ' – mniej niż 15 min danych, wynik orientacyjny' : '');
     return `<td title="${tip}"${b.mala_probka ? ' style="opacity:.55"' : ''}>${b.sprawnosc == null ? '–' : pct(b.sprawnosc)}${b.mala_probka ? ' *' : ''}` +
-      `<div class="effsub">${b.godzin.toFixed(1)} h · ${b.strata_sr_w} W</div></td>`;
+      `<div class="effsub">${b.godzin.toFx(1)} h · ${b.strata_sr_w} W</div></td>`;
   };
   const byOd = arr => Object.fromEntries((arr || []).map(b => [b.od, b]));
   const G = byOd(d.bins), C = byOd(d.ladowanie), D = byOd(d.rozladowanie);
@@ -2431,10 +2417,10 @@ async function loadEff() {
   let rows = ods.filter(od => [G[od], C[od], D[od]].some(b => b && !(hide && b.mala_probka)))
     .map(od => `<tr><td>${rng(od)}</td>${cell(G[od])}${cell(C[od])}${cell(D[od])}</tr>`).join('');
   const I = d.czuwanie, W = d.slabe_pv;
-  if (W) rows = `<tr style="color:var(--text-2)" title="tylko słabe PV (&lt; 0,25 kW), magazyn nie pracuje – stałe zużycie falownika nie jest widoczne w pomiarach (${W.godzin.toFixed(2)} h, ${W.e_in.toFixed(2)} kWh, śr. strata ${W.sr_w} W)">` +
-    `<td>świt / zmierzch</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFixed(1) + ' %'}<div class="effsub">niemiarodajne</div></td><td class="muted">–</td><td class="muted">–</td></tr>` + rows;
-  if (I) rows = `<tr style="color:var(--text-2)" title="falownik nic nie przetwarza – zużycie własne systemu z sieci (${I.godzin.toFixed(2)} h, ${I.kwh.toFixed(3)} kWh)">` +
-    `<td>czuwanie</td><td>${I.sr_w} W<div class="effsub">pobór z sieci, ${I.godzin.toFixed(1)} h</div></td><td class="muted">–</td><td class="muted">–</td></tr>` + rows;
+  if (W) rows = `<tr style="color:var(--text-2)" title="tylko słabe PV (&lt; 0,25 kW), magazyn nie pracuje – stałe zużycie falownika nie jest widoczne w pomiarach (${W.godzin.toFx(2)} h, ${W.e_in.toFx(2)} kWh, śr. strata ${W.sr_w} W)">` +
+    `<td>świt / zmierzch</td><td>${W.sprawnosc == null ? '–' : W.sprawnosc.toFx(1) + ' %'}<div class="effsub">niemiarodajne</div></td><td class="muted">–</td><td class="muted">–</td></tr>` + rows;
+  if (I) rows = `<tr style="color:var(--text-2)" title="falownik nic nie przetwarza – zużycie własne systemu z sieci (${I.godzin.toFx(2)} h, ${I.kwh.toFx(3)} kWh)">` +
+    `<td>czuwanie</td><td>${I.sr_w} W<div class="effsub">pobór z sieci, ${I.godzin.toFx(1)} h</div></td><td class="muted">–</td><td class="muted">–</td></tr>` + rows;
   $('effbody').innerHTML = rows || '<tr><td colspan="4" class="empty">Brak danych.</td></tr>';
   if (!(d.rozladowanie || []).length) $('effinfo').textContent += ' Brak danych rozładowania (przeliczenie historii po restarcie trwa kilka minut).';
 }
@@ -2445,7 +2431,7 @@ async function loadBatEff(days) {
   const I = b.idle || {};
   $('batefftiles').innerHTML =
     ctile(b.round_trip == null ? 'c-blue' : b.round_trip >= 90 ? 'c-green' : b.round_trip >= 80 ? 'c-blue' : 'c-red', 'Sprawność magazynu (round-trip)',
-      b.round_trip == null ? null : b.round_trip.toFixed(1), '%',
+      b.round_trip == null ? null : b.round_trip.toFx(1), '%',
       `ładowanie ${b.chg_kwh} kWh · rozładowanie ${b.dis_kwh} kWh · SOC ${b.soc_start} → ${b.soc_end} % w ${Math.round(b.period_h)} h (${days === 1 ? 'doba' : days + ' dni'}) – im dłuższy okres, tym dokładniej`) +
     ctile('c-blue', 'Magazyn w czuwaniu – z ogniw', I.cells_w, 'W',
       I.hours ? `spadek SOC ${I.soc_drop_pct_h} %/h w ${I.hours} h (${I.runs} odcinki ≥ 3 h bez ładowania i rozładowania); ok. 0 W = BMS zasilany z sieci` : 'brak odcinków ≥ 3 h bez pracy magazynu') +
@@ -2491,11 +2477,11 @@ function socGauge(items) {
     `<div class="socg-on" style="left:${cl(lo)}%;width:${cl(hi - lo)}%"></div>` +
     `<div class="socg-off" style="left:${cl(hi)}%;width:${100 - cl(hi)}%"></div>` +
     (bk != null ? `<div class="socg-bk" style="left:${cl(bk)}%" title="rezerwa (backup) ${bk} %"></div>` : '') +
-    (soc != null ? `<div class="socg-now" style="left:${cl(soc)}%" title="teraz ${soc.toFixed(0)} %"><span>${soc.toFixed(0)} %</span></div>` : '') +
+    (soc != null ? `<div class="socg-now" style="left:${cl(soc)}%" title="teraz ${soc.toFx(0)} %"><span>${soc.toFx(0)} %</span></div>` : '') +
     `</div><div class="socg-ax">${axl(lo)}${axl(hi)}</div>` +
     `<div class="socg-leg"><span><i class="on"></i>zakres pracy ${lo}–${hi} %</span>` +
     (bk != null ? `<span><i class="bk"></i>rezerwa ${bk} %</span>` : '') +
-    (soc != null ? `<span><i class="now"></i>teraz ${soc.toFixed(0)} %</span>` : '') + `</div></div>`;
+    (soc != null ? `<span><i class="now"></i>teraz ${soc.toFx(0)} %</span>` : '') + `</div></div>`;
 }
 const fmtVal = it => it.value == null ? 'brak' : esc(it.text ?? (typeof it.value === 'number'
   ? it.value.toLocaleString('pl-PL') : it.value)) + (it.unit && !it.text ? ' ' + esc(it.unit) : '');
@@ -2557,7 +2543,7 @@ async function loadBatTemps() {
   const last = lastOf('avg') || {}, lastP = lastOf('pcs') || {};
   const has = P.some(p => p.avg != null || p.pcs != null);
   $('btempty').hidden = has;
-  const f = v => v == null ? null : v.toFixed(1);
+  const f = v => v == null ? null : v.toFx(1);
   const inOpt = v => v != null && v >= d.opt[0] && v <= d.opt[1];
   const when = isToday && btDays === 1 ? 'teraz' : 'ostatnio';
   $('btstatus').textContent = last.ts ? 'ostatni pomiar ' + new Date(last.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -2574,7 +2560,7 @@ async function loadBatTemps() {
     tile('Falownik w okresie', f(pmax), '°C', `maks. · średnio ${f(pavg)} °C`) +
     (room ? ctile(rLast != null && rLast >= 10 && rLast <= 35 ? 'c-green' : 'c-red', 'Pomieszczenie ' + when, f(rLast), '°C',
         `${esc(room.name)} · ${rv.length ? f(Math.min(...rv)) + '…' + f(Math.max(...rv)) : ''}`)
-      : tile('Falownik − ogniwa', lastP.pcs != null && last.avg != null ? (lastP.pcs - last.avg).toFixed(1) : null, '°C', 'różnica'));
+      : tile('Falownik − ogniwa', lastP.pcs != null && last.avg != null ? (lastP.pcs - last.avg).toFx(1) : null, '°C', 'różnica'));
   const fmt = btDays === 1 ? { hour: '2-digit', minute: '2-digit' } : { weekday: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' };
   const labels = P.map(p => new Date(p.ts * 1000).toLocaleString('pl-PL', fmt));
   const sets = [
@@ -2590,7 +2576,7 @@ async function loadBatTemps() {
   sets.forEach(x => { if (x.label in hid) x.hidden = hid[x.label]; });   // zachowaj wlaczone/wylaczone w legendzie linie
   if (!cBt) {
     const o = baseOpts('°C');
-    o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)} °C`;
+    o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.parsed.y.toFx(1)} °C`;
     cBt = new Chart($('cBt'), { type: 'line', data: { labels, datasets: sets }, options: o, plugins: [optBand, refLines, nowLine] });
   } else { cBt.data = { labels, datasets: sets }; }
   const vals = [...P.flatMap(p => [p.min, p.max, p.avg, p.pcs]), ...R.flatMap(r => r.temp)].filter(v => v != null);
@@ -2665,12 +2651,12 @@ function balance(o) {
   return { ddom, dzew, diff: ddom - dzew, ratio: warm > 0.3 ? cool / warm : null, span: t_ext - t_out };
 }
 function renderBalance(d) {
-  const f1 = v => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + ' °C';
+  const f1 = v => v == null ? '–' : (v > 0 ? '+' : '') + v.toFx(1) + ' °C';
   $('b-out').textContent = fmtT(d.t_out); $('b-sup').textContent = fmtT(d.t_sup_cell);
   $('b-ext').textContent = fmtT(d.t_ext); $('b-exh').textContent = fmtT(d.t_exh);
   const b = balance(d);
-  $('b-ddom').textContent = b ? b.ddom.toFixed(1) + ' °C' : '–';
-  $('b-dzew').textContent = b ? b.dzew.toFixed(1) + ' °C' : '–';
+  $('b-ddom').textContent = b ? b.ddom.toFx(1) + ' °C' : '–';
+  $('b-dzew').textContent = b ? b.dzew.toFx(1) + ' °C' : '–';
   const verdict = x => x == null ? '' : Math.abs(x) < 0.3 ? 'zrównoważone' : x > 0 ? 'przewaga nawiewu' : 'przewaga wywiewu';
   const col = x => x == null ? '' : Math.abs(x) < 0.3 ? 'var(--eff-good)' : Math.abs(x) < 1 ? 'var(--eff-mid)' : 'var(--eff-bad)';
   const vtile = (t, x, note) => `<div class="tile"><div class="t">${t}</div><div class="v" style="color:${col(x)}">${f1(x)}</div>` +
@@ -2679,7 +2665,7 @@ function renderBalance(d) {
   $('baltiles').innerHTML =
     vtile('Różnica ΔT dom − ΔT zewn. (teraz)', b?.diff, verdict(b?.diff)) +
     vtile('Różnica – średnio 30 min', a?.diff, a ? verdict(a.diff) + ` · ${a.n * 5} min danych` : 'brak danych') +
-    tile('Stosunek przepływów nawiew / wywiew', b?.ratio != null ? b.ratio.toFixed(2) : null, '',
+    tile('Stosunek przepływów nawiew / wywiew', b?.ratio != null ? b.ratio.toFx(2) : null, '',
       b?.ratio != null ? (b.ratio > 1 ? `nawiew większy o ~${Math.round((b.ratio - 1) * 100)} %` : `wywiew większy o ~${Math.round((1 / b.ratio - 1) * 100)} %`) : '') +
     tile('Przepływ nawiew / wywiew', d.flow_sup != null ? `~${d.flow_sup} / ${d.flow_ext}` : null, 'm³/h',
       (d.flow_calibrated ? 'z kalibracji' : 'szacunek z obrotów') + (d.rpm_sup != null ? ` · ${d.rpm_sup} / ${d.rpm_ext} obr/min` : '')) +
@@ -2688,7 +2674,7 @@ function renderBalance(d) {
   $('balnote').innerHTML = d.auto?.paused
     ? `<span style="color:var(--eff-mid)">⚠ ${esc(d.auto.paused)} – różnice temperatur nie odpowiadają przepływom, bilans pokazuje tylko orientacyjnie.</span>`
     : b && b.span < 8
-    ? `<span style="color:var(--eff-mid)">⚠ Różnica wywiew − zewnątrz to tylko ${b.span.toFixed(1)} °C – wynik orientacyjny, miarodajny od ok. 8 °C.</span>` : '';
+    ? `<span style="color:var(--eff-mid)">⚠ Różnica wywiew − zewnątrz to tylko ${b.span.toFx(1)} °C – wynik orientacyjny, miarodajny od ok. 8 °C.</span>` : '';
   $('balstatus').textContent = d.ts ? 'odczyt ' + new Date(d.ts * 1000).toLocaleTimeString('pl-PL') : '';
   const on = d.ok && (d.fan_pct || 0) > 0;
   ['b-l-in1', 'b-l-in2', 'b-l-out1', 'b-l-out2'].forEach(id => $(id).classList.toggle('on', on));
@@ -2710,14 +2696,14 @@ function fanProposal(d, b) {
   const a = balAvg;
   if (d.extr_base == null || d.supp_base == null) return { txt: 'Brak odczytu ustawień wentylatorów z rekuperatora.' };
   if (d.auto?.paused) return { txt: `Bilansowanie wstrzymane – ${esc(d.auto.paused)}. Przy obejściu wymiennika pomiar różnic jest niewiarygodny.` };
-  if (!b || b.span < 8) return { txt: `Różnica wywiew − zewnątrz ${b ? b.span.toFixed(1) + ' °C' : '–'} < 8 °C – za mała, by wiarygodnie korygować.` };
+  if (!b || b.span < 8) return { txt: `Różnica wywiew − zewnątrz ${b ? b.span.toFx(1) + ' °C' : '–'} < 8 °C – za mała, by wiarygodnie korygować.` };
   if (!a || a.n < 3 || a.ratio == null) return { txt: 'Za mało danych z ostatnich 30 min.' };
   if (Math.abs(a.diff) < 0.3) return { txt: 'Przepływy zrównoważone – bez zmian.', ext: d.extr_base };
   const target = Math.round(d.extr_base * a.ratio);
   const ext = Math.max(10, Math.min(100, Math.max(d.extr_base - 3, Math.min(d.extr_base + 3, target))));
   if (ext === d.extr_base) return { txt: 'Korekta poniżej 1 % – bez zmian.', ext };
   return { ext, txt: `Proponowane: wywiew <b>${d.extr_base} → ${ext} %</b> (nawiew bez zmian ${d.supp_base} %). ` +
-    `Średnia różnica ${a.diff > 0 ? '+' : ''}${a.diff.toFixed(1)} °C, stosunek przepływów ${a.ratio.toFixed(2)}.` };
+    `Średnia różnica ${a.diff > 0 ? '+' : ''}${a.diff.toFx(1)} °C, stosunek przepływów ${a.ratio.toFx(2)}.` };
 }
 let fsPend = {}, fsBusy = false, fsLastProp = null;
 const FS = { sup: 'supp_base', ext: 'extr_base' };
@@ -2799,7 +2785,7 @@ function renderFans(d, b) {
   const tt = t => t ? new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '–';
   $('fs-autost').innerHTML = !fsAuto ? '' : A.paused ?
     `<b style="color:var(--s-pv)">Wstrzymany</b> – ${esc(A.paused)}; korekty wrócą po powrocie do odzysku ciepła (po 30 min stabilizacji wymiennika).` :
-    `Średnia różnica: <b>${A.avg_diff != null ? (A.avg_diff > 0 ? '+' : '') + A.avg_diff.toFixed(2) + ' °C' : '–'}</b> (${A.samples} min po ostatniej zmianie)` +
+    `Średnia różnica: <b>${A.avg_diff != null ? (A.avg_diff > 0 ? '+' : '') + A.avg_diff.toFx(2) + ' °C' : '–'}</b> (${A.samples} min po ostatniej zmianie)` +
     ` · ostatnia zmiana ${A.last_change ? tt(A.last_change) : '–'} · następna kontrola ok. ${tt(A.next_check)}` +
     ` · kolejny: ${A.next === 'supp_base' ? 'nawiew' : 'wywiew'}<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
   const p = fsAuto ? null : fanProposal(d, b);
@@ -2827,7 +2813,7 @@ function renderSupply(d) {
   spCurveUi(A);
   $('sp-autost').innerHTML = !A.enabled ? '' : `Średnio z 30 min: wywiew <b>${A.avg_t_ext ?? '–'} °C</b>, zewnątrz <b>${A.avg_t_out ?? '–'} °C</b>` +
     (A.frost ? ' · <b style="color:var(--s-fc)">tryb mrozowy</b>' : '') +
-    (A.curve_on !== false && A.curve ? ' · <b style="color:var(--nw)">nastawa wg krzywej temperatury zewn.</b>' : '') +
+    (A.curve_on !== false && A.curve ? ' · <b style="color:var(--s-load)">nastawa wg krzywej temperatury zewn.</b>' : '') +
     `<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>`;
   const ch = A.changes || [];
   $('sp-changes').innerHTML = !ch.length ? '<span style="color:var(--muted)">Jeszcze brak zmian automatu.</span>' :
@@ -2849,7 +2835,7 @@ function spCurveUi(A) {
   const ts = Object.keys(L.bins).map(Number).filter(t => t >= -12 && t <= 12).sort((a, b) => a - b);
   const lrn = L.learned || {};
   $('sp-curve').innerHTML = `Krzywa automatyczna z ${L.hours} h historii (${L.points} temperatur z danymi${L.exit_t != null ? `, nastawa normalna bez nagrzewnicy od ${L.exit_t} °C` : ''}):` +
-    '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' + ts.map(t => `<span title="${lrn[t] != null ? 'z danych' : 'interpolacja / wartość skrajna'}" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;${lrn[t] != null ? 'font-weight:700;border-color:var(--nw)' : 'opacity:.7'}">${t > 0 ? '+' : ''}${t}° → ${L.bins[t]}°</span>`).join('') + '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' + ts.map(t => `<span title="${lrn[t] != null ? 'z danych' : 'interpolacja / wartość skrajna'}" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;${lrn[t] != null ? 'font-weight:700;border-color:var(--s-load)' : 'opacity:.7'}">${t > 0 ? '+' : ''}${t}° → ${L.bins[t]}°</span>`).join('') + '</div>' +
     '<span style="font-size:11px">pogrubione – wyuczone z danych, pozostałe – interpolacja; powyżej krzywej nastawa normalna</span>';
 }
 $('sp-cmode').onchange = () => { if (lastVallox) spCurveUi(lastVallox.supply_ctl?.auto || {}); };
@@ -2882,7 +2868,7 @@ function renderSpeed(d) {
   keep('ws-t', A.t_on); keep('ws-flow', A.flow_min); keep('ws-rh', A.rh_max); keep('ws-boost', A.boost_max);
   $('ws-minp').textContent = A.min_pct ?? 20;
   $('ws-st').innerHTML = `Prędkość „W domu” teraz: <b>${d.home_speed ?? '–'} %</b> (przepływ ok. <b>${d.flow_sup ?? '–'} / ${d.flow_ext ?? '–'} m³/h</b>)` +
-    (A.normal ? ` · normalna: ${A.normal} %` : '') + (A.enabled && A.active ? ' · <b style="color:var(--nw)">tryb zimowy</b>' : '') +
+    (A.normal ? ` · normalna: ${A.normal} %` : '') + (A.enabled && A.active ? ' · <b style="color:var(--s-load)">tryb zimowy</b>' : '') +
     (A.enabled ? `<br><span style="color:var(--text-2)">${esc(A.last_msg || '')}</span>` : '');
   const ch = A.changes || [];
   $('ws-changes').innerHTML = !ch.length ? '<span style="color:var(--muted)">Jeszcze brak zmian automatu.</span>' : ch.slice(0, 5).map(c => {
@@ -2907,14 +2893,14 @@ $('ws-save').onclick = () => wsPost({ t_on: +$('ws-t').value, flow_min: +$('ws-f
 // ---- 1.97 bilans wzorcowy ----
 function renderBalRef(d) {
   const B = d.balref; if (!B) return;
-  const R = B.ref, pct = x => x == null ? '–' : (x > 0 ? '+' : '') + x.toFixed(1) + ' %';
+  const R = B.ref, pct = x => x == null ? '–' : (x > 0 ? '+' : '') + x.toFx(1) + ' %';
   const cur = B.current ? B.current.split('/') : [];
   if (document.activeElement !== $('br-notify')) $('br-notify').checked = B.notify !== false;
   let h = '';
   if (!R) h = `Brak wzorca. Teraz: nawiew <b>${d.supp_base ?? '–'} %</b> / wywiew <b>${d.extr_base ?? '–'} %</b> – gdy to ustawienie jest dobre, zapisz je jako wzorcowe.`;
   else {
     h = `Wzorzec: nawiew <b>${R.supp_base} %</b> / wywiew <b>${R.extr_base} %</b> (od ${new Date(R.ts * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`;
-    h += R.pending ? ` · <b style="color:var(--nw)">zbieram dane: ${Math.round(R.min / 60 * 10) / 10} / ${R.need / 60} h stabilnej pracy</b>` : ' · gotowy';
+    h += R.pending ? ` · <b style="color:var(--s-load)">zbieram dane: ${Math.round(R.min / 60 * 10) / 10} / ${R.need / 60} h stabilnej pracy</b>` : ' · gotowy';
     if (cur.length && (+cur[0] !== R.supp_base || +cur[1] !== R.extr_base)) h += `<br><span style="color:var(--eff-mid)">⚠ teraz ${cur[0]} / ${cur[1]} % – inne niż wzorcowe, porównanie wstrzymane</span>`;
     const hb = Object.entries(R.by_home || {});
     if (hb.length) h += '<br><span style="color:var(--text-2)">wzorzec przy prędkościach: ' + hb.map(([hs, a]) => `${hs} %: ${Math.round(a.rpm_sup)} / ${Math.round(a.rpm_ext)} obr/min (${a.flow_sup ?? '–'} / ${a.flow_ext ?? '–'} m³/h, ${Math.round(a.min / 60 * 10) / 10} h)`).join(' · ') + '</span>';
@@ -2931,8 +2917,8 @@ function renderBalRef(d) {
     S.map(x => { const [a, b, c] = x.key.split('/'); const isRef = R && +a === R.supp_base && +b === R.extr_base;
       return `<tr style="border-top:1px solid var(--border);${isRef ? 'font-weight:700' : ''}"><td>${a} / ${b} % · ${c} %</td><td>${Math.round(x.min / 6) / 10} h</td>` +
         `<td>${x.rpm_sup != null ? Math.round(x.rpm_sup) + ' / ' + Math.round(x.rpm_ext) : '–'}</td><td>${x.flow_sup != null ? Math.round(x.flow_sup) + ' / ' + Math.round(x.flow_ext) : '–'}</td>` +
-        `<td>${x.ratio ?? '–'}</td><td>${x.diff != null ? (x.diff > 0 ? '+' : '') + x.diff.toFixed(2) + ' °C' : '–'}</td><td>${x.eff_sup != null ? Math.round(x.eff_sup) + ' %' : '–'}</td>` +
-        `<td>${x.t_exh != null ? x.t_exh.toFixed(1) + ' °C' : '–'}</td><td>${x.t_out != null ? x.t_out.toFixed(1) + ' °C' : '–'}</td></tr>`; }).join('') + '</table>';
+        `<td>${x.ratio ?? '–'}</td><td>${x.diff != null ? (x.diff > 0 ? '+' : '') + x.diff.toFx(2) + ' °C' : '–'}</td><td>${x.eff_sup != null ? Math.round(x.eff_sup) + ' %' : '–'}</td>` +
+        `<td>${x.t_exh != null ? x.t_exh.toFx(1) + ' °C' : '–'}</td><td>${x.t_out != null ? x.t_out.toFx(1) + ' °C' : '–'}</td></tr>`; }).join('') + '</table>';
 }
 async function brPost(body) {
   const r = await (await fetch('/api/vallox/balref', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json().catch(() => ({ ok: false, error: 'brak połączenia' }));
@@ -2948,7 +2934,7 @@ function renderDefrost(d) {
   const M = d.defrost_modes || {}, R = d.defrost_temp_range || [10, 25];
   $('df-cur').innerHTML = d.defrost_mode == null ? '–' : esc(M[d.defrost_mode] || ('tryb ' + d.defrost_mode)) +
     (d.defrost_mode === 0 && d.defrost_sup_temp != null ? `, nawiew ${Math.round(d.defrost_sup_temp)} °C` : '') +
-    (d.cell_state === 3 ? ' · <b style="color:var(--nw)">odszranianie teraz</b>' : '');
+    (d.cell_state === 3 ? ' · <b style="color:var(--s-load)">odszranianie teraz</b>' : '');
   if (document.activeElement !== $('df-mode') && !$('df-mode').dataset.dirty) $('df-mode').value = String(d.defrost_mode ?? 0);
   if (document.activeElement !== $('df-temp') && !$('df-temp').dataset.dirty) $('df-temp').value = d.defrost_sup_temp != null ? Math.round(d.defrost_sup_temp) : '';
   $('df-temp').min = R[0]; $('df-temp').max = R[1];
@@ -2958,13 +2944,13 @@ function renderDefrost(d) {
 async function loadDefrostStats() {
   dfStatsTs = Date.now();
   let r; try { r = await (await fetch('/api/vallox/defrost_stats?days=' + $('df-days').value)).json(); } catch (e) { return; }
-  const T = r.total || {}, kwh = wh => (wh / 1000).toFixed(2).replace('.', ',');
+  const T = r.total || {}, kwh = wh => (wh / 1000).toFx(2);
   const all = (T.heat_def_wh || 0) + (T.heat_oth_wh || 0);
   $('df-stats').innerHTML = `Odszranianie: <b>${Math.round(T.defrost_min || 0)} min</b> · nagrzewnica (≥ ${r.spike_w} W): ` +
     `<b>${Math.round(T.heat_def_min || 0)} min / ${kwh(T.heat_def_wh || 0)} kWh</b> podczas odszraniania, ` +
     `${Math.round(T.heat_oth_min || 0)} min / ${kwh(T.heat_oth_wh || 0)} kWh poza nim` +
     (all > 0 ? ` (<b>${Math.round(100 * (T.heat_def_wh || 0) / all)} %</b> energii nagrzewnicy na odszranianie)` : '') +
-    '<table style="width:100%;margin-top:6px;font-size:12px;border-collapse:collapse"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>min. zewn.</th><th>odszr.</th><th>grzanie przy odszr.</th><th>grzanie poza</th></tr>' +
+    '<table style="margin-top:6px;font-size:12px"><tr style="color:var(--muted);text-align:left"><th>dzień</th><th>min. zewn.</th><th>odszr.</th><th>grzanie przy odszr.</th><th>grzanie poza</th></tr>' +
     (r.days || []).slice().reverse().filter(x => x.defrost_min || x.heat_def_min || x.heat_oth_min || (x.t_min != null && x.t_min < 5)).map(x =>
       `<tr style="border-top:1px solid var(--border)"><td>${x.date.slice(8, 10)}.${x.date.slice(5, 7)}</td><td>${x.t_min ?? '–'} °C</td><td>${Math.round(x.defrost_min)} min</td>` +
       `<td>${Math.round(x.heat_def_min)} min · ${kwh(x.heat_def_wh)} kWh</td><td>${Math.round(x.heat_oth_min)} min · ${kwh(x.heat_oth_wh)} kWh</td></tr>`).join('') + '</table>';
@@ -3021,7 +3007,7 @@ $('bp-outmin').onchange = e => bpAuto({ out_min: +e.target.value });
 
 // ---- rekuperacja ----
 let cVair, cVtw, vcurrent = todayStr();
-const fmtT = v => v == null ? '–' : v.toFixed(1) + ' °C';
+const fmtT = v => v == null ? '–' : v.toFx(1) + ' °C';
 async function loadVallox() {
   let d;
   try { d = await (await fetch('/api/vallox/live')).json(); } catch (e) { return; }
@@ -3052,13 +3038,13 @@ function renderEl(sh) {
   const lvl = p == null ? '' : p <= EL_MID ? 'lvl-good' : p <= bad ? 'lvl-mid' : 'lvl-bad';
   const note = p == null ? (sh.error ? 'brak połączenia z miernikiem' : '')
     : p <= EL_MID ? 'normalna praca' : p <= bad ? 'podwyższony pobór' : 'prawdopodobnie grzałka';
-  const hr = sh.hour_kwh != null ? ` · ost. 1 h: ${sh.hour_kwh.toFixed(2)} kWh` : '';
+  const hr = sh.hour_kwh != null ? ` · ost. 1 h: ${sh.hour_kwh.toFx(2)} kWh` : '';
   const t = (cls, title, v, unit, n) => `<div class="tile ${cls}"><div class="t">${title}</div>` +
     `<div class="v">${v ?? '–'}${v != null ? ` <small>${unit}</small>` : ''}</div><div class="n">${n}</div></div>`;
   $('v-el').innerHTML =
     t(lvl, 'Pobór prądu teraz', p != null ? Math.round(p) : null, 'W', note + hr) +
-    t('', 'Zużycie dzisiaj', sh.day_kwh != null ? sh.day_kwh.toFixed(2) : null, 'kWh', '') +
-    t('', 'Zużycie w miesiącu', sh.month_kwh != null ? sh.month_kwh.toFixed(1) : null, 'kWh', '');
+    t('', 'Zużycie dzisiaj', sh.day_kwh != null ? sh.day_kwh.toFx(2) : null, 'kWh', '') +
+    t('', 'Zużycie w miesiącu', sh.month_kwh != null ? sh.month_kwh.toFx(1) : null, 'kWh', '');
 }
 async function loadValloxDay(date) {
   vcurrent = date; $('vdate').value = date;
@@ -3114,7 +3100,7 @@ async function loadValloxDay(date) {
   ];
   const mk = (canvas, sets, left, right) => {
     sets.forEach(x => { x.hidden = vHidden.has(vKey(x.label)); });
-    const ax = (pos, unit, o = {}) => ({ display: 'auto', position: pos, ticks: { color: css('--muted'), callback: v => +v.toFixed(2) + ' ' + unit },
+    const ax = (pos, unit, o = {}) => ({ display: 'auto', position: pos, ticks: { color: css('--muted'), callback: v => (+v.toFixed(2)).toLocaleString('pl-PL') + ' ' + unit },
       grid: { display: pos === 'left', color: css('--grid') }, border: { display: false }, ...o });
     const o = baseOpts('');
     Object.assign(o.plugins.legend.labels, { usePointStyle: true, boxWidth: 24 });
@@ -3124,7 +3110,7 @@ async function loadValloxDay(date) {
       const k = vKey(c.data.datasets[i].label); vis ? vHidden.add(k) : vHidden.delete(k); saveHidden();
     };
     o.plugins.tooltip.callbacks.label = c => c.parsed.y == null ? null :
-      ` ${c.dataset.label}: ${c.parsed.y.toFixed(c.dataset.unit === 'ppm' || c.dataset.unit === 'W' ? 0 : 1)} ${c.dataset.unit}`;
+      ` ${c.dataset.label}: ${c.parsed.y.toFx(c.dataset.unit === 'ppm' || c.dataset.unit === 'W' ? 0 : 1)} ${c.dataset.unit}`;
     o.scales = { x: o.scales.x, yL: ax('left', left[0], left[1]), yR: ax('right', right[0], right[1]) };
     return new Chart($(canvas), { type: 'line', data: { labels, datasets: sets }, options: o });
   };
@@ -3167,7 +3153,7 @@ function planeRow(v) {
 async function loadTariffInfo() {
   let t; try { t = await (await fetch('/api/tariff')).json(); } catch (e) { return; }
   $('cfg-tariff').innerHTML = (t.missing_operator ? '<b style="color:var(--eff-bad)">Zbiór taryf URE nie ma jeszcze danych tego operatora – ceny zakupu, Tarcza i porównanie liczą się stawkami TAURON G13 2026 (przybliżenie).</b> ' : '') + `Używana teraz: <b>${esc((t.operator || '').toUpperCase())} ${esc(t.taryfa || '')}</b> (${esc(t.source || '')}) – ` +
-    (t.zones || []).map(Z => `${esc(Z.label)}: ${esc(Z.hours || 'cała doba')}, dystrybucja ${Z.dist.toFixed(3)} zł/kWh`).join(' · ') +
+    (t.zones || []).map(Z => `${esc(Z.label)}: ${esc(Z.hours || 'cała doba')}, dystrybucja ${Z.dist.toFx(3)} zł/kWh`).join(' · ') +
     '. Strefy i stawki wpływają na ceny zakupu, Tarczę (plan ładuje w najtańszej strefie) i porównanie ze sprzedawcą taryfowym; zmiana po „Zapisz i uruchom ponownie”.';
 }
 async function loadConfig() {
@@ -3464,6 +3450,69 @@ $('fb-gh').onclick = () => {
   $('fb-info').textContent = 'Otwieram GitHub (wymaga konta GitHub).';
 };
 
+// 1.31: B2 - objasnienia kart w jednym miejscu: „Jak to dziala / jak liczone” (details[data-expl]) i przycisk „ⓘ Jak liczone”
+// przeniesione do dymku ⓘ przy tytule karty; kafle wszystkich kart PV z opisem w dymku (.popn)
+(() => {
+  document.querySelectorAll('#tab-pv > section.card').forEach(sec => {
+    const h2 = sec.querySelector(':scope > .daynav > h2, :scope > h2'); if (!h2) return;
+    const parts = [...sec.querySelectorAll('details[data-expl]'), ...sec.querySelectorAll(':scope > .daynav > .infowrap')].filter(el => el.querySelector('summary, .infobtn'));
+    if (!parts.length) return;
+    const w = document.createElement('span');
+    w.className = 'infowrap ttlinfo cardinfo';
+    w.innerHTML = ' <span class="ib" role="button" tabindex="0" title="objaśnienie" aria-label="objaśnienie">ⓘ</span><span class="infopop" role="dialog"></span>';
+    h2.appendChild(w);
+    const pop = w.lastChild;
+    parts.forEach(el => {
+      const box = document.createElement('div'); box.className = 'ip-sec';
+      const head = el.querySelector(':scope > summary') || el.querySelector('.infobtn');
+      box.innerHTML = '<b>' + esc((head?.textContent || '').replace('ⓘ', '').trim()) + '</b>';
+      const src = el.tagName === 'DETAILS' ? el : el.querySelector('.infopop');
+      [...src.childNodes].filter(n => n !== head).forEach(n => box.appendChild(n));
+      pop.appendChild(box); el.remove();
+    });
+    w.querySelector('.ib').addEventListener('click', e => { const o = !w.classList.contains('open');
+      document.querySelectorAll('.infowrap.open').forEach(x => x.classList.remove('open')); w.classList.toggle('open', o); e.stopPropagation(); });
+  });
+  ['tiles', 'lm-tiles', 'prtiles', 'pvstiles', 'pstiles', 'psmonth', 'bttiles'].forEach(id => $(id)?.classList.add('popn'));
+  // dymki kafli dzialaja tez bez popTiles (dotkniecie na telefonie, strona dymka wg polozenia kafla)
+  document.addEventListener('click', e => { const t = e.target.closest('.tiles.popn .tile'); if (!t || t.onclick) return;
+    const box = t.parentElement, o = t.classList.contains('open'); box.querySelectorAll('.tile.open').forEach(x => x.classList.remove('open'));
+    t.classList.toggle('pr', t.offsetLeft + t.offsetWidth / 2 > box.clientWidth / 2); if (!o) t.classList.add('open'); });
+  document.addEventListener('mouseover', e => { const t = e.target.closest('.tiles.popn .tile'); if (t) t.classList.toggle('pr', t.offsetLeft + t.offsetWidth / 2 > t.parentElement.clientWidth / 2); });
+})();
+// 1.31: A5 - zwijanie kart: przycisk ▾ przy tytule kazdej karty (poza schematem „Teraz”), stan zapamietany w przegladarce
+(() => {
+  let F = [];
+  try { F = JSON.parse(localStorage.getItem('sigen_fold') || '[]'); } catch (e) {}
+  const save = () => { try { localStorage.setItem('sigen_fold', JSON.stringify(F)); } catch (e) {} };
+  document.querySelectorAll('[role=tabpanel] > section.card:not(.live)').forEach(sec => {
+    const h2 = sec.querySelector('h2'); if (!h2) return;
+    let head = h2; while (head.parentElement && head.parentElement !== sec) head = head.parentElement;
+    if (head.parentElement !== sec) return;
+    const tab = sec.parentElement.id || '';
+    const name = (sec.id || (h2.firstChild && h2.firstChild.nodeType === 3 ? h2.firstChild.textContent : h2.textContent)).trim().slice(0, 40);
+    const key = tab + ':' + name;
+    head.classList.add('fold-head');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'cfold'; b.title = 'zwiń / rozwiń kartę'; b.setAttribute('aria-label', 'zwiń / rozwiń kartę');
+    const set = on => { sec.classList.toggle('folded', on); b.setAttribute('aria-expanded', String(!on)); };
+    b.onclick = e => { e.stopPropagation(); const on = !sec.classList.contains('folded'); set(on);
+      F = F.filter(k => k !== key); if (on) F.push(key); save();
+      if (!on) setTimeout(() => window.dispatchEvent(new Event('resize')), 30); };
+    h2.appendChild(b);
+    set(F.includes(key));
+  });
+})();
+// 1.31: A4 - telefon: wąski pasek SOC / PV / dom / sieć przyklejony u góry, gdy schemat „Teraz” zniknie z ekranu
+(() => {
+  const live = document.querySelector('#tab-pv > section.card.live'), mb = $('minibar');
+  if (!live || !mb || !window.IntersectionObserver) return;
+  let out = false;
+  const upd = () => mb.classList.toggle('show', out && !$('tab-pv').hidden && liveTs > 0);
+  new IntersectionObserver(es => { out = !es[0].isIntersecting; upd(); }, { rootMargin: '-40px 0px 0px 0px' }).observe(live);
+  mb.onclick = () => live.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setInterval(upd, 2000);
+})();
 // moduly (Ustawienia -> "Co masz"): instalacja PV Sigen i/lub rekuperator Vallox
 let MODS = { pv: true, vallox: false };
 function startPv() {
