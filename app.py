@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pymodbus.client import ModbusTcpClient
 
 import config
+import netssl
 import db
 import discover
 import forecast
@@ -36,7 +37,8 @@ import smartlife
 import vallox
 import inverter_ctl
 
-__version__ = "1.31.0"
+__version__ = "1.31.1"
+netssl.setup(config.get("siec", "plik_certyfikatow", ""))   # 1.31.1: certyfikaty systemu / plik (antywirus, proxy)
 
 # --- konfiguracja (config.ini, sekcja [falownik]) --------------------------
 PV_ENABLED = config.module_pv()         # Ustawienia -> "Co masz": instalacja PV Sigen
@@ -503,6 +505,7 @@ def ha_card_file(name: str):
 @app.get("/api/version")
 def version():
     return {"version": __version__, "db": db.describe(), "data_dir": str(config.DATA_DIR), "title": config.APP_TITLE,
+            "https": netssl.describe(),
             "service": config.SERVICE, "vallox": vallox.ENABLED, "pv": PV_ENABLED,
             "modules": {"pv": PV_ENABLED, "vallox": config.module_vallox(), "vallox_ip": bool(vallox.HOST)}}
 
@@ -519,7 +522,35 @@ def api_config_save(payload: dict = Body(...)):
         config.update(payload.get("config") or {})
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    if "pstryk" in (payload.get("config") or {}):
+        pstryk.wake()           # 1.31.1: klucz Pstryka dziala od razu (bez restartu)
     return {"ok": True}
+
+
+def _pstryk_key():
+    """1.31.1: klucz Pstryka czytany z pliku przy kazdej synchronizacji - zapis w Ustawieniach dziala bez restartu."""
+    try:
+        return config.load().get("pstryk", "api_key", fallback="").strip()
+    except Exception:  # noqa: BLE001
+        return config.get("pstryk", "api_key", "")
+
+
+@app.get("/api/pstryk/status")
+def api_pstryk_status():
+    """1.31.1: stan polaczenia z Pstrykiem do Ustawien: czy klucz zapisany, ostatnia synchronizacja, blad."""
+    return {"configured": bool(_pstryk_key()), **pstryk.status()}
+
+
+@app.post("/api/pstryk/test")
+def api_pstryk_test(payload: dict = Body(default={})):
+    """1.31.1: sprawdzenie klucza Pstryka (wpisanego w polu albo zapisanego) - od razu zapytanie do API Pstryka."""
+    key = str(payload.get("key") or "").strip()
+    if not key or key == config.SECRET:
+        key = _pstryk_key()
+    if not key:
+        return {"ok": False, "msg": "brak klucza – wpisz klucz API z aplikacji Pstryk (Integracje)"}
+    ok, msg = pstryk.test_key(key)
+    return {"ok": ok, "msg": msg}
 
 
 @app.get("/api/smartlife")
@@ -3142,7 +3173,7 @@ def start_background():
         threading.Thread(target=inverter_ctl.decide_loop, args=(compute_strategy, _soc_now, _ctl_limits),
                          daemon=True, name="inverter_ctl").start()
     threading.Thread(target=prices.loop, args=(db_connect,), daemon=True, name="prices").start()
-    threading.Thread(target=pstryk.loop, args=(lambda: config.get("pstryk", "api_key", ""), db_connect),
+    threading.Thread(target=pstryk.loop, args=(_pstryk_key, db_connect),
                      daemon=True, name="pstryk").start()
     if vallox.ENABLED:
         threading.Thread(target=vallox.loop, args=(db_connect, db), daemon=True, name="vallox").start()

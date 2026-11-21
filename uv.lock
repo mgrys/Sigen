@@ -1216,13 +1216,14 @@ wheels = [
 
 [[package]]
 name = "sigen-pv-monitor"
-version = "1.26.0"
+version = "1.31.1"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "pymodbus" },
     { name = "qrcode" },
+    { name = "truststore" },
     { name = "tuya-device-sharing-sdk" },
     { name = "uvicorn" },
     { name = "vallox-websocket-api" },
@@ -1234,6 +1235,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "pymodbus", specifier = ">=3.6,<4" },
     { name = "qrcode" },
+    { name = "truststore", specifier = ">=0.9" },
     { name = "tuya-device-sharing-sdk", specifier = "==0.2.15" },
     { name = "uvicorn", specifier = ">=0.29" },
     { name = "vallox-websocket-api", specifier = ">=3.0" },
@@ -1250,6 +1252,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ad/eb/4e197bf26b023abafc5e9043ec8710d7de0fcb032d0969045236d72aa0b1/starlette-1.9.0.tar.gz", hash = "sha256:3d931de246ed870e35ce605974440816ef895e592f255d1396cfdf191d4c4318", size = 2732466, upload-time = "2026-10-18T15:50:33.189Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/93/181df62699d9b5aca1d87e5cfda131dac87e3cdaebf668662f7206ca3470/starlette-1.9.0-py3-none-any.whl", hash = "sha256:fd3f159936e882d06c1108f84688f7cda2cf85fc6a592a50edbd175e882c2ddc", size = 80335, upload-time = "2026-10-18T15:50:31.526Z" },
+]
+
+[[package]]
+name = "truststore"
+version = "0.10.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/9f/c5201d42a484c061e528825fc8e2d565f5abd50a4ced6fb7d29c4ec99b2b/truststore-0.10.5.tar.gz", hash = "sha256:30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd", size = 28091, upload-time = "2026-10-12T22:27:31.808Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/e9/3a7820be2bb0fe53b6bc9c3be26d3d1158004e4c3ab953aa6840b955b1e9/truststore-0.10.5-py3-none-any.whl", hash = "sha256:9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c", size = 19017, upload-time = "2026-10-12T22:27:30.377Z" },
 ]
 
 [[package]]

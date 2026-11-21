@@ -398,8 +398,9 @@ def loop(db_connect):
                         state[grp]["error"] = "limit zapytań API (429)" if e.code == 429 else f"HTTP {e.code}"
                     waits.append(900)
                 except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e:
+                    import netssl
                     with _lock:
-                        state[grp]["error"] = str(e)
+                        state[grp]["error"] = netssl.explain(getattr(e, "reason", e))
                     waits.append(600)
             time.sleep(max(60, min(min(waits), 300)))
         except Exception as e:  # noqa: BLE001 - blad bazy

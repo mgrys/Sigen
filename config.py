@@ -97,6 +97,9 @@ DEFAULTS = {
     "pstryk": {
         "api_key": "",                   # klucz API Pstryka (aplikacja Pstryk -> Integracje); puste = bez Pstryka
     },
+    "siec": {                            # 1.31.1: pobieranie danych z internetu
+        "plik_certyfikatow": "",         # plik PEM z certyfikatem antywirusa / firmowego proxy, gdy przechwytuja HTTPS; puste = certyfikaty systemu
+    },
     "pradcast": {
         "api_key": "",                   # klucz API Pradcast (pradcast.pl) - prognoza cen na 1-3 dni; puste = bez prognozy
     },

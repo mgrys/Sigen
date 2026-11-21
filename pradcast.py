@@ -64,7 +64,8 @@ def day(d):
                                       429: "przekroczony limit zapytań"}.get(e.code, f"HTTP {e.code}"))
         return hit[1] if hit else None
     except Exception as e:  # noqa: BLE001 - brak sieci itp.
-        state.update(ok=False, error=f"{type(e).__name__}: {e}")
+        import netssl
+        state.update(ok=False, error=netssl.explain(getattr(e, "reason", e)) if "CERTIFICATE" in str(e) else f"{type(e).__name__}: {e}")
         return hit[1] if hit else None
     hours = {}
     unit_mwh = str(r.get("unit") or "MWh").lower() == "mwh"

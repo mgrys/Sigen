@@ -270,8 +270,9 @@ def loop(db_connect):
                 state.update(updated=int(time.time()), error=None, tariff_source=tariff["source"])
             time.sleep(900)
         except Exception as e:  # noqa: BLE001
+            import netssl
             with _lock:
-                state["error"] = str(e)
+                state["error"] = netssl.explain(getattr(e, "reason", e))
             try:
                 if con:
                     con.close()

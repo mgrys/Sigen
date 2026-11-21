@@ -1180,14 +1180,25 @@ td.status { display: table-cell; text-align: left; white-space: normal; }   /* .
       </fieldset>
       <fieldset><legend>Pradcast – prognoza cen (opcjonalnie)</legend>
         <label>Klucz API Pradcast<input data-k="pradcast.api_key" type="password" autocomplete="off" placeholder="puste = bez prognozy cen"></label>
-        <p class="status" style="margin-top:6px">Darmowy, anonimowy klucz z <a href="https://pradcast.pl/dokumentacja-api" target="_blank" rel="noopener">pradcast.pl</a>
+        <p class="status" style="margin-top:6px;display:block">Darmowy, anonimowy klucz z <a href="https://pradcast.pl/dokumentacja-api" target="_blank" rel="noopener">pradcast.pl</a>
           (użytek domowy). Strategia planuje wtedy do pojutrza, a na karcie strategii widać trafność prognoz. Klucz zostaje w config.ini.</p>
       </fieldset>
       <fieldset><legend>Pstryk (opcjonalnie)</legend>
-        <label>Klucz API Pstryka<input data-k="pstryk.api_key" type="password" autocomplete="off" placeholder="puste = bez Pstryka"></label>
-        <p class="status" style="margin-top:6px">Tylko dla klientów Pstryka: aplikacja Pstryk → Integracje → wygeneruj klucz.
+        <label>Klucz API Pstryka<input data-k="pstryk.api_key" id="cfg-pskey" type="password" autocomplete="off" placeholder="puste = bez Pstryka"></label>
+        <div class="cfg-row" style="margin-top:6px;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="fs-btn" type="button" id="ps-test">Sprawdź klucz</button>
+          <span class="status" id="ps-keyst" style="display:inline"></span></div>
+        <p class="status" style="margin-top:6px;display:block">Tylko dla klientów Pstryka: aplikacja Pstryk → Integracje → wygeneruj klucz.
           Dodaje dane z licznika operatora, rzeczywiste koszty i ceny godzinowe Pstryka. Bez klucza dashboard działa jak dotąd.
+          Klucz działa od razu po „Zapisz” (bez ponownego uruchomienia); „Sprawdź klucz” pyta Pstryka od razu.
           Klucz zostaje w pliku config.ini na tym komputerze.</p>
+      </fieldset>
+      <fieldset><legend>Sieć (zwykle niepotrzebne)</legend>
+        <label>Plik certyfikatów (PEM)<input data-k="siec.plik_certyfikatow" placeholder="puste = certyfikaty systemu"></label>
+        <p class="status" style="margin-top:6px;display:block">Tylko gdy ceny / Pstryk / prognoza pokazują błąd certyfikatu (połączenie HTTPS przechwytuje antywirus,
+          firmowa zapora albo filtr w routerze). Najpierw spróbuj wyłączyć skanowanie HTTPS dla tej aplikacji w antywirusie. Jeśli się nie da –
+          wpisz ścieżkę do pliku certyfikatu programu / proxy w formacie PEM (dodatek Home Assistant: np. /config/moj-certyfikat.pem).
+          Zmiana po „Zapisz i uruchom ponownie”. <span id="cfg-https"></span></p>
       </fieldset>
       <fieldset><legend>Rekuperacja (opcjonalnie)</legend>
         <label>Adres IP rekuperatora Vallox (seria MV)<span class="cfg-row"><input data-k="rekuperacja.vallox_ip" id="cfg-vip" placeholder="puste = bez zakładki Rekuperacja">
@@ -3173,13 +3184,33 @@ async function loadConfig() {
   try {
     const v = await (await fetch('/api/version')).json();
     $('cfg-info').textContent = `Wersja ${v.version} · folder danych: ${v.data_dir} · ${v.db}`;
+    if (v.https) $('cfg-https').textContent = 'Teraz: ' + v.https + '.';
     const m = v.modules || { pv: v.pv !== false, vallox: !!v.vallox };
     document.querySelectorAll('#tab-set [data-mod]').forEach(el => { el.checked = !!m[el.dataset.mod]; });
     modHint();
   } catch (e) {}
   syncMeterFields();
   slLoad();
+  psKeyStatus();
 }
+// 1.31.1: Pstryk w Ustawieniach - stan polaczenia pod polem klucza i „Sprawdz klucz” (od razu zapytanie do Pstryka)
+async function psKeyStatus() {
+  let s;
+  try { s = await (await fetch('/api/pstryk/status')).json(); } catch (e) { return; }
+  const el = $('ps-keyst'); if (!el) return;
+  const hm = t => new Date(t * 1000).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  if (!s.configured) { el.textContent = 'brak klucza'; el.style.color = ''; return; }
+  if (s.error) { el.textContent = '✗ ' + s.error; el.style.color = 'var(--eff-bad)'; return; }
+  if (s.last) { el.textContent = `✓ połączono · ostatnia synchronizacja ${hm(s.last)}` + (s.backfill ? ' · ' + s.backfill : ''); el.style.color = 'var(--eff-good)'; return; }
+  el.textContent = 'klucz zapisany – pierwsza synchronizacja…'; el.style.color = '';
+}
+$('ps-test').onclick = async () => {
+  const el = $('ps-keyst'); el.textContent = 'sprawdzam…'; el.style.color = '';
+  let r;
+  try { r = await (await fetch('/api/pstryk/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: $('cfg-pskey').value.trim() }) })).json(); }
+  catch (e) { r = { ok: false, msg: 'brak połączenia z aplikacją' }; }
+  el.textContent = (r.ok ? '✓ ' : '✗ ') + (r.msg || r.error || ''); el.style.color = r.ok ? 'var(--eff-good)' : 'var(--eff-bad)';
+};
 function modHint() {
   const pv = document.querySelector('[data-mod="pv"]').checked, vx = document.querySelector('[data-mod="vallox"]').checked;
   const ip = (document.querySelector('[data-k="rekuperacja.vallox_ip"]')?.value || '').trim();
@@ -3354,7 +3385,8 @@ async function saveConfig(restart) {
   catch (e) { r = { ok: false, error: 'brak połączenia z aplikacją' }; }
   msg.style.color = r.ok ? 'var(--eff-good)' : 'var(--eff-bad)';
   if (!r.ok) { msg.textContent = '✗ ' + r.error; return; }
-  if (!restart) { msg.textContent = '✓ Zapisano – zmiany zadziałają po ponownym uruchomieniu.'; return; }
+  if (!restart) { msg.textContent = '✓ Zapisano – klucz Pstryka działa od razu, pozostałe zmiany po ponownym uruchomieniu.';
+    [3000, 10000, 30000].forEach(t => setTimeout(psKeyStatus, t)); return; }
   msg.textContent = 'Zapisano, uruchamianie ponownie…';
   await fetch('/api/restart', { method: 'POST' }).catch(() => {});
   const port = (collectConfig().serwer || {}).port || location.port;

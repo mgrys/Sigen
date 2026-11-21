@@ -67,7 +67,8 @@ def fetch(key, params):
                429: "przekroczony limit zapytań"}.get(e.code, f"HTTP {e.code}")
         raise PstrykError(msg, e.code) from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise PstrykError(f"brak połączenia z API Pstryk ({e})") from e
+        import netssl
+        raise PstrykError(f"brak połączenia z API Pstryk: {netssl.explain(getattr(e, 'reason', e))}") from e
 
 
 def _iso(ts):
@@ -188,14 +189,44 @@ def _tomorrow_prices(con, today):
     return bool(r and (r[0] or 0) >= 20)
 
 
+_wake = threading.Event()
+
+
+def wake():
+    """1.31.1: zapis klucza w Ustawieniach - synchronizacja od razu (bez restartu i bez czekania 5 min)."""
+    _wake.set()
+
+
+def _sleep(s):
+    _wake.wait(s)
+    _wake.clear()
+
+
+def test_key(key):
+    """1.31.1: sprawdzenie klucza - ceny z ostatnich 3 godzin. (ok, opis)."""
+    now = int(time.time()) // 3600 * 3600
+    try:
+        d = fetch(key, {"metrics": "pricing", "resolution": "hour", "window_start": _iso(now - 3 * 3600), "window_end": _iso(now + 3600)})
+    except PstrykError as e:
+        return False, str(e)
+    except Exception as e:  # noqa: BLE001
+        return False, f"{type(e).__name__}: {e}"
+    n = len(d.get("frames") or []) if isinstance(d, dict) else 0
+    return True, f"klucz działa – Pstryk odpowiada ({n} godz. cen)"
+
+
 def loop(get_key, db_connect):
     """get_key() -> klucz API lub '' (sprawdzany przy kazdej synchronizacji)."""
     backfilled = False
+    last_key = None
     while True:
         key = (get_key() or "").strip()
+        if key != last_key:                 # 1.31.1: nowy klucz - od nowa (historia, status)
+            backfilled, last_key = False, key
+            _set(ok=None, error=None, last=None)
         _set(enabled=bool(key))
         if not key:
-            time.sleep(300)
+            _sleep(300)
             continue
         pause = INTERVAL
         con = None
@@ -234,4 +265,4 @@ def loop(get_key, db_connect):
                     con.close()
                 except Exception:  # noqa: BLE001
                     pass
-        time.sleep(pause)
+        _sleep(pause)

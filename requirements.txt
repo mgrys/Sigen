@@ -5,3 +5,4 @@ vallox-websocket-api>=3.0
 tuya-device-sharing-sdk==0.2.15
 cryptography
 qrcode
+truststore>=0.9

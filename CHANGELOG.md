@@ -2,6 +2,20 @@
 
 Format wg [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), wersje wg [SemVer](https://semver.org/lang/pl/).
 
+## [1.31.1] - 2026-11-21
+
+### Poprawiono
+- **Błąd `CERTIFICATE_VERIFY_FAILED` (self-signed certificate in certificate chain)** – ceny, Pstryk i prognoza nie działały,
+  gdy połączenia HTTPS przechwytuje antywirus (skanowanie HTTPS: ESET, Avast, Kaspersky, Bitdefender…), firmowa zapora albo
+  filtr w routerze. Aplikacja korzysta teraz z certyfikatów zaufanych przez system (pakiet `truststore`: magazyn Windows,
+  pęk kluczy macOS, certyfikaty Linuksa) – certyfikat antywirusa dopisany do Windows działa bez wyłączania skanowania.
+  Dla dodatku Home Assistant / Linuksa: Ustawienia → Sieć → plik certyfikatów (PEM) programu lub proxy (`[siec]
+  plik_certyfikatow`). Sprawdzanie certyfikatów nie jest wyłączane. Komunikat błędu po polsku z podpowiedzią.
+- **Pstryk: klucz działa od razu po „Zapisz”** (wcześniej dopiero po ponownym uruchomieniu – wyglądało na brak reakcji).
+  Pod polem klucza stan połączenia (ostatnia synchronizacja albo błąd Pstryka) i przycisk **„Sprawdź klucz”** – od razu
+  zapytanie do API Pstryka (`POST /api/pstryk/test`, `GET /api/pstryk/status`). Nowy klucz – historia pobierana od nowa.
+- Ustawienia: opisy pól Pradcast i Pstryk w jednym bloku tekstu (wcześniej rozbijane na kolumny).
+
 ## [1.31.0] - 2026-11-20
 
 ### Dodano
